@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_secuencial_v11_drive_evidencias_todos_modulos";
+var storageKey = "ei_trazabilidad_v13_pdf_auto_admin_cleanup";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -304,7 +304,7 @@ function statusChip(st){
 function routes(){
   if(!state.user)return{main:[],processes:[]};
   if(state.user.role==="auxiliar_corte")return{main:["corte_cable"],processes:[]};
-  if(state.user.role==="gerencia")return{main:["indicators","approvals","users"],processes:[]};
+  if(state.user.role==="gerencia")return{main:["indicators","approvals","users","admin"],processes:[]};
   if(state.user.role==="admin"||state.user.role==="super_admin")return{main:["dashboard","cases","requirements","approvals","indicators","users","admin"],processes:Object.keys(processes)};
   if(state.user.role==="jefe_logistica"){
     return{main:["dashboard","cases","requirements","approvals","indicators","admin"],processes:Object.keys(processes).filter(function(k){return k!=="caja";})};
@@ -320,7 +320,7 @@ function navBtn(r){
 
 function mobileItems(){
   if(state.user && state.user.role==="auxiliar_corte")return [["corte_cable","Cortes","CT"]];
-  if(state.user && state.user.role==="gerencia")return [["indicators","VSM","◉"],["approvals","Aprob.","✓"],["users","Usuarios","US"],["dashboard","Inicio","⌂"],["requirements","Req.","↗"]];
+  if(state.user && state.user.role==="gerencia")return [["indicators","VSM","◉"],["approvals","Aprob.","✓"],["users","Usuarios","US"],["admin","Admin","AD"],["dashboard","Inicio","⌂"]];
   if(state.user && state.user.role==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["requirements","Req.","↗"],["approvals","Aprob.","✓"],["indicators","VSM","◉"]];
   var rs=routes();return [["dashboard","Inicio","⌂"],[rs.processes[0]||"cases","Panel","▤"],[canCreate()?"create":"requirements",canCreate()?"Crear":"Req.",canCreate()?"+":"↗"],["requirements","Req.","↗"]];
 }
@@ -759,9 +759,26 @@ function isMeterUnit(unit){
   return new RegExp("^(?:"+meterUnitPattern()+")$","i").test(String(unit||"").replace(/\./g,"").trim());
 }
 function isLikelyCable(ref, desc){
-  var t=(String(ref||"")+" "+String(desc||"")).toUpperCase();
-  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CORDÓN|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO|MALLA|FIBRA|VFD|SOLDADOR|CONTROL)/.test(t);
+  var t=stripAccents((String(ref||"")+" "+String(desc||"")).toUpperCase());
+  if(/\b(TUBO|PVC|CPVC|EMT|IMC|GALVANIZ|CANALETA|BISAGRA|RIEL|PERFIL|ANGULO|CINTA|MANGUERA|CORAZA|DUCTO|TUBERIA|TUBERÍA|ABRAZADERA|BARRA|VARILLA|CADENA)\b/.test(t) && !/\b(CABLE|CONDUCTOR|ALAMBRE)\b/.test(t)){
+    return false;
+  }
+  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO|MALLA|FIBRA|VFD|SOLDADOR|CONTROL|MONOPOLAR|BIPOLAR|TRENZADO|BAJANTE|SUBTERRANEO|SUBTERRANEO)/.test(t);
 }
+function normalizePdfNumber(v){
+  var s=String(v||"").trim();
+  if(!s)return "";
+  s=s.replace(/\s+/g,"");
+  if(/,\d{1,3}$/.test(s) && s.indexOf('.')>=0)s=s.replace(/\./g,"").replace(',', '.');
+  else if(/,\d{1,3}$/.test(s))s=s.replace(',', '.');
+  else s=s.replace(/,(?=\d{3}\b)/g,"").replace(/\.(?=\d{3}\b)/g,"");
+  return s;
+}
+function isProbablyPriceContext(line, index){
+  var near=String(line||"").slice(Math.max(0,index-18), index+35);
+  return /\$|VALOR|UNITARIO|PARCIAL|PRECIO|IVA|DTO/i.test(near);
+}
+function normalizeRefText(v){return stripAccents(String(v||"").toUpperCase()).replace(/[^A-Z0-9]+/g,"");}
 function normalizeQty(v){
   var s=String(v||"").trim();
   if(!s)return "";
@@ -783,37 +800,67 @@ function refFromBefore(before){
   if(!/[A-Za-zÁÉÍÓÚÑ0-9]/.test(ref) || ref.length<2)return {ref:"",desc:""};
   return {ref:ref,desc:cleanDesc(desc)};
 }
+function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
+  ref=cleanPdfValue(ref||"");
+  desc=cleanDesc(desc||"");
+  qty=normalizePdfNumber(qty);
+  unit=String(unit||"").toUpperCase().replace(/\./g,"");
+  if(!ref && desc){var rd=refFromBefore(desc);ref=rd.ref;desc=rd.desc||desc;}
+  if(!qty || !isMeterUnit(unit))return;
+  if(!ref || ref.length<2)return;
+  if(!desc || desc.length<3)desc=ref;
+  var cable=isLikelyCable(ref,desc);
+  if(!cable && !/\b(CABLE|CONDUCTOR|ALAMBRE|THHN|AWG|ENCAUCH|UTP|COAX|ACOMET|ALUMBRADO|CORDON|CALIBRE)\b/i.test(rawLine||""))return;
+  var key=[normalizeRefText(ref),normalizeRefText(desc),qty,unit].join("|");
+  if(seen[key])return;
+  seen[key]=1;
+  items.push({
+    id:uid("LIN"),
+    referencia:ref,
+    descripcion:desc,
+    cantidad:qty,
+    unidad:unit,
+    requiereCorte:true,
+    esCable:true,
+    estado:"PENDIENTE_CORTE",
+    rawLine:String(rawLine||"").slice(0,350),
+    detectionReason:reason||"Cable con unidad en metros detectado automáticamente desde PDF"
+  });
+}
 function parseItemCandidate(candidate, seen, items){
-  var unit= meterUnitPattern();
+  var unit=meterUnitPattern();
   var line=cleanPdfValue(candidate);
   if(!line || lineLooksHeader(line))return;
-  var rx=new RegExp("\\b([0-9]{1,6}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
+  var rx=new RegExp("\\b([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
   var match;
   while((match=rx.exec(line))){
-    var qty=normalizeQty(match[1]);
-    var u=String(match[2]||"").toUpperCase().replace(/\./g,"");
+    if(isProbablyPriceContext(line, match.index))continue;
+    var qty=match[1], u=match[2];
     var before=line.slice(0,match.index);
     var after=line.slice(rx.lastIndex);
     var rd=refFromBefore(before);
-    if(!rd.ref || !rd.desc || rd.desc.length<3)continue;
-    var desc=cleanDesc(rd.desc.replace(/\s+[0-9][0-9.,]*\s*$/,""));
-    // Remove trailing prices accidentally captured after the unit; no values are needed for corte.
-    after=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/," ");
-    var key=[rd.ref,desc,qty,u].join("|").toUpperCase();
-    if(seen[key])continue;
-    seen[key]=1;
-    items.push({
-      id:uid("LIN"),
-      referencia:rd.ref,
-      descripcion:desc,
-      cantidad:qty,
-      unidad:u,
-      requiereCorte:true,
-      esCable:isLikelyCable(rd.ref,desc),
-      estado:"PENDIENTE_CORTE",
-      detectionReason:"Unidad en metros detectada automáticamente desde PDF"
-    });
+    if(rd.ref && rd.desc){
+      addPdfItem(items,seen,rd.ref,rd.desc,qty,u,line,"Cantidad + unidad en metros después de referencia/descripción");
+      continue;
+    }
+    var afterClean=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/," ");
+    var parts=afterClean.split(/\s+/).filter(Boolean);
+    if(parts.length>=2){
+      var ref=parts[0];
+      var desc=parts.slice(1,14).join(" ");
+      addPdfItem(items,seen,ref,desc,qty,u,line,"Cantidad + unidad antes de referencia/descripción");
+    }
   }
+  // Patrones de tablas donde la unidad aparece separada: REF DESC ... CANTIDAD M ...
+  var rx2=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{2,})\\s+(.{4,170}?)\\s+([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
+  while((match=rx2.exec(line))){
+    if(isProbablyPriceContext(line, match.index))continue;
+    addPdfItem(items,seen,match[1],match[2],match[3],match[4],line,"Referencia + descripción + cantidad en metros");
+  }
+  // Patrones de tablas tipo ITEM CANT UND REF DESC
+  var rx3=new RegExp("(?:^|\\s)(?:\\d{1,3}\\s+)?([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\s+([A-Z0-9][A-Z0-9._\\-/]{2,})\\s+(.{4,170})$","i");
+  var m3=line.match(rx3);
+  if(m3)addPdfItem(items,seen,m3[3],m3[4],m3[1],m3[2],line,"Cantidad/unidad antes de referencia");
 }
 function extractPedidoItems(text){
   var raw=String(text||"").replace(/\r/g,"\n");
@@ -823,13 +870,16 @@ function extractPedidoItems(text){
     candidates.push(l);
     if(lines[i+1])candidates.push(l+" "+lines[i+1]);
     if(lines[i+1]&&lines[i+2])candidates.push(l+" "+lines[i+1]+" "+lines[i+2]);
+    if(lines[i-1])candidates.push(lines[i-1]+" "+l);
   });
   var compact=cleanPdfValue(raw.replace(/\n/g," "));
-  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{2,}\\s+.{3,160}?\\s+[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\b)","ig");
-  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,260));});
+  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{2,}\\s+.{3,220}?\\s+[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\b)","ig");
+  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,420));});
+  var boundary2=new RegExp("(?=\\b[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\s+[A-Z0-9][A-Z0-9._\\-\\/]{2,})","ig");
+  compact.split(boundary2).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,420));});
   var items=[], seen={};
   candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
-  return items.slice(0,180);
+  return items.slice(0,250);
 }
 
 function createCase(fd){
@@ -940,17 +990,14 @@ function openReceptionPdf(id){
   qs("#recPdfForm").onsubmit=function(e){
     e.preventDefault();
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
-    c.pdfExtraction=parsed;c.orderItems=parsed.items||[];
-    if(parsed.orderNumber)c.reference=parsed.orderNumber;if(parsed.orderKind)c.orderKind=parsed.orderKind;if(parsed.client)c.client=parsed.client;if(parsed.paymentCondition)c.paymentCondition=parsed.paymentCondition;
-    if(parsed.salesAdvisor)c.salesAdvisor=parsed.salesAdvisor;if(parsed.requestedDelivery)c.requestedDelivery=parsed.requestedDelivery;if(parsed.observations)c.description=(c.description?c.description+"\n":"")+"Observaciones PDF: "+parsed.observations;
-    c.nit=parsed.nit||c.nit||"";c.address=parsed.address||c.address||"";c.city=parsed.city||c.city||"";c.phone=parsed.phone||c.phone||"";c.orderDate=parsed.orderDate||c.orderDate||"";
+    var filledFields=mergePdfExtractionIntoCase(c,parsed);
     c.documentFlow=c.documentFlow||{};c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
     c.checklist=c.checklist||{};["PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Forma de pago definida"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
     var added=autoCreateCutsFromItems(c,state.user.name);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
       c.documentFlow.receptionPdfDriveUrl=up.url;c.documentFlow.receptionPdfDriveId=up.fileId;c.documentFlow.receptionPdfDriveFolder=up.folderPath||up.folder;
       appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos.");
-      return persistCase(c,{type:"RECEPTION_PDF_EXTRACTED",detail:"PDF leído y guardado en Drive. Pedido: "+(c.reference||"")+". Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
+      return persistCase(c,{type:"RECEPTION_PDF_EXTRACTED",detail:"PDF leído y guardado en Drive. Pedido: "+(c.reference||"")+". Campos autollenados: "+(filledFields.length?filledFields.join(", "):"sin campos vacíos pendientes")+". Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
     }).then(function(){if(previewUrl)URL.revokeObjectURL(previewUrl);closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
@@ -964,19 +1011,22 @@ function autoCreateCutsFromItems(c,createdByName){
     var idc=uid("CUT");
     c.cutRequests.push({
       id:idc,
-      code:"CT-"+(c.cutRequests.length+1),
+      code:"CT-"+String(c.cutRequests.length+1).padStart(3,"0"),
       sourceLineId:it.id,
       caseId:c.id,
       pedido:c.reference,
+      cliente:c.client||"",
       tipoPedido:c.orderKind||"VENTAS",
       referencia:it.referencia||"",
       descripcion:it.descripcion||"",
       metrosSolicitados:it.cantidad||"",
+      unidad:it.unidad||"M",
       disponibleAntes:"",
       status:"PENDIENTE_CORTE",
       createdAt:now(),
       createdByName:createdByName||state.user.name,
-      generatedBy:"PDF_AUTO_METROS"
+      generatedBy:"PDF_AUTO_CABLE_METROS",
+      detectionReason:it.detectionReason||"Cable en metros detectado desde PDF"
     });
     added++;
   });
@@ -1331,6 +1381,7 @@ function uniqueRoles(){var m={};state.users.forEach(function(u){m[u.role]=1;});r
 function kpiFilteredCases(){
   var f=state.kpiFilters||{from:"",to:"",process:""};
   return state.cases.filter(function(c){
+    if(c.excludeFromKpi===true)return false;
     var d=new Date(c.createdAt||c.updatedAt||now());
     if(f.from && d<new Date(f.from+"T00:00:00"))return false;
     if(f.to && d>new Date(f.to+"T23:59:59"))return false;
@@ -1376,7 +1427,8 @@ function renderIndicators(){
   var data=kpiFilteredCases(), total=data.length||1, open=data.filter(function(c){return !c.closedAt;}), closed=data.filter(function(c){return c.closedAt;});
   var lead=0,va=0,wait=0,dead=0,rework=0,defects=0,handoffs=0,cutTotal=0,cutFinished=0;
   data.forEach(function(c){lead+=totalMs(c);va+=activeMs(c);wait+=waitMs(c);dead+=deadMs(c);if(Number(c.totalRequirements||0)>0)rework++;(c.cutRequests||[]).forEach(function(x){cutTotal++;if(cutDone(x.status))cutFinished++;});});
-  state.events.forEach(function(e){if(e.type==="CHECK_UPDATED"&&String(e.detail||"").indexOf("bad")>=0)defects++;if(e.type==="TRANSFER_SENT")handoffs++;});
+  var kpiCaseIds={};data.forEach(function(c){kpiCaseIds[c.id]=true;});
+  state.events.forEach(function(e){if(e.caseId && !kpiCaseIds[e.caseId])return;if(e.type==="CHECK_UPDATED"&&String(e.detail||"").indexOf("bad")>=0)defects++;if(e.type==="TRANSFER_SENT")handoffs++;});
   var nva=wait+dead, vaPct=Math.round(va/Math.max(va+nva,1)*100), fpy=closed.length?Math.round((closed.length-rework)/closed.length*100):0, reworkPct=Math.round(rework/total*100);
   var rows=processRows(data);
   var filterHtml='<section class="filters"><input class="input" type="date" id="kpiFrom"><input class="input" type="date" id="kpiTo"><select class="select" id="kpiProcess"><option value="">Todos los macroprocesos</option>'+Object.keys(processes).map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>';
@@ -1385,7 +1437,33 @@ function renderIndicators(){
 }
 function bars(rows){if(!rows.length)return'<div class="empty">Sin datos.</div>';var max=Math.max.apply(null,rows.map(function(r){return r.value;}))||1;return'<div class="bars">'+rows.map(function(r){return'<div class="bar-row"><span>'+esc(r.label)+'</span><div><b style="width:'+Math.max(4,Math.round(r.value/max*100))+'%"></b></div><strong>'+fmt(r.value)+'</strong></div>';}).join("")+'</div>';}
 
-function renderAdmin(){layout(header("Administración","Estado de conexión y PWA.")+'<section class="grid grid-2"><article class="card"><h3>Conexión</h3><p>Firebase: <strong>'+(firebaseReady?"activo":"no conectado")+'</strong></p><p>Proyecto: <strong>trazabilidadlog</strong></p></article><article class="card"><h3>PWA</h3><p>Service worker funcional con actualización controlada.</p><button class="btn btn-gold" data-action="clearPwa">Actualizar caché PWA</button></article></section>');}
+function renderAdmin(){
+  var canHardDelete=state.user && (state.user.role==="admin" || state.user.role==="super_admin");
+  var rows=sortByUpdated(state.cases.slice()).slice(0,80).map(function(c){
+    return '<tr><td>'+esc(c.reference||c.id)+'</td><td>'+esc(c.client||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+(c.excludeFromKpi?'<span class="chip warning">Excluido VSM</span>':'<span class="chip success">Cuenta VSM</span>')+'</td><td><button class="btn btn-small" data-action="toggleKpiCase" data-id="'+esc(c.id)+'">'+(c.excludeFromKpi?'Restaurar VSM':'Excluir VSM')+'</button> '+(canHardDelete?'<button class="btn btn-small btn-danger" data-action="deleteCase" data-id="'+esc(c.id)+'">Eliminar</button>':'')+'</td></tr>';
+  }).join('');
+  layout(header("Administración","Control de pruebas, limpieza de VSM y estado de conexión.")+
+    '<section class="grid grid-2"><article class="card"><h3>Conexión</h3><p>Firebase: <strong>'+(firebaseReady?"activo":"no conectado")+'</strong></p><p>Proyecto: <strong>trazabilidadlog</strong></p><p>Drive: <strong>'+(driveConfigured()?"Google Cloud configurado":"pendiente")+'</strong></p></article><article class="card"><h3>PWA</h3><p>Service worker funcional con actualización controlada.</p><button class="btn btn-gold" data-action="clearPwa">Actualizar caché PWA</button></article></section>'+
+    '<section class="card" style="margin-top:16px"><h3>Limpieza de pruebas y VSM</h3><p class="muted">Use <strong>Excluir VSM</strong> para que una prueba no afecte indicadores. Use <strong>Eliminar</strong> solo si está seguro; borra el caso, evidencias y requerimientos asociados en Firestore.</p><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Proceso</th><th>Estado</th><th>VSM</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay casos.</td></tr>')+'</tbody></table></div></section>');
+}
+function toggleCaseKpi(id){
+  if(!canSeeKpis()){alert("No tiene permiso para limpiar indicadores.");return;}
+  var c=caseById(id);if(!c)return;
+  c.excludeFromKpi=!c.excludeFromKpi;
+  c.excludeFromKpiAt=c.excludeFromKpi?now():"";
+  c.excludeFromKpiBy=c.excludeFromKpi?(state.user?state.user.uid:""):"";
+  persistCase(c,{type:c.excludeFromKpi?"CASE_EXCLUDED_FROM_VSM":"CASE_RESTORED_TO_VSM",detail:(c.reference||c.id)+(c.excludeFromKpi?" excluido de VSM/KPIs":" restaurado en VSM/KPIs")}).then(function(){renderAdmin();}).catch(function(e){showError(e.message||e);});
+}
+function deleteCaseHard(id){
+  if(!(state.user && (state.user.role==="admin" || state.user.role==="super_admin"))){alert("Solo admin o super admin puede eliminar definitivamente.");return;}
+  var c=caseById(id);if(!c)return;
+  var ref=c.reference||c.id;
+  if(!confirm("¿Eliminar definitivamente el caso "+ref+"? Esta acción no se puede deshacer."))return;
+  var batch=db.batch();
+  batch.delete(db.collection("cases").doc(id));
+  db.collection("requirements").where("caseId","==",id).get().then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("evidences").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("case_events").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return batch.commit();}).then(function(){state.cases=state.cases.filter(function(x){return x.id!==id;});state.events=state.events.filter(function(x){return x.caseId!==id;});renderAdmin();}).catch(function(e){showError(e.message||e);});
+}
+
 
 function drawer(html){var d=qs("#drawer");d.innerHTML=html;d.classList.add("open");qsa("[data-close]",d).forEach(function(b){b.onclick=closeDrawer;});d.onclick=function(e){if(e.target===d)closeDrawer();};}
 function closeDrawer(){var d=qs("#drawer");if(d){d.classList.remove("open");d.innerHTML="";}}
@@ -1632,6 +1710,8 @@ function bindActions(){
     if(a==="syncCuts")syncCutBridge(id);
     if(a==="notifyOn")requestNotifications();
     if(a==="exportKpiExcel")downloadKpiExcel();
+    if(a==="toggleKpiCase")toggleCaseKpi(id);
+    if(a==="deleteCase")deleteCaseHard(id);
   };});
 }
 

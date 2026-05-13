@@ -164,7 +164,8 @@ service cloud.firestore {
 
       allow create: if activeUser();
 
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     match /requirements/{requirementId} {
