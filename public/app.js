@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v13_pdf_auto_admin_cleanup";
+var storageKey = "ei_trazabilidad_v14_admin_delete_ventas_panel";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -28,6 +28,7 @@ var state = {
 var roles = {
   admin:"Administrador / Desarrollador",
   super_admin:"Super administrador",
+  super_administrador:"Super administrador",
   gerencia:"Gerencia",
   ventas:"Ventas",
   jefe_logistica:"Jefe de logística",
@@ -137,19 +138,21 @@ function msSince(iso){return iso?Date.now()-new Date(iso).getTime():0;}
 function fmt(ms){ms=Math.max(0,Math.floor((ms||0)/1000));var h=("0"+Math.floor(ms/3600)).slice(-2);var m=("0"+Math.floor((ms%3600)/60)).slice(-2);var s=("0"+(ms%60)).slice(-2);return h+":"+m+":"+s;}
 function fmtDate(iso){try{return iso?new Intl.DateTimeFormat("es-CO",{dateStyle:"medium",timeStyle:"short"}).format(new Date(iso)):"—";}catch(e){return iso||"—";}}
 function roleTitle(r){return roles[r]||r||"Sin rol";}
+function isAdminRoleValue(r){return r==="admin"||r==="super_admin"||r==="super_administrador";}
+function isSuperAdminRoleValue(r){return r==="super_admin"||r==="super_administrador";}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function processOwnerRoles(p){return processes[p] ? processes[p].ownerRoles : [];}
 function canAccessProcess(role,p){return processOwnerRoles(p).indexOf(role)>=0;}
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
-function isLeader(){return state.user && (state.user.role==="admin" || state.user.role==="super_admin" || state.user.role==="lider_logistico");}
+function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || state.user.role==="lider_logistico");}
 function isCutOperator(){return state.user && state.user.role==="auxiliar_corte";}
 function isJefeLogistica(){return state.user && state.user.role==="jefe_logistica";}
 function isExecutive(){return state.user && state.user.role==="gerencia";}
-function canManageUsers(){return state.user && (state.user.role==="admin" || state.user.role==="super_admin" || state.user.role==="gerencia");}
+function canManageUsers(){return state.user && (isAdminRoleValue(state.user.role) || state.user.role==="gerencia");}
 function canApprovePriority(){return state.user && state.user.role==="gerencia";}
-function canSeeAll(){return state.user && (state.user.role==="admin" || state.user.role==="super_admin" || state.user.role==="gerencia" || state.user.role==="jefe_logistica");}
-function canCreate(){return state.user && state.user.role==="ventas";}
+function canSeeAll(){return state.user && (isAdminRoleValue(state.user.role) || state.user.role==="gerencia" || state.user.role==="jefe_logistica");}
+function canCreate(){return state.user && (state.user.role==="ventas" || isAdminRoleValue(state.user.role));}
 function canSeeKpis(){return canSeeAll();}
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
@@ -197,7 +200,7 @@ function persistEvidenceDocument(c,up,detail){
   };
   return db.collection("evidences").doc(ev.id).set(ev).catch(function(){return null;});
 }
-function defaultRoute(role){if(role==="gerencia")return"indicators";if(role==="super_admin")return"dashboard";if(role==="ventas")return"create";if(role==="jefe_logistica")return"dashboard";if(role==="auxiliar_corte")return"corte_cable";if(role==="lider_logistico"||role==="coordinador_logistico")return"recepcion_pedidos";if(role==="aux_logistica")return"alistamiento";if(role==="caja")return"caja";return"dashboard";}
+function defaultRoute(role){if(role==="gerencia")return"indicators";if(role==="super_admin"||role==="super_administrador")return"dashboard";if(role==="ventas")return"create";if(role==="jefe_logistica")return"dashboard";if(role==="auxiliar_corte")return"corte_cable";if(role==="lider_logistico"||role==="coordinador_logistico")return"recepcion_pedidos";if(role==="aux_logistica")return"alistamiento";if(role==="caja")return"caja";return"dashboard";}
 function currentProc(c){return c.currentProcess;}
 function procStats(c,p){c.processStats=c.processStats||{};c.processStats[p]=c.processStats[p]||{activeMs:0,waitMs:0,deadMs:0,startedAt:null,completedAt:null,handoffs:0};return c.processStats[p];}
 function totalMs(c){return (c.closedAt?new Date(c.closedAt).getTime():Date.now())-new Date(c.createdAt).getTime();}
@@ -305,7 +308,7 @@ function routes(){
   if(!state.user)return{main:[],processes:[]};
   if(state.user.role==="auxiliar_corte")return{main:["corte_cable"],processes:[]};
   if(state.user.role==="gerencia")return{main:["indicators","approvals","users","admin"],processes:[]};
-  if(state.user.role==="admin"||state.user.role==="super_admin")return{main:["dashboard","cases","requirements","approvals","indicators","users","admin"],processes:Object.keys(processes)};
+  if(isAdminRoleValue(state.user.role))return{main:["dashboard","create","cases","requirements","approvals","indicators","users","admin"],processes:Object.keys(processes)};
   if(state.user.role==="jefe_logistica"){
     return{main:["dashboard","cases","requirements","approvals","indicators","admin"],processes:Object.keys(processes).filter(function(k){return k!=="caja";})};
   }
@@ -958,7 +961,7 @@ function orderItemsPanel(c){
 function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],APROBADO_PENDIENTE_CORTE:["Aprobado, pendiente corte","warning"],PENDIENTE_REGISTRO:["Pendiente registrar","warning"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente jefe logística","warning"],PENDIENTE_JEFE_LOGISTICA:["Pendiente jefe logística","warning"],REQUERIMIENTO:["Requerimiento a ventas","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
 function cutsPanel(c){
   var cuts=c.cutRequests||[];if(!cuts.length)return "";
-  return '<section class="card" style="margin-top:16px"><h3>Cortes vinculados al pedido</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Disponible</th><th>Estado</th><th>Tiempo</th><th>Acción</th></tr></thead><tbody>'+cuts.map(function(cut){var canLaunch=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||state.user.role==="admin"||state.user.role==="super_admin");return'<tr><td>'+esc(cut.code||cut.id)+'</td><td>'+esc(cut.referencia)+'</td><td>'+esc(cut.metrosSolicitados||"")+'</td><td>'+esc(cut.disponibleAntes||"")+'</td><td>'+cutStatusChip(cut.status)+'</td><td>'+esc(cut.durationText||"—")+'</td><td>'+(canLaunch?'<button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(c.id)+'" data-cut="'+esc(cut.id)+'">Abrir corte</button>':"—")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  return '<section class="card" style="margin-top:16px"><h3>Cortes vinculados al pedido</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Disponible</th><th>Estado</th><th>Tiempo</th><th>Acción</th></tr></thead><tbody>'+cuts.map(function(cut){var canLaunch=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||isAdminRoleValue(state.user.role));return'<tr><td>'+esc(cut.code||cut.id)+'</td><td>'+esc(cut.referencia)+'</td><td>'+esc(cut.metrosSolicitados||"")+'</td><td>'+esc(cut.disponibleAntes||"")+'</td><td>'+cutStatusChip(cut.status)+'</td><td>'+esc(cut.durationText||"—")+'</td><td>'+(canLaunch?'<button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(c.id)+'" data-cut="'+esc(cut.id)+'">Abrir corte</button>':"—")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
 }
 function evidencePanel(c){
   var list=c.evidence||[];
@@ -1138,7 +1141,7 @@ function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
   var cut=findCut(c,cutId);if(!cut)return;
-  var canOperate=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||state.user.role==="admin"||state.user.role==="super_admin");
+  var canOperate=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||isAdminRoleValue(state.user.role));
   if(!canOperate){alert("No tiene permiso para operar este corte.");return;}
   cut.id=cut.id||uid("CUT");
   cut.code=cut.code||("CT-"+(((c.cutRequests||[]).indexOf(cut)+1)||1));
@@ -1156,7 +1159,7 @@ function openCutModule(id,cutId){
   var approvalPending=rule.requires && cut.approvalStatus==="PENDIENTE";
   var waitingApproval=rule.requires && !cutIsApproved(cut);
   var approverRole=cut.approverRole||rule.approverRole;
-  var canApproveNow=approvalPending && state.user && (state.user.role===approverRole || state.user.role==="admin" || state.user.role==="super_admin");
+  var canApproveNow=approvalPending && state.user && (state.user.role===approverRole || isAdminRoleValue(state.user.role));
   var canEditOperation=state.user && state.user.role==="auxiliar_corte";
   var remText=calc.hasValues?cutNormalizeDecimal(calc.remanente):"";
   var timerText=fmt(cutElapsedMs(cut));
@@ -1438,7 +1441,7 @@ function renderIndicators(){
 function bars(rows){if(!rows.length)return'<div class="empty">Sin datos.</div>';var max=Math.max.apply(null,rows.map(function(r){return r.value;}))||1;return'<div class="bars">'+rows.map(function(r){return'<div class="bar-row"><span>'+esc(r.label)+'</span><div><b style="width:'+Math.max(4,Math.round(r.value/max*100))+'%"></b></div><strong>'+fmt(r.value)+'</strong></div>';}).join("")+'</div>';}
 
 function renderAdmin(){
-  var canHardDelete=state.user && (state.user.role==="admin" || state.user.role==="super_admin");
+  var canHardDelete=state.user && isAdminRoleValue(state.user.role);
   var rows=sortByUpdated(state.cases.slice()).slice(0,80).map(function(c){
     return '<tr><td>'+esc(c.reference||c.id)+'</td><td>'+esc(c.client||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+(c.excludeFromKpi?'<span class="chip warning">Excluido VSM</span>':'<span class="chip success">Cuenta VSM</span>')+'</td><td><button class="btn btn-small" data-action="toggleKpiCase" data-id="'+esc(c.id)+'">'+(c.excludeFromKpi?'Restaurar VSM':'Excluir VSM')+'</button> '+(canHardDelete?'<button class="btn btn-small btn-danger" data-action="deleteCase" data-id="'+esc(c.id)+'">Eliminar</button>':'')+'</td></tr>';
   }).join('');
@@ -1455,13 +1458,13 @@ function toggleCaseKpi(id){
   persistCase(c,{type:c.excludeFromKpi?"CASE_EXCLUDED_FROM_VSM":"CASE_RESTORED_TO_VSM",detail:(c.reference||c.id)+(c.excludeFromKpi?" excluido de VSM/KPIs":" restaurado en VSM/KPIs")}).then(function(){renderAdmin();}).catch(function(e){showError(e.message||e);});
 }
 function deleteCaseHard(id){
-  if(!(state.user && (state.user.role==="admin" || state.user.role==="super_admin"))){alert("Solo admin o super admin puede eliminar definitivamente.");return;}
+  if(!(state.user && isAdminRoleValue(state.user.role))){alert("Solo admin o super admin puede eliminar definitivamente.");return;}
   var c=caseById(id);if(!c)return;
   var ref=c.reference||c.id;
   if(!confirm("¿Eliminar definitivamente el caso "+ref+"? Esta acción no se puede deshacer."))return;
   var batch=db.batch();
   batch.delete(db.collection("cases").doc(id));
-  db.collection("requirements").where("caseId","==",id).get().then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("evidences").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("case_events").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return batch.commit();}).then(function(){state.cases=state.cases.filter(function(x){return x.id!==id;});state.events=state.events.filter(function(x){return x.caseId!==id;});renderAdmin();}).catch(function(e){showError(e.message||e);});
+  db.collection("requirements").where("caseId","==",id).get().then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("evidences").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return db.collection("case_events").where("caseId","==",id).get();}).then(function(snap){snap.forEach(function(d){batch.delete(d.ref);});return batch.commit();}).then(function(){state.cases=state.cases.filter(function(x){return x.id!==id;});state.events=state.events.filter(function(x){return x.caseId!==id;});alert("Caso eliminado correctamente.");renderAdmin();}).catch(function(e){alert("No fue posible eliminar. Publique las reglas V14 en Firebase y confirme que su rol sea admin, super_admin o super_administrador. Detalle: "+(e.message||e));renderAdmin();});
 }
 
 

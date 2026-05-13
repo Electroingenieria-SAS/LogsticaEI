@@ -28,7 +28,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return activeUser() && role() in ['admin', 'super_admin'];
+      return activeUser() && role() == 'admin';
+    }
+
+    function isSuperAdmin() {
+      return activeUser() && role() in ['super_admin', 'super_administrador'];
+    }
+
+    function isAdminOrSuper() {
+      return isAdmin() || isSuperAdmin();
     }
 
     function isManager() {
@@ -40,17 +48,18 @@ service cloud.firestore {
     }
 
     function canSeeAll() {
-      return isAdmin() || isManager() || isChiefLogistics();
+      return isAdminOrSuper() || isManager() || isChiefLogistics();
     }
 
     function canManageUsers() {
-      return isAdmin() || isManager();
+      return isAdminOrSuper() || isManager();
     }
 
     function validRoleValue(value) {
       return value in [
         'admin',
         'super_admin',
+        'super_administrador',
         'gerencia',
         'ventas',
         'jefe_logistica',
@@ -140,7 +149,7 @@ service cloud.firestore {
       allow update: if canManageUsers()
         && validUserPayload();
 
-      allow delete: if isAdmin();
+      allow delete: if isAdminOrSuper();
     }
 
     match /cases/{caseId} {
@@ -152,7 +161,7 @@ service cloud.firestore {
       allow update: if canOperateCase()
         && validCasePayload();
 
-      allow delete: if isAdmin();
+      allow delete: if isAdminOrSuper();
     }
 
     match /case_events/{eventId} {
@@ -163,9 +172,8 @@ service cloud.firestore {
       );
 
       allow create: if activeUser();
-
       allow update: if false;
-      allow delete: if isAdmin();
+      allow delete: if isAdminOrSuper();
     }
 
     match /requirements/{requirementId} {
@@ -176,16 +184,20 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid
       );
 
-      allow create: if activeUser()
-        && request.resource.data.targetRole == 'ventas'
-        && request.resource.data.sourceProcess == 'corte_cable';
+      allow create: if activeUser() && (
+        canSeeAll() ||
+        (
+          request.resource.data.targetRole == 'ventas'
+          && request.resource.data.sourceProcess == 'corte_cable'
+        )
+      );
 
       allow update: if activeUser() && (
         canSeeAll() ||
         resource.data.targetRole == role()
       );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdminOrSuper();
     }
 
     match /evidences/{evidenceId} {
@@ -197,17 +209,23 @@ service cloud.firestore {
 
       allow create: if activeUser();
       allow update: if false;
-      allow delete: if isAdmin();
+      allow delete: if isAdminOrSuper();
     }
 
     match /kpis/{kpiId} {
       allow read: if canSeeAll();
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdminOrSuper();
     }
 
     match /system_config/{configId} {
       allow read: if canSeeAll();
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdminOrSuper();
+    }
+
+    // Protección adicional para limpieza administrativa de pruebas.
+    // Permite al admin/super admin borrar documentos auxiliares aunque existan colecciones nuevas.
+    match /{document=**} {
+      allow delete: if isAdminOrSuper();
     }
   }
 }
