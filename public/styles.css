@@ -201,3 +201,14 @@ button,input,select,textarea{font:inherit} button{border:0;cursor:pointer} texta
     min-height:66px;
   }
 }
+
+
+/* V6 Corte integrado completo */
+.modal:has(.cut-full){width:min(1180px,100%)}
+.cut-full fieldset{border:1px solid var(--line);border-radius:22px;padding:16px;margin:0;background:linear-gradient(180deg,#fff,#fbfdff)}
+.cut-full legend{padding:0 10px;color:var(--blue950);font-weight:950;letter-spacing:.02em}
+.cut-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}.cut-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.cut-grid-3{grid-template-columns:2fr 1fr 1fr}.cut-grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cut-calc{margin-top:12px;border:1px solid var(--line);border-radius:18px;padding:14px;background:#eef6ff}.cut-calc.ok{background:#ecfdf5;border-color:#bbf7d0}.cut-calc.warn{background:#fff7ed;border-color:#fed7aa}.cut-calc.stop{background:#fef2f2;border-color:#fecaca}.cut-calc-formula{font-size:1.1rem;font-weight:950;color:var(--blue950)}.cut-calc-formula span{color:#008a8a}.cut-calc-rule{margin-top:5px;color:#475569;font-weight:750}
+.cut-measure.disabled-section{opacity:.66}.cut-timer-card{margin:12px 0;padding:14px;border-radius:22px;color:#fff;background:linear-gradient(135deg,#667d99,#00a3a3);display:flex;gap:14px;align-items:center}.cut-timer{font-size:clamp(2.2rem,8vw,3.6rem);line-height:1;font-weight:950;letter-spacing:-.06em;padding:10px 14px;border-radius:18px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25)}.cut-timer-card span{display:block;color:rgba(255,255,255,.88)}
+.cut-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.cut-checks label{min-height:50px;display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:18px;background:#fff;font-weight:900;color:#475569}.cut-checks input{width:20px;height:20px}.cut-status{border-left:5px solid var(--gold)}
+@media(max-width:900px){.cut-grid,.cut-grid-2,.cut-grid-3,.cut-grid-4,.cut-checks{grid-template-columns:1fr}.cut-timer-card{display:grid}.modal:has(.cut-full){max-height:94vh}}

@@ -551,10 +551,10 @@ function orderItemsPanel(c){
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':"";
   return '<section class="card" style="margin-top:16px"><h3>Líneas detectadas del pedido</h3><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Destino</th></tr></thead><tbody>'+items.map(function(it){return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.requiereCorte?"Corte / validar":"Alistamiento")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
 }
-function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente líder","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
+function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],APROBADO_PENDIENTE_CORTE:["Aprobado, pendiente corte","warning"],PENDIENTE_REGISTRO:["Pendiente registrar","warning"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente jefe logística","warning"],PENDIENTE_JEFE_LOGISTICA:["Pendiente jefe logística","warning"],REQUERIMIENTO:["Requerimiento a ventas","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
 function cutsPanel(c){
   var cuts=c.cutRequests||[];if(!cuts.length)return "";
-  return '<section class="card" style="margin-top:16px"><h3>Cortes vinculados al pedido</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Disponible</th><th>Estado</th><th>Tiempo</th><th>Acción</th></tr></thead><tbody>'+cuts.map(function(cut){var canLaunch=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="admin");return'<tr><td>'+esc(cut.code||cut.id)+'</td><td>'+esc(cut.referencia)+'</td><td>'+esc(cut.metrosSolicitados||"")+'</td><td>'+esc(cut.disponibleAntes||"")+'</td><td>'+cutStatusChip(cut.status)+'</td><td>'+esc(cut.durationText||"—")+'</td><td>'+(canLaunch?'<button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(c.id)+'" data-cut="'+esc(cut.id)+'">Abrir corte</button>':"—")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  return '<section class="card" style="margin-top:16px"><h3>Cortes vinculados al pedido</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Disponible</th><th>Estado</th><th>Tiempo</th><th>Acción</th></tr></thead><tbody>'+cuts.map(function(cut){var canLaunch=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||state.user.role==="admin"||state.user.role==="super_admin");return'<tr><td>'+esc(cut.code||cut.id)+'</td><td>'+esc(cut.referencia)+'</td><td>'+esc(cut.metrosSolicitados||"")+'</td><td>'+esc(cut.disponibleAntes||"")+'</td><td>'+cutStatusChip(cut.status)+'</td><td>'+esc(cut.durationText||"—")+'</td><td>'+(canLaunch?'<button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(c.id)+'" data-cut="'+esc(cut.id)+'">Abrir corte</button>':"—")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
 }
 function evidencePanel(c){
   var list=c.evidence||[];
@@ -586,73 +586,238 @@ function cutElapsedMs(cut){
   if(cut.status==="EN_CORTE"&&cut.startedAt)stored+=msSince(cut.startedAt);
   return stored;
 }
+function cutParseDecimal(value){
+  var s=String(value==null?"":value).trim().replace(/\s/g,"");
+  if(!s)return NaN;
+  var lastComma=s.lastIndexOf(','), lastDot=s.lastIndexOf('.');
+  if(lastComma>lastDot){s=s.replace(/\./g,'').replace(',', '.');}
+  else{s=s.replace(/,/g,'');}
+  var n=Number(s);
+  return Number.isFinite(n)?n:NaN;
+}
+function cutNormalizeDecimal(v){
+  if(v===""||v===null||v===undefined)return "";
+  var n=typeof v==="number"?v:cutParseDecimal(v);
+  if(!Number.isFinite(n))return String(v||"");
+  return String(n.toFixed(2)).replace(/\.00$/,'').replace('.', ',');
+}
+function cutSame(a,b){return Math.abs(Number(a)-Number(b))<0.000001;}
+function cutRule(tipo, rem){
+  var t=String(tipo||"VENTAS").toUpperCase();
+  if(!Number.isFinite(rem))return {requires:false,status:"PENDIENTE_CORTE",condition:"",css:"warn",approverRole:"",approverLabel:"",message:"Ingrese metros disponibles y metros a cortar para calcular la restricción.",route:"Pendiente de cálculo."};
+  if(t==="ALUMBRADO"){
+    if(rem<10)return {requires:true,status:"PENDIENTE_GERENCIA",condition:"<10 m",css:"stop",approverRole:"gerencia",approverLabel:"Gerencia",message:"Requiere autorización de Gerencia por sobrante menor a 10 m.",route:"Alumbrado: no continuar hasta aprobación de Gerencia."};
+    if(rem<15)return {requires:true,status:"PENDIENTE_JEFE_LOGISTICA",condition:"<15 m",css:"warn",approverRole:"jefe_logistica",approverLabel:"Jefe logístico",message:"Requiere aprobación del Jefe Logístico por sobrante menor a 15 m.",route:"Alumbrado: no continuar hasta aprobación logística."};
+    return {requires:false,status:"CONFORME",condition:cutSame(rem,15)?"=15 m":">15 m",css:"ok",approverRole:"",approverLabel:"",message:"Corte habilitado.",route:"Alumbrado: no requiere aprobación."};
+  }
+  if(rem<50)return {requires:true,status:"PENDIENTE_GERENCIA",condition:"<50 m",css:"stop",approverRole:"gerencia",approverLabel:"Gerencia",message:"Requiere autorización de Gerencia por sobrante menor a 50 m.",route:"Ventas: no continuar hasta aprobación de Gerencia."};
+  if(cutSame(rem,50))return {requires:true,status:"PENDIENTE_JEFE_LOGISTICA",condition:"=50 m",css:"warn",approverRole:"jefe_logistica",approverLabel:"Jefe logístico",message:"Requiere validación del Jefe Logístico por sobrante igual a 50 m.",route:"Ventas: no continuar hasta aprobación logística."};
+  return {requires:false,status:"CONFORME",condition:">50 m",css:"ok",approverRole:"",approverLabel:"",message:"Corte habilitado.",route:"Ventas: no requiere aprobación."};
+}
+function cutValuesFromForm(){
+  var f=qs("#cutFullForm");
+  if(!f)return {};
+  var fd=new FormData(f);
+  function get(name,fallback){var el=f.elements[name];return el?String(el.value||""):String(fd.get(name)||fallback||"");}
+  function checked(name){var el=f.elements[name];return el?!!el.checked:!!fd.get(name);}
+  return {
+    tipoPedido:String(get("tipoPedido","VENTAS")||"VENTAS").toUpperCase(),
+    pedido:get("pedido"),
+    referencia:get("referencia"),
+    descripcion:get("descripcion"),
+    metrosSolicitados:get("metrosSolicitados"),
+    disponibleAntes:get("disponibleAntes"),
+    metrajeFinal:get("metrajeFinal"),
+    motivoVentas:get("motivoVentas"),
+    observacion:get("observacion"),
+    finishDetail:get("finishDetail"),
+    corteUniforme:checked("corteUniforme"),
+    tramoRotulado:checked("tramoRotulado"),
+    evidenciaRegistro:checked("evidenciaRegistro")
+  };
+}
+function applyCutFormValues(cut, v){
+  v=v||cutValuesFromForm();
+  cut.tipoPedido=v.tipoPedido||cut.tipoPedido||"VENTAS";
+  cut.pedido=v.pedido||cut.pedido||"";
+  cut.referencia=v.referencia||cut.referencia||"";
+  cut.descripcion=v.descripcion||cut.descripcion||"";
+  cut.metrosSolicitados=v.metrosSolicitados||cut.metrosSolicitados||"";
+  cut.disponibleAntes=v.disponibleAntes||cut.disponibleAntes||"";
+  cut.metrajeFinal=v.metrajeFinal||cut.metrajeFinal||"";
+  cut.motivoVentas=v.motivoVentas||cut.motivoVentas||"";
+  cut.observacion=v.observacion||cut.observacion||"";
+  cut.finishDetail=v.finishDetail||cut.finishDetail||"";
+  cut.corteUniforme=v.corteUniforme;
+  cut.tramoRotulado=v.tramoRotulado;
+  cut.evidenciaRegistro=v.evidenciaRegistro;
+  var dis=cutParseDecimal(cut.disponibleAntes), sol=cutParseDecimal(cut.metrosSolicitados);
+  if(Number.isFinite(dis)&&Number.isFinite(sol)){
+    cut.remanenteProyectado=cutNormalizeDecimal(dis-sol);
+    cut.restriccionRemanente=cutRule(cut.tipoPedido, dis-sol).condition;
+  }
+}
+function cutCalc(cut){
+  var dis=cutParseDecimal(cut.disponibleAntes), sol=cutParseDecimal(cut.metrosSolicitados);
+  var rem=(Number.isFinite(dis)&&Number.isFinite(sol))?+(dis-sol).toFixed(2):NaN;
+  var rule=cutRule(cut.tipoPedido||"VENTAS",rem);
+  return {disponible:dis,solicitado:sol,remanente:rem,rule:rule,hasValues:Number.isFinite(rem)};
+}
+function cutIsApproved(cut){return cut.approvalStatus==="APROBADO" || cut.approvalRequired===false;}
+function cutCanMeasure(cut){var c=cutCalc(cut);return c.hasValues && (!c.rule.requires || cutIsApproved(cut));}
+function cutQualityOk(cut){return cut.corteUniforme!==false && cut.tramoRotulado!==false && cut.evidenciaRegistro!==false;}
+function cutFinalOk(cut){return !!(cut.fotoInicioUrl && cut.fotoFinalUrl && cut.finishedAt);}
 function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
   var cut=findCut(c,cutId);if(!cut)return;
   var canOperate=state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||state.user.role==="admin"||state.user.role==="super_admin");
   if(!canOperate){alert("No tiene permiso para operar este corte.");return;}
+  cut.id=cut.id||uid("CUT");
+  cut.code=cut.code||("CT-"+(((c.cutRequests||[]).indexOf(cut)+1)||1));
+  cut.caseId=c.id;
+  cut.pedido=cut.pedido||c.reference||"";
+  cut.cliente=cut.cliente||c.client||"";
+  cut.tipoPedido=String(cut.tipoPedido||c.orderKind||"VENTAS").toUpperCase()==="ALUMBRADO"?"ALUMBRADO":"VENTAS";
   cut.takenByUid=cut.takenByUid||state.user.uid;
   cut.takenByName=cut.takenByName||state.user.name;
   cut.takenAt=cut.takenAt||now();
-  var finished=cutDone(cut.status);
-  var started=!!cut.startedAt || cut.status==="EN_CORTE";
-  var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo</span><strong style="font-size:1.15rem">'+esc(fmt(cutElapsedMs(cut)))+'</strong><small>'+esc(cutStatusChip(cut.status).replace(/<[^>]+>/g,""))+'</small></article></section>';
-  var startForm=!finished&&!started?'<form class="form" id="cutStartForm" style="margin-top:16px"><div class="notice"><strong>Restricción obligatoria:</strong> primero se sube foto inicial; solo después se habilita el cronómetro.</div><label class="field"><span>Foto inicial del corte</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" required></label><button class="btn btn-primary" type="submit">Subir foto inicial e iniciar cronómetro</button></form>':'';
-  var finishForm=!finished&&started?'<form class="form" id="cutFinishForm" style="margin-top:16px"><div class="notice"><strong>Restricción obligatoria:</strong> para finalizar debe subirse foto final del corte.</div><label class="field"><span>Foto final del corte</span><input class="input" type="file" id="cutFinalPhoto" accept="image/*" required></label><label class="field"><span>Observación de cierre</span><textarea class="textarea" name="finishDetail" placeholder="Corte finalizado, novedad de medida, estado del remanente, etc."></textarea></label><button class="btn btn-success" type="submit">Subir foto final y finalizar corte</button></form>':'';
-  var reqReasons=['Cable no disponible en su totalidad para el corte','Chipa con cantidad mayor que se puede vender toda','Mal registro del pedido','Otros'];
-  var reqForm=!finished?'<form class="form" id="cutReqForm" style="margin-top:16px"><h3>Enviar requerimiento a Ventas</h3><label class="field"><span>Motivo</span><select class="select" name="reason">'+reqReasons.map(function(r){return'<option>'+esc(r)+'</option>';}).join("")+'</select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail" required placeholder="Explique qué debe corregir o validar Ventas."></textarea></label><button class="btn btn-gold" type="submit">Enviar a panel de Ventas</button></form>':'';
-  var summary=finished?'<section class="notice" style="margin-top:16px"><strong>Corte finalizado.</strong> Foto inicial y foto final registradas. Duración: '+esc(cut.durationText||fmt(cut.durationMs||0))+'</section>':'';
-  drawer(modal("Módulo de corte · Firebase principal",info+startForm+finishForm+summary+reqForm));
-  var stForm=qs("#cutStartForm");
-  if(stForm)stForm.onsubmit=function(e){
-    e.preventDefault();
-    var file=qs("#cutInitialPhoto").files&&qs("#cutInitialPhoto").files[0];
-    if(!file){alert("Debe subir foto inicial para iniciar el cronómetro.");return;}
+  if(cut.corteUniforme===undefined)cut.corteUniforme=true;
+  if(cut.tramoRotulado===undefined)cut.tramoRotulado=true;
+  if(cut.evidenciaRegistro===undefined)cut.evidenciaRegistro=true;
+  var calc=cutCalc(cut), rule=calc.rule, finished=cutDone(cut.status), started=!!cut.startedAt || cut.status==="EN_CORTE", canMeasure=cutCanMeasure(cut);
+  var approvalPending=rule.requires && cut.approvalStatus==="PENDIENTE";
+  var waitingApproval=rule.requires && !cutIsApproved(cut);
+  var approverRole=cut.approverRole||rule.approverRole;
+  var canApproveNow=approvalPending && state.user && (state.user.role===approverRole || state.user.role==="admin" || state.user.role==="super_admin");
+  var canEditOperation=state.user && state.user.role==="auxiliar_corte";
+  var remText=calc.hasValues?cutNormalizeDecimal(calc.remanente):"";
+  var timerText=fmt(cutElapsedMs(cut));
+  var statusLabel=(finished?"Finalizado":(started?"En corte":(approvalPending?"Pendiente aprobación":(waitingApproval?"Bloqueado por aprobación":(canMeasure?"Habilitado":"Pendiente")))));
+  var conditionHtml=calc.hasValues?'<div class="cut-calc-formula">'+esc(cutNormalizeDecimal(calc.disponible))+' m − '+esc(cutNormalizeDecimal(calc.solicitado))+' m = <span>'+esc(remText)+' m</span></div><div class="cut-calc-rule"><strong>'+esc((cut.tipoPedido==="ALUMBRADO"?"Alumbrado":"Ventas")+": "+rule.condition)+'</strong><br>'+esc(rule.route)+'</div>':'<div class="cut-calc-formula">Disponible − a cortar = <span>Sobrante</span></div><div class="cut-calc-rule">Ingrese disponibilidad y metros a cortar para calcular la restricción.</div>';
+  var lockNote=!calc.hasValues?'Ingrese metros disponibles y metros a cortar para habilitar el corte.':(waitingApproval?('<strong>Corte bloqueado.</strong><br>'+esc(rule.message)):(finished?'<strong>Corte finalizado y registrado.</strong>':(started?'<strong>Cronómetro activo.</strong><br>Debe anexar foto final para finalizar.':'<strong>Corte habilitado.</strong><br>Anexe foto inicial para iniciar el cronómetro.')));
+  var approvalActions='';
+  if(rule.requires && !cutIsApproved(cut) && canEditOperation){approvalActions='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Enviar aprobación a '+esc(rule.approverLabel)+'</button>';}
+  if(canApproveNow){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar corte</button><button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar y enviar a Ventas</button>';}
+  var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>';
+  var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
+    '<fieldset><legend>Datos del corte</legend><div class="cut-grid">'+
+      '<label class="field"><span>Tipo de pedido *</span><select class="select" name="tipoPedido" '+(started||finished?'disabled':'')+'><option value="VENTAS" '+(cut.tipoPedido!=="ALUMBRADO"?'selected':'')+'>Ventas</option><option value="ALUMBRADO" '+(cut.tipoPedido==="ALUMBRADO"?'selected':'')+'>Alumbrado</option></select></label>'+
+      '<label class="field"><span>Pedido / requerimiento</span><input class="input" name="pedido" value="'+esc(cut.pedido||c.reference||"")+'" readonly></label>'+ 
+      '<label class="field"><span>Cable / referencia *</span><input class="input" name="referencia" value="'+esc(cut.referencia||"")+'" required '+(started||finished?'readonly':'')+'></label>'+ 
+      '<label class="field"><span>Metros a cortar *</span><input class="input" name="metrosSolicitados" inputmode="decimal" value="'+esc(cut.metrosSolicitados||"")+'" required '+(started||finished?'readonly':'')+'></label>'+ 
+    '</div><label class="field"><span>Descripción</span><input class="input" name="descripcion" value="'+esc(cut.descripcion||"")+'" '+(started||finished?'readonly':'')+'></label></fieldset>'+ 
+    '<fieldset><legend>Disponibilidad y sobrante</legend><div class="cut-grid cut-grid-3">'+
+      '<label class="field"><span>Metros disponibles para el corte *</span><input class="input" name="disponibleAntes" inputmode="decimal" value="'+esc(cut.disponibleAntes||"")+'" required '+(started||finished?'readonly':'')+'></label>'+ 
+      '<label class="field"><span>Sobrante automático</span><input class="input" id="cutRemanenteInput" value="'+esc(remText)+'" readonly></label>'+ 
+      '<label class="field"><span>Condición</span><input class="input" id="cutCondicionInput" value="'+esc(rule.condition||"")+'" readonly></label>'+ 
+    '</div><div class="cut-calc '+esc(rule.css)+'" id="cutCalcBox">'+conditionHtml+'</div></fieldset>'+ 
+    '<fieldset><legend>Verificación y requerimiento</legend><div class="cut-grid cut-grid-2">'+
+      '<label class="field"><span>Responsable del corte</span><input class="input" value="'+esc(cut.takenByName||state.user.name||"")+'" readonly><small>Usuario activo: '+esc(roleTitle(state.user.role))+'</small></label>'+ 
+      '<label class="field"><span>Requerimiento a Ventas</span><select class="select" name="motivoVentas"><option value="">Sin requerimiento</option><option '+(cut.motivoVentas==="Cable no disponible en su totalidad para el corte"?'selected':'')+'>Cable no disponible en su totalidad para el corte</option><option '+(cut.motivoVentas==="Chipa con cantidad mayor que se puede vender toda"?'selected':'')+'>Chipa con cantidad mayor que se puede vender toda</option><option '+(cut.motivoVentas==="Mal registro del pedido"?'selected':'')+'>Mal registro del pedido</option><option '+(cut.motivoVentas==="Otros"?'selected':'')+'>Otros</option></select></label>'+ 
+    '</div><label class="field"><span>Observación / razón</span><textarea class="textarea" name="observacion" placeholder="Describa aprobación requerida o requerimiento a Ventas.">'+esc(cut.observacion||cut.requirementDetail||"")+'</textarea></label><div class="top-actions"><button type="button" class="btn btn-gold" data-cut-action="sendSalesRequirement">Abrir requerimiento a Ventas</button>'+approvalActions+'</div><div class="notice cut-status"><strong>Estado calculado:</strong> '+esc(statusLabel)+'<br>'+esc(rule.message)+'</div></fieldset>'+ 
+    '<fieldset class="cut-measure '+(!canMeasure?'disabled-section':'')+'"><legend>Medición del corte</legend><div class="notice"><span>🔒</span> '+lockNote+'</div><div class="cut-timer-card"><div id="cutTimerDisplay" class="cut-timer">'+esc(timerText)+'</div><div><strong>Tiempo real del corte</strong><span> Iniciar exige foto inicial. Finalizar exige foto final.</span></div></div><div class="cut-grid cut-grid-4">'+
+      '<label class="field"><span>Fecha corte</span><input class="input" name="fechaCorte" value="'+esc(cut.fechaCorte||new Date().toISOString().slice(0,10))+'" readonly></label>'+ 
+      '<label class="field"><span>Hora inicio</span><input class="input" value="'+esc(cut.horaInicio||"")+'" readonly></label>'+ 
+      '<label class="field"><span>Hora final</span><input class="input" value="'+esc(cut.horaFin||"")+'" readonly></label>'+ 
+      '<label class="field"><span>Duración</span><input class="input" value="'+esc(cut.durationText||timerText||"--")+'" readonly></label>'+ 
+      '<label class="field"><span>Metraje final</span><input class="input" name="metrajeFinal" inputmode="decimal" value="'+esc(cut.metrajeFinal||cut.metrosSolicitados||"")+'" '+(!started&& !cut.finishedAt?'readonly':'')+'></label>'+ 
+      '<label class="field"><span>Sobrante real</span><input class="input" id="cutRealRemInput" value="'+esc(cut.remanenteReal||remText)+'" readonly></label>'+ 
+    '</div><div class="cut-checks">'+
+      '<label><input type="checkbox" name="corteUniforme" '+(cut.corteUniforme!==false?'checked':'')+'> Corte uniforme</label>'+ 
+      '<label><input type="checkbox" name="tramoRotulado" '+(cut.tramoRotulado!==false?'checked':'')+'> Tramo rotulado</label>'+ 
+      '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
+    '</div><div class="cut-grid cut-grid-2">'+
+      '<label class="field"><span>Foto inicial obligatoria</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" capture="environment" '+((!canMeasure||started||finished)?'disabled':'')+'><small>'+(cut.fotoInicioUrl?'Foto inicial cargada.':'Seleccione o tome la foto antes de iniciar el corte.')+'</small></label>'+ 
+      '<label class="field"><span>Foto final obligatoria</span><input class="input" type="file" id="cutFinalPhoto" accept="image/*" capture="environment" '+((!started||finished)?'disabled':'')+'><small>'+(cut.fotoFinalUrl?'Foto final cargada.':'Seleccione o tome la foto antes de finalizar el corte.')+'</small></label>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((!canMeasure||started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button></div></fieldset>'+ 
+  '</form>';
+  drawer(modal("Corte de cable · módulo completo",info+form));
+  function refreshPreview(){
+    var v=cutValuesFromForm(), dis=cutParseDecimal(v.disponibleAntes), sol=cutParseDecimal(v.metrosSolicitados), rem=(Number.isFinite(dis)&&Number.isFinite(sol))?+(dis-sol).toFixed(2):NaN, r=cutRule(v.tipoPedido,rem);
+    var remIn=qs("#cutRemanenteInput"), condIn=qs("#cutCondicionInput"), calcBox=qs("#cutCalcBox"), realIn=qs("#cutRealRemInput");
+    if(remIn)remIn.value=Number.isFinite(rem)?cutNormalizeDecimal(rem):"";
+    if(condIn)condIn.value=Number.isFinite(rem)?r.condition:"";
+    if(realIn){var mf=cutParseDecimal(v.metrajeFinal);realIn.value=(Number.isFinite(dis)&&Number.isFinite(mf))?cutNormalizeDecimal(dis-mf):(Number.isFinite(rem)?cutNormalizeDecimal(rem):"");}
+    if(calcBox){calcBox.className="cut-calc "+r.css;calcBox.innerHTML=Number.isFinite(rem)?'<div class="cut-calc-formula">'+esc(cutNormalizeDecimal(dis))+' m − '+esc(cutNormalizeDecimal(sol))+' m = <span>'+esc(cutNormalizeDecimal(rem))+' m</span></div><div class="cut-calc-rule"><strong>'+esc((v.tipoPedido==="ALUMBRADO"?"Alumbrado":"Ventas")+": "+r.condition)+'</strong><br>'+esc(r.route)+'</div>':'<div class="cut-calc-formula">Disponible − a cortar = <span>Sobrante</span></div><div class="cut-calc-rule">Ingrese disponibilidad y metros a cortar para calcular la restricción.</div>';}
+  }
+  qsa("#cutFullForm input, #cutFullForm select, #cutFullForm textarea").forEach(function(el){el.oninput=refreshPreview;el.onchange=refreshPreview;});
+  if(started && !finished){
+    window.__cutTimerInterval&&clearInterval(window.__cutTimerInterval);
+    window.__cutTimerInterval=setInterval(function(){var t=fmt(cutElapsedMs(cut));var a=qs("#cutLiveTimer"),b=qs("#cutTimerDisplay");if(a)a.textContent=t;if(b)b.textContent=t;},1000);
+  }
+  qsa("[data-cut-action]").forEach(function(btn){btn.onclick=function(){handleCutAction(c,cut,btn.getAttribute("data-cut-action"));};});
+}
+function handleCutAction(c,cut,action){
+  applyCutFormValues(cut);
+  var calc=cutCalc(cut), rule=calc.rule;
+  if(action==="saveCutDraft"){
+    cut.status=cut.status||"PENDIENTE_CORTE";
+    persistCase(c,{type:"CUT_DRAFT_SAVED",detail:"Avance de corte guardado: "+(cut.code||cut.id)}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="sendSalesRequirement"){
+    var v=cutValuesFromForm(), reason=v.motivoVentas||"Otros", detail=v.observacion||"Requerimiento generado desde corte.";
+    applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:reason,detail:detail,responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="requestApproval"){
+    if(!calc.hasValues){alert("Primero registre disponibilidad y metros a cortar.");return;}
+    if(!rule.requires){alert("Este corte no requiere aprobación.");return;}
+    cut.approvalRequired=true;cut.approvalStatus="PENDIENTE";cut.approverRole=rule.approverRole;cut.approverLabel=rule.approverLabel;cut.approvalReason=rule.message;cut.status=rule.status;cut.approvalRequestedAt=now();cut.approvalRequestedBy=state.user.uid;cut.approvalRequestedByName=state.user.name;
+    c.status=rule.approverRole==="gerencia"?"pendiente_gerencia":"en_espera";c.assignedRole=rule.approverRole;c.assignedName=roleTitle(rule.approverRole);c.waitStartedAt=c.waitStartedAt||now();
+    persistCase(c,{type:"CUT_APPROVAL_REQUESTED",detail:rule.message,targetRole:rule.approverRole}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="approveCut"){
+    cut.approvalStatus="APROBADO";cut.approvedBy=state.user.uid;cut.approvedByName=state.user.name;cut.approvedAt=now();cut.status="APROBADO_PENDIENTE_CORTE";
+    stopWait(c);c.status="asignado";c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.deadStartedAt=now();
+    persistCase(c,{type:"CUT_APPROVED",detail:"Corte aprobado por "+state.user.name}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="rejectCut"){
+    cut.approvalStatus="RECHAZADO";cut.rejectedBy=state.user.uid;cut.rejectedByName=state.user.name;cut.rejectedAt=now();cut.status="RECHAZADO";
+    applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="startCut"){
+    if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente.");return;}
+    var file=qs("#cutInitialPhoto")&&qs("#cutInitialPhoto").files&&qs("#cutInitialPhoto").files[0];
+    if(!file){alert("Debe anexar foto inicial antes de iniciar el cronómetro.");return;}
     uploadFileToDrive(file,c,"Corte",(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_inicial_"+file.name).then(function(up){
-      cut.fotoInicioUrl=up&&up.url?up.url:"";
-      cut.fotoInicioDriveId=up&&up.fileId?up.fileId:"";
-      cut.status="EN_CORTE";
-      cut.startedAt=now();
-      cut.takenByUid=state.user.uid;
-      cut.takenByName=state.user.name;
-      cut.startedByName=state.user.name;
-      cut.initialPhotoName=file.name;
-      c.hasCuts=true;
-      var pst=procStats(c,"corte_cable");pst.startedAt=pst.startedAt||now();
-      return persistCase(c,{type:"CUT_STARTED",detail:"Foto inicial registrada e inicio de cronómetro: "+(cut.code||cut.id)+" · "+(cut.referencia||"")});
-    }).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
-  };
-  var fnForm=qs("#cutFinishForm");
-  if(fnForm)fnForm.onsubmit=function(e){
-    e.preventDefault();
-    if(!cut.fotoInicioUrl&&!cut.startedAt){alert("No se puede finalizar sin foto inicial y cronómetro iniciado.");return;}
-    var file=qs("#cutFinalPhoto").files&&qs("#cutFinalPhoto").files[0];
-    if(!file){alert("Debe subir foto final para finalizar el corte.");return;}
-    var fd=new FormData(e.target);
-    uploadFileToDrive(file,c,"Corte",(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_final_"+file.name).then(function(up){
-      var extra=cut.startedAt?msSince(cut.startedAt):0;
-      cut.durationMs=Number(cut.durationMs||0)+extra;
-      cut.durationText=fmt(cut.durationMs);
-      cut.finishedAt=now();
-      cut.completedAt=cut.finishedAt;
-      cut.status="FINALIZADO";
-      cut.finishedByName=state.user.name;
-      cut.fotoFinalUrl=up&&up.url?up.url:"";
-      cut.fotoFinalDriveId=up&&up.fileId?up.fileId:"";
-      cut.finalPhotoName=file.name;
-      cut.finishDetail=fd.get("finishDetail")||"";
-      cut.startedAt=null;
-      refreshCutStats(c);
-      return persistCase(c,{type:"CUT_FINISHED",detail:"Corte finalizado: "+(cut.code||cut.id)+" · "+(cut.durationText||"")});
-    }).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
-  };
-  var rqForm=qs("#cutReqForm");
-  if(rqForm)rqForm.onsubmit=function(e){
-    e.preventDefault();
-    var fd=new FormData(e.target);
-    applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:fd.get("reason"),detail:fd.get("detail"),responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
-  };
+      cut.fotoInicioUrl=up&&up.url?up.url:"";cut.fotoInicioDriveId=up&&up.fileId?up.fileId:"";cut.initialPhotoName=file.name;
+      cut.status="EN_CORTE";cut.startedAt=now();cut.horaInicio=new Date().toTimeString().slice(0,8);cut.fechaCorte=new Date().toISOString().slice(0,10);cut.startedByName=state.user.name;cut.takenByUid=state.user.uid;cut.takenByName=state.user.name;c.hasCuts=true;procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
+      return persistCase(c,{type:"CUT_STARTED",detail:"Foto inicial registrada e inicio de cronómetro: "+(cut.code||cut.id)});
+    }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="finishCut"){
+    if(!cut.startedAt){alert("Primero debe iniciar el corte con foto inicial.");return;}
+    var file2=qs("#cutFinalPhoto")&&qs("#cutFinalPhoto").files&&qs("#cutFinalPhoto").files[0];
+    if(!file2){alert("Debe anexar foto final antes de finalizar.");return;}
+    uploadFileToDrive(file2,c,"Corte",(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_final_"+file2.name).then(function(up){
+      var extra=cut.startedAt?msSince(cut.startedAt):0;cut.durationMs=Number(cut.durationMs||0)+extra;cut.durationText=fmt(cut.durationMs);cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;cut.finishedByName=state.user.name;cut.fotoFinalUrl=up&&up.url?up.url:"";cut.fotoFinalDriveId=up&&up.fileId?up.fileId:"";cut.finalPhotoName=file2.name;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
+      var dis=cutParseDecimal(cut.disponibleAntes), fin=cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados);if(Number.isFinite(dis)&&Number.isFinite(fin))cut.remanenteReal=cutNormalizeDecimal(dis-fin);
+      return persistCase(c,{type:"CUT_FINISHED_PENDING_REGISTER",detail:"Foto final registrada. Pendiente registrar corte: "+(cut.code||cut.id)+" · "+cut.durationText});
+    }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="registerCut"){
+    if(!cutFinalOk(cut)){alert("No se puede registrar sin foto inicial, foto final y hora final.");return;}
+    if(!cutQualityOk(cut)){alert("Falta confirmar corte uniforme, tramo rotulado y evidencia/registro realizado.");return;}
+    cut.status="FINALIZADO";cut.registeredAt=now();cut.registeredBy=state.user.uid;cut.registeredByName=state.user.name;refreshCutStats(c);
+    var pending=(c.cutRequests||[]).filter(function(x){return !cutDone(x.status) && x.id!==cut.id;});
+    var event={type:"CUT_REGISTERED",detail:"Corte registrado: "+(cut.code||cut.id)+" · "+(cut.durationText||"")};
+    if(pending.length===0 && (c.currentProcess==="alistamiento"||c.currentProcess==="corte_cable")){
+      stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=now();
+      c.currentProcess="compromiso_mercancia";c.status="asignado";c.assignedRole=primaryOwnerRole("compromiso_mercancia");c.assignedName=processOwnerTitle("compromiso_mercancia");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.compromiso_mercancia.checklist.forEach(function(x){c.checklist[x]="pending";});
+      event.detail+=". Todos los cortes finalizados; pasa a Comprometer mercancía.";
+    }else{
+      c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.status="asignado";
+    }
+    persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
 }
 function durationToMs(v){var s=String(v||"");var m=s.match(/(\d+):(\d+):(\d+)/);if(m)return ((+m[1])*3600+(+m[2])*60+(+m[3]))*1000;var n=Number(s);return Number.isFinite(n)?n:0;}
 function refreshCutStats(c){var cuts=c.cutRequests||[], st=procStats(c,"corte_cable"), total=0, complete=0;cuts.forEach(function(x){total+=durationToMs(x.durationText||x.durationMs);if(["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)>=0)complete++;});st.activeMs=total;if(cuts.length&&complete===cuts.length){st.completedAt=st.completedAt||now();if(c.checklist&&c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]="ok";}}
@@ -707,26 +872,32 @@ function renderRequirements(){
   var subtitle=state.user&&state.user.role==="ventas"?"Solicitudes enviadas a Ventas desde corte, alistamiento u otros procesos para corregir o aclarar el pedido.":"Trazabilidad de tiempos de resolución según el módulo responsable.";
   layout(header(title,subtitle)+caseList(visibleRequirements()));
 }
+function cutApprovalsForRole(){
+  var role=state.user?state.user.role:"";
+  var rows=[];
+  state.cases.forEach(function(c){
+    (c.cutRequests||[]).forEach(function(cut){
+      var pending=cut.approvalStatus==="PENDIENTE" || cut.status==="PENDIENTE_GERENCIA" || cut.status==="PENDIENTE_JEFE_LOGISTICA" || cut.status==="PENDIENTE_LIDER";
+      if(!pending)return;
+      if(canSeeAll() || cut.approverRole===role || c.assignedRole===role)rows.push({caseObj:c,cut:cut});
+    });
+  });
+  return rows;
+}
 function renderApprovals(){
-  var list;
+  var cutRows=cutApprovalsForRole();
   var title="Aprobaciones";
-  var subtitle="Pedidos prioritarios o salidas especiales enviados por ventas.";
+  var subtitle="Aprobaciones de remanente, prioridades y requerimientos críticos.";
+  var cutHtml=cutRows.length?'<section class="card" style="margin-bottom:16px"><h3>Aprobaciones de corte</h3><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Sobrante</th><th>Solicita</th><th>Acción</th></tr></thead><tbody>'+cutRows.map(function(r){return '<tr><td>'+esc(r.caseObj.reference||"")+'</td><td>'+esc(r.caseObj.client||"")+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.referencia||"")+'</td><td>'+esc(r.cut.remanenteProyectado||"")+'</td><td>'+esc(r.cut.approverLabel||roleTitle(r.cut.approverRole))+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.caseObj.id)+'" data-cut="'+esc(r.cut.id)+'">Revisar</button></td></tr>';}).join('')+'</tbody></table></div></section>':'';
+  var list;
   if(state.user && state.user.role==="jefe_logistica"){
     title="Aprobaciones logísticas";
-    subtitle="Excepciones, conformidades, requerimientos críticos y casos detenidos.";
-    list=state.cases.filter(function(c){
-      return !c.closedAt && (
-        c.assignedRole==="jefe_logistica" ||
-        (c.openRequirement && c.openRequirement.targetRole==="jefe_logistica") ||
-        c.priority==="Alta" ||
-        c.status==="en_espera" ||
-        c.status==="espera_ventas"
-      );
-    });
+    subtitle="Validaciones de corte igual a 50 m, excepciones y casos detenidos.";
+    list=state.cases.filter(function(c){return !c.closedAt && (c.assignedRole==="jefe_logistica" || (c.openRequirement && c.openRequirement.targetRole==="jefe_logistica") || c.priority==="Alta" || c.status==="en_espera" || c.status==="espera_ventas");});
   }else{
     list=state.cases.filter(function(c){return c.status==="pendiente_gerencia";});
   }
-  layout(header(title,subtitle)+caseList(list));
+  layout(header(title,subtitle)+cutHtml+caseList(list));
 }
 
 function renderUsers(){
