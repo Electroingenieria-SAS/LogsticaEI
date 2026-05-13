@@ -11,7 +11,7 @@ window.firebaseConfig = {
 window.appSettings = {
   companyName: "Electroingeniería",
   logoPath: "./assets/logo-electroingenieria.jpeg",
-  driveUploadUrl: "",
+  driveUploadUrl: "https://script.google.com/macros/s/AKfycbw1VMosGdtxqJo59ABdGm9Tkd5nAKV-90xFlfV_TB3OnrhQKDCBosEMZWB8FY0Zte8yvQ/exec",
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v7-flujo-real-drive-corte"
+  version: "flujo-unificado-v8-drive-configurado"
 };
