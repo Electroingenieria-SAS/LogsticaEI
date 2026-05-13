@@ -447,10 +447,19 @@ function readPdfFile(file){
       pdfjsLib.getDocument({data:arr}).promise.then(function(pdf){
         var pages=[];var chain=Promise.resolve();
         for(var i=1;i<=pdf.numPages;i++){(function(pageNo){chain=chain.then(function(){return pdf.getPage(pageNo);}).then(function(page){return page.getTextContent();}).then(function(tc){
-          var lastY=null, line=[];var lines=[];
-          tc.items.forEach(function(it){var y=it.transform&&it.transform.length?Math.round(it.transform[5]):0;if(lastY!==null&&Math.abs(y-lastY)>2){lines.push(line.join(" "));line=[];}line.push(it.str);lastY=y;});
-          if(line.length)lines.push(line.join(" "));
-          pages.push(lines.join("\n"));
+          var rows={};
+          tc.items.forEach(function(it){
+            if(!it || !String(it.str||"").trim())return;
+            var tr=it.transform||[0,0,0,0,0,0];
+            var x=Math.round(tr[4]||0), y=Math.round(tr[5]||0);
+            var key=String(y);
+            rows[key]=rows[key]||[];
+            rows[key].push({x:x,text:String(it.str||"").trim()});
+          });
+          var lines=Object.keys(rows).sort(function(a,b){return Number(b)-Number(a);}).map(function(y){
+            return rows[y].sort(function(a,b){return a.x-b.x;}).map(function(it){return it.text;}).join(" ").replace(/\s+/g," ").trim();
+          }).filter(Boolean);
+          pages.push("--- PAGINA "+pageNo+" ---\n"+lines.join("\n"));
         });})(i);}
         return chain.then(function(){resolve(pages.join("\n"));});
       }).catch(reject);
@@ -666,65 +675,161 @@ function readPdf(file){
   reader.readAsArrayBuffer(file);
 }
 
+function stripAccents(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
+function cleanPdfValue(v){
+  return String(v||"").replace(/\s+/g," ").replace(/^[:#\-\s]+|[:#\-\s]+$/g,"").trim();
+}
+function pdfFlat(text){return cleanPdfValue(String(text||"").replace(/\r/g,"\n").replace(/--- PAGINA \d+ ---/g," "));}
+function pdfLines(text){
+  return String(text||"").replace(/\r/g,"\n").split(/\n+/).map(function(x){return cleanPdfValue(x);}).filter(Boolean);
+}
+function labelValue(flat, labelRx, stopRx){
+  var rx=new RegExp(labelRx+"\\s*[:#\\-]?\\s*(.{2,180}?)(?="+(stopRx||"\\s{2,}|$|")+")","i");
+  var m=flat.match(rx);
+  return m?cleanPdfValue(m[1]):"";
+}
+function findLineValue(lines, labels, stops){
+  var labelText=labels.join("|");
+  var stopText=(stops||["NIT","CLIENTE","DIRECCION","DIRECCIÓN","TELEFONO","TELÉFONO","CIUDAD","VENDEDOR","FORMA DE PAGO","CONDICION","CONDICIÓN","FECHA","PEDIDO","ORDEN","TOTAL","SUBTOTAL"]).join("|");
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i];
+    var rx=new RegExp("(?:"+labelText+")\\s*[:#\\-]?\\s*(.+)$","i");
+    var m=l.match(rx);
+    if(m){
+      var val=cleanPdfValue(m[1].replace(new RegExp("\\b(?:"+stopText+")\\b.*$","i"),""));
+      if(val)return val;
+      if(lines[i+1] && !new RegExp("^(?:"+stopText+")\\b","i").test(lines[i+1]))return cleanPdfValue(lines[i+1]);
+    }
+  }
+  return "";
+}
+function inferOrderKind(orderNumber, flat){
+  var m=String(orderNumber||"").match(/\b(PVC|PVN|PVR|PVE|PV|PED)\b/i) || String(orderNumber||"").match(/^(PVC|PVN|PVR|PVE|PV|PED)/i) || String(flat||"").match(/\b(PVC|PVN|PVR|PVE|ALUMBRADO)\b/i);
+  return m ? String(m[1]).toUpperCase() : "VENTAS";
+}
 function extractPedido(text){
   var raw=String(text||"");
-  var flat=raw.replace(/\s+/g," ");
-  function m(rx){var r=flat.match(rx);return r?r[1].trim():"";}
-  var orderNumber=m(/No\.\s*([A-Z0-9\-]+)/i) || m(/\b((?:PVC|PVN|PVR|PVE|PED)[\- ]?\d{3,}[A-Z0-9\-]*)\b/i) || m(/(?:PEDIDO|ORDEN)\s*(?:N[oº°.]*)?\s*[:#-]?\s*([A-Z0-9\-]{4,})/i);
-  var orderKind=(orderNumber.match(/^(PVC|PVN|PVR|PVE)/i)||[])[1] || m(/\b(PVC|PVN|PVR|PVE)\b/i) || "VENTAS";
+  var lines=pdfLines(raw);
+  var flat=pdfFlat(raw);
+  function first(rx){var m=flat.match(rx);return m?cleanPdfValue(m[1]||m[0]):"";}
+  var orderNumber=
+    first(/(?:PEDIDO(?:\s+DE\s+VENTA)?|ORDEN(?:\s+DE\s+VENTA)?|DOCUMENTO|DOC\.?|NUMERO|N[°ºO.]*)\s*[:#\-]?\s*((?:PVC|PVN|PVR|PVE|PV|PED|OV|OP)?[\-\s]?[0-9]{3,}[A-Z0-9\-]*)/i) ||
+    first(/\b((?:PVC|PVN|PVR|PVE|PV|PED|OV|OP)[\-\s]?[0-9]{3,}[A-Z0-9\-]*)\b/i) ||
+    findLineValue(lines,["Pedido","Pedido de venta","Orden","Orden de venta","Documento","No\\.","Nro"],["Fecha","Cliente","NIT","Vendedor","Forma"]);
+  var client=
+    findLineValue(lines,["Cliente","Señores","Razon social","Razón social"],["NIT","CC","Direccion","Dirección","Telefono","Teléfono","Ciudad","Vendedor","Forma","Fecha","Pedido"]) ||
+    labelValue(flat,"(?:Cliente|Señores|Raz[oó]n social)","\\s+(?:NIT|CC|Direcci[oó]n|Tel[eé]fono|Ciudad|Vendedor|Forma|Fecha|Pedido)\\b|$");
+  var nit=findLineValue(lines,["NIT","Nit","C.C.","CC"],["Cliente","Direccion","Dirección","Telefono","Teléfono","Ciudad","Vendedor","Forma","Fecha","Pedido"]);
+  var address=findLineValue(lines,["Direccion","Dirección"],["NIT","Telefono","Teléfono","Ciudad","Vendedor","Forma","Fecha","Pedido"]);
+  var city=findLineValue(lines,["Ciudad"],["NIT","Telefono","Teléfono","Vendedor","Forma","Fecha","Pedido"]);
+  var phone=findLineValue(lines,["Telefono","Teléfono","Celular","Tel"],["NIT","Ciudad","Vendedor","Forma","Fecha","Pedido"]);
+  var paymentCondition=findLineValue(lines,["Forma de pago","Condicion de pago","Condición de pago","Pago"],["Vendedor","Fecha","Pedido","Cliente","TOTAL","Observaciones"]);
+  var salesAdvisor=findLineValue(lines,["Vendedor","Asesor","Representante"],["Forma","Fecha","Pedido","Cliente","TOTAL","Observaciones"]);
+  var orderDate=first(/(?:Fecha(?:\s+pedido|\s+documento)?|Fecha de emisi[oó]n)\s*[:#\-]?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})/i);
+  var delivery="";
+  if(/despacho\s+nacional|transportadora|gu[ií]a|flete/i.test(flat))delivery="despacho_nacional";
+  else if(/despacho\s+local|domicilio|direcci[oó]n\s+de\s+entrega/i.test(flat))delivery="despacho_local";
+  else if(/cliente\s+recoge|recoge/i.test(flat))delivery="cliente_recoge";
+  else if(/cliente\s+en\s+punto|punto\s+de\s+venta/i.test(flat))delivery="cliente_punto";
+  var observations=findLineValue(lines,["Observaciones","Observacion","Observación","Notas"],["TOTAL","SUBTOTAL","IVA","Valor"]);
+  var items=extractPedidoItems(raw);
+  var meterItems=items.filter(function(x){return x.requiereCorte;}).length;
   return {
     orderNumber:orderNumber,
-    orderKind:orderKind.toUpperCase(),
-    client:m(/Cliente\s*:?\s*(.+?)\s+(?:Direcci[oó]n|NIT|Tel[eé]fono|Ciudad)/i) || m(/Señores\s+(.+?)\s+NIT/i),
-    paymentCondition:m(/Forma de Pago:?\s*([A-Z0-9ÁÉÍÓÚÑ\s\-]+)/i),
-    salesAdvisor:m(/Vendedor:?\s*([A-ZÁÉÍÓÚÑ\s]+)/i),
-    items:extractPedidoItems(raw),
-    raw:flat.slice(0,5000)
+    orderKind:inferOrderKind(orderNumber, flat),
+    client:client,
+    nit:nit,
+    address:address,
+    city:city,
+    phone:phone,
+    paymentCondition:paymentCondition,
+    salesAdvisor:salesAdvisor,
+    orderDate:orderDate,
+    requestedDelivery:delivery,
+    observations:observations,
+    items:items,
+    meterItems:meterItems,
+    pages:(raw.match(/--- PAGINA \d+ ---/g)||[]).length||1,
+    raw:flat.slice(0,10000)
   };
 }
 
+function meterUnitPattern(){return "MTRS?|MTS?|MT|M\\/L|ML|M|METROS?";}
 function isMeterUnit(unit){
-  return /^(M|MT|MTS|MTR|MTRS|ML|M\/L|METRO|METROS)$/i.test(String(unit||"").replace(/\./g,"").trim());
+  return new RegExp("^(?:"+meterUnitPattern()+")$","i").test(String(unit||"").replace(/\./g,"").trim());
 }
 function isLikelyCable(ref, desc){
   var t=(String(ref||"")+" "+String(desc||"")).toUpperCase();
-  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CORDÓN|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO)/.test(t) || isMeterUnit(t);
+  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CORDÓN|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO|MALLA|FIBRA|VFD|SOLDADOR|CONTROL)/.test(t);
+}
+function normalizeQty(v){
+  var s=String(v||"").trim();
+  if(!s)return "";
+  return s.replace(/\s+/g,"").replace(/,(?=\d{3}\b)/g,"").replace(/\.(?=\d{3}\b)/g,"");
+}
+function lineLooksHeader(line){
+  return /(valor\s*unit|valor\s*parcial|subtotal|iva|total\s|descuento|vendedor|forma\s+de\s+pago|referencia\s+descripci|cantidad\s+unidad|pedido\s+de\s+venta|nit\s|cliente\s*:|direcci[oó]n\s*:)/i.test(line);
+}
+function cleanDesc(desc){
+  return cleanPdfValue(String(desc||"").replace(/\b(?:VR|VALOR|UNITARIO|PARCIAL|DTO|IVA)\b.*$/i,""));
+}
+function refFromBefore(before){
+  var tokens=cleanPdfValue(before).split(/\s+/).filter(Boolean);
+  while(tokens.length && /^\d{1,3}$/.test(tokens[0]))tokens.shift();
+  if(!tokens.length)return {ref:"",desc:""};
+  var ref=tokens[0];
+  if(/^(COD|CODIGO|CÓDIGO|REF|REFERENCIA|ITEM)$/i.test(ref) && tokens[1]){tokens.shift();ref=tokens[0];}
+  var desc=tokens.slice(1).join(" ");
+  if(!/[A-Za-zÁÉÍÓÚÑ0-9]/.test(ref) || ref.length<2)return {ref:"",desc:""};
+  return {ref:ref,desc:cleanDesc(desc)};
+}
+function parseItemCandidate(candidate, seen, items){
+  var unit= meterUnitPattern();
+  var line=cleanPdfValue(candidate);
+  if(!line || lineLooksHeader(line))return;
+  var rx=new RegExp("\\b([0-9]{1,6}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
+  var match;
+  while((match=rx.exec(line))){
+    var qty=normalizeQty(match[1]);
+    var u=String(match[2]||"").toUpperCase().replace(/\./g,"");
+    var before=line.slice(0,match.index);
+    var after=line.slice(rx.lastIndex);
+    var rd=refFromBefore(before);
+    if(!rd.ref || !rd.desc || rd.desc.length<3)continue;
+    var desc=cleanDesc(rd.desc.replace(/\s+[0-9][0-9.,]*\s*$/,""));
+    // Remove trailing prices accidentally captured after the unit; no values are needed for corte.
+    after=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/," ");
+    var key=[rd.ref,desc,qty,u].join("|").toUpperCase();
+    if(seen[key])continue;
+    seen[key]=1;
+    items.push({
+      id:uid("LIN"),
+      referencia:rd.ref,
+      descripcion:desc,
+      cantidad:qty,
+      unidad:u,
+      requiereCorte:true,
+      esCable:isLikelyCable(rd.ref,desc),
+      estado:"PENDIENTE_CORTE",
+      detectionReason:"Unidad en metros detectada automáticamente desde PDF"
+    });
+  }
 }
 function extractPedidoItems(text){
   var raw=String(text||"").replace(/\r/g,"\n");
-  var compact=raw.replace(/[\t ]+/g," ");
-  var lines=compact.split(/\n+/).map(function(x){return x.replace(/\s+/g," ").trim();}).filter(Boolean);
-  var extra=compact.replace(/\n/g," ").split(/(?=\b[A-Z0-9][A-Z0-9._\-\/]{2,}\s+.{3,}?\s+[0-9][0-9.,]*\s*(?:MTRS?|MTS?|MT|M\/L|ML|M|METROS?|UND|UN|KG|ROLLOS?|CJ|CAJA)\b)/i);
-  extra.forEach(function(x){x=x.replace(/\s+/g," ").trim();if(x)lines.push(x);});
-  var items=[], seen={};
-  lines.forEach(function(line){
-    if(!line || /(valor\s*unit|valor\s*parcial|subtotal|iva|total\s|descuento|vendedor|forma\s+de\s+pago)/i.test(line))return;
-    var rx=/^\s*([A-Z0-9][A-Z0-9._\-\/]{2,})\s+(.{4,180}?)\s+([0-9][0-9.,]*)\s*(MTRS?|MTS?|MT|M\/L|ML|M|METROS?|UND|UN|KG|ROLLOS?|CJ|CAJA)\b/i;
-    var r=line.match(rx);
-    if(!r){
-      rx=/\b([A-Z0-9][A-Z0-9._\-\/]{2,})\b\s+(.{4,180}?)\b(?:CANT\.?|CANTIDAD|UND\.?|UNIDAD)?\s*([0-9][0-9.,]*)\s*(MTRS?|MTS?|MT|M\/L|ML|M|METROS?|UND|UN|KG|ROLLOS?|CJ|CAJA)\b/i;
-      r=line.match(rx);
-    }
-    if(!r)return;
-    var ref=String(r[1]||"").trim();
-    var desc=String(r[2]||"").replace(/\s{2,}/g," ").trim();
-    var qty=String(r[3]||"").trim();
-    var unit=String(r[4]||"").toUpperCase().replace(/\./g,"");
-    var requires=isMeterUnit(unit);
-    var key=ref+"|"+qty+"|"+unit;
-    if(seen[key])return;seen[key]=1;
-    items.push({
-      id:uid("LIN"),
-      referencia:ref,
-      descripcion:desc,
-      cantidad:qty,
-      unidad:unit,
-      requiereCorte:requires,
-      estado:requires?"PENDIENTE_CORTE":"ALISTAMIENTO",
-      detectionReason:requires?"Unidad de metros detectada automáticamente desde PDF":"No requiere corte automático"
-    });
+  var lines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
+  var candidates=[];
+  lines.forEach(function(l,i){
+    candidates.push(l);
+    if(lines[i+1])candidates.push(l+" "+lines[i+1]);
+    if(lines[i+1]&&lines[i+2])candidates.push(l+" "+lines[i+1]+" "+lines[i+2]);
   });
-  return items.slice(0,120);
+  var compact=cleanPdfValue(raw.replace(/\n/g," "));
+  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{2,}\\s+.{3,160}?\\s+[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\b)","ig");
+  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,260));});
+  var items=[], seen={};
+  candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
+  return items.slice(0,180);
 }
 
 function createCase(fd){
@@ -768,7 +873,7 @@ function nextActionButtons(c){
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){return'<button class="btn btn-primary" data-action="transfer" data-next="'+n+'" data-id="'+c.id+'">Enviar a '+esc(processTitle(n))+'</button>';}).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Cliente",c.client],["PDF recepción",c.documentFlow&&c.documentFlow.receptionPdfLoadedAt?fmtDate(c.documentFlow.receptionPdfLoadedAt):"Pendiente"],["PDF Drive",c.documentFlow&&c.documentFlow.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Líneas detectadas",(c.orderItems||[]).length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -813,22 +918,40 @@ function evidencePanel(c){
 
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Cargar PDF en recepción",'<form class="form" id="recPdfForm"><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div class="notice" id="receptionPdfStatus">El documento se guarda en Drive, se lee en recepción y genera automáticamente los cortes cuando detecte líneas en metros.</div><button class="btn btn-primary" type="submit">Guardar PDF, líneas y cortes automáticos</button></form>'));
-  var parsed=null,fileName="",selectedFile=null;
-  qs("#receptionPdfInput").onchange=function(e){var f=e.target.files&&e.target.files[0];if(!f)return;selectedFile=f;fileName=f.name;qs("#receptionPdfStatus").innerHTML="Leyendo PDF...";readPdfFile(f).then(function(text){parsed=extractPedido(text);var auto=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;qs("#receptionPdfStatus").innerHTML="<strong>PDF leído.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Cortes automáticos por metros: "+auto;}).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e);});};
+  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar datos generales, líneas del pedido y cortes automáticos por unidades en metros.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><button class="btn btn-primary" type="submit">Guardar PDF, datos, líneas y cortes automáticos</button></form>'));
+  var parsed=null,fileName="",selectedFile=null,previewUrl="";
+  qs("#receptionPdfInput").onchange=function(e){
+    var f=e.target.files&&e.target.files[0];if(!f)return;
+    selectedFile=f;fileName=f.name;parsed=null;
+    if(previewUrl)URL.revokeObjectURL(previewUrl);
+    previewUrl=URL.createObjectURL(f);
+    qs("#pdfPreviewBox").style.display="block";
+    qs("#pdfPreviewFrame").src=previewUrl;
+    qs("#receptionPdfStatus").innerHTML="Leyendo PDF de forma exhaustiva...";
+    qs("#pdfExtractPreview").innerHTML="";
+    readPdfFile(f).then(function(text){
+      parsed=extractPedido(text);
+      var auto=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
+      var rows=(parsed.items||[]).slice(0,30).map(function(it){return '<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.requiereCorte?'Corte automático':'Alistamiento')+'</td></tr>';}).join('');
+      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Cortes automáticos por metros: "+auto;
+      qs("#pdfExtractPreview").innerHTML='<section class="card" style="margin-top:12px"><h3>Vista de extracción</h3><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Asesor</small><strong>'+esc(parsed.salesAdvisor||"—")+'</strong></div></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Destino</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No se detectaron líneas. Si el PDF es escaneado como imagen, se requiere OCR o digitación manual.</td></tr>')+'</tbody></table></div></section>';
+    }).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e)+". Si es un PDF escaneado como imagen, el lector no puede extraer texto sin OCR.";});
+  };
   qs("#recPdfForm").onsubmit=function(e){
     e.preventDefault();
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
     c.pdfExtraction=parsed;c.orderItems=parsed.items||[];
     if(parsed.orderNumber)c.reference=parsed.orderNumber;if(parsed.orderKind)c.orderKind=parsed.orderKind;if(parsed.client)c.client=parsed.client;if(parsed.paymentCondition)c.paymentCondition=parsed.paymentCondition;
-    c.documentFlow=c.documentFlow||{};c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;
-    c.checklist=c.checklist||{};["PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
+    if(parsed.salesAdvisor)c.salesAdvisor=parsed.salesAdvisor;if(parsed.requestedDelivery)c.requestedDelivery=parsed.requestedDelivery;if(parsed.observations)c.description=(c.description?c.description+"\n":"")+"Observaciones PDF: "+parsed.observations;
+    c.nit=parsed.nit||c.nit||"";c.address=parsed.address||c.address||"";c.city=parsed.city||c.city||"";c.phone=parsed.phone||c.phone||"";c.orderDate=parsed.orderDate||c.orderDate||"";
+    c.documentFlow=c.documentFlow||{};c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
+    c.checklist=c.checklist||{};["PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Forma de pago definida"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
     var added=autoCreateCutsFromItems(c,state.user.name);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
       c.documentFlow.receptionPdfDriveUrl=up.url;c.documentFlow.receptionPdfDriveId=up.fileId;c.documentFlow.receptionPdfDriveFolder=up.folderPath||up.folder;
-      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos.");
-      return persistCase(c,{type:"RECEPTION_PDF_LOADED",detail:"PDF cargado en Drive. Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
-    }).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos.");
+      return persistCase(c,{type:"RECEPTION_PDF_EXTRACTED",detail:"PDF leído y guardado en Drive. Pedido: "+(c.reference||"")+". Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
+    }).then(function(){if(previewUrl)URL.revokeObjectURL(previewUrl);closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
 function autoCreateCutsFromItems(c,createdByName){

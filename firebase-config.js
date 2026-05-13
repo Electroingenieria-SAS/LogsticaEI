@@ -15,5 +15,5 @@ window.appSettings = {
   googleDriveClientId: "125993982318-gn2177d3muf2iip0co9pf9mii7d12cre.apps.googleusercontent.com",
   driveRootFolderName: "EVIDENCIAS_LOGISTICA_ELECTROINGENIERIA",
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v11-drive-evidencias-todos-modulos"
+  version: "flujo-unificado-v12-pdf-exhaustivo-cortes-auto"
 };
