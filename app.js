@@ -3,11 +3,16 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_secuencial_v7_flujo_real";
+var storageKey = "ei_trazabilidad_secuencial_v11_drive_evidencias_todos_modulos";
 var db = null;
 var auth = null;
 var firebaseReady = false;
 var firebaseInitError = null;
+
+var driveTokenClient = null;
+var driveAccessToken = "";
+var driveTokenExpiresAt = 0;
+var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 var state = {
   user: null,
@@ -146,6 +151,52 @@ function canApprovePriority(){return state.user && state.user.role==="gerencia";
 function canSeeAll(){return state.user && (state.user.role==="admin" || state.user.role==="super_admin" || state.user.role==="gerencia" || state.user.role==="jefe_logistica");}
 function canCreate(){return state.user && state.user.role==="ventas";}
 function canSeeKpis(){return canSeeAll();}
+function canUploadEvidenceForCase(c){
+  if(!state.user || !c || c.closedAt)return false;
+  if(canSeeAll())return true;
+  if(c.assignedRole===state.user.role)return true;
+  if(c.assignedUid===state.user.uid || c.assignedTo===state.user.uid)return true;
+  if(c.createdBy===state.user.uid)return true;
+  if(state.user.role==="auxiliar_corte" && c.hasCuts===true)return true;
+  return canAccessProcess(state.user.role,c.currentProcess);
+}
+function evidenceProcessOptions(current){
+  var ordered=FLOW.slice();
+  ["cierre_caso","requerimientos","ventas"].forEach(function(x){if(ordered.indexOf(x)<0)ordered.push(x);});
+  return ordered.map(function(p){return '<option value="'+esc(p)+'" '+(p===current?'selected':'')+'>'+esc(processTitle(p))+'</option>';}).join("");
+}
+function evidenceTypeOptions(){
+  var opts=[
+    ["EVIDENCIA_PROCESO","Evidencia general del proceso"],
+    ["PDF_PEDIDO","PDF / documento del pedido"],
+    ["FOTO_ALISTAMIENTO","Foto alistamiento"],
+    ["FOTO_CORTE","Foto soporte corte"],
+    ["FOTO_DESPACHO","Foto despacho / carro / cargue"],
+    ["SOPORTE_ENTREGA","Soporte de entrega"],
+    ["GUIA_TRANSPORTE","Guía / transporte"],
+    ["SOPORTE_CAJA","Soporte caja / pago"],
+    ["SOPORTE_FACTURACION","Soporte facturación"],
+    ["NOVEDAD","Novedad operativa"],
+    ["REQUERIMIENTO","Soporte de requerimiento"],
+    ["AUDITORIA","Soporte auditoría"]
+  ];
+  return opts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("");
+}
+function defaultEvidenceTypeForProcess(p){
+  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
+  return map[p]||"EVIDENCIA_PROCESO";
+}
+function persistEvidenceDocument(c,up,detail){
+  if(!db || !c || !up)return Promise.resolve();
+  var ev={
+    id:uid("EVD"),caseId:c.id,caseNumber:c.caseNumber||c.id||"",pedido:c.reference||c.pedido||"",cliente:c.client||"",
+    process:up.processKey||c.currentProcess,processName:up.processName||processTitle(up.processKey||c.currentProcess),
+    evidenceType:up.evidenceType||"EVIDENCIA",cutId:up.cutId||"",detail:detail||"",fileName:up.fileName||up.name||"",
+    mimeType:up.mimeType||"",driveUrl:up.url||"",driveId:up.fileId||"",folder:up.folderPath||up.folder||"",
+    uploadedAt:up.uploadedAt||now(),createdAt:now(),createdBy:state.user?state.user.uid:"",createdByName:state.user?state.user.name:"",responsibleRole:state.user?state.user.role:""
+  };
+  return db.collection("evidences").doc(ev.id).set(ev).catch(function(){return null;});
+}
 function defaultRoute(role){if(role==="gerencia")return"indicators";if(role==="super_admin")return"dashboard";if(role==="ventas")return"create";if(role==="jefe_logistica")return"dashboard";if(role==="auxiliar_corte")return"corte_cable";if(role==="lider_logistico"||role==="coordinador_logistico")return"recepcion_pedidos";if(role==="aux_logistica")return"alistamiento";if(role==="caja")return"caja";return"dashboard";}
 function currentProc(c){return c.currentProcess;}
 function procStats(c,p){c.processStats=c.processStats||{};c.processStats[p]=c.processStats[p]||{activeMs:0,waitMs:0,deadMs:0,startedAt:null,completedAt:null,handoffs:0};return c.processStats[p];}
@@ -417,6 +468,7 @@ function fileToBase64Payload(file){
     reader.readAsDataURL(file);
   });
 }
+
 function uploadReceptionPdfToDrive(file,c){
   return uploadFileToDrive(file,c,{processName:"Recepción de pedidos",processKey:"recepcion_pedidos",fileName:file&&file.name?file.name:"pedido.pdf",evidenceType:"PDF_PEDIDO"});
 }
@@ -447,32 +499,128 @@ function compressImageForAudit(file,maxSide,quality){
     img.src=url;
   });
 }
+function driveClientId(){return (window.appSettings&&window.appSettings.googleDriveClientId)||"";}
+function driveRootFolderName(){return (window.appSettings&&window.appSettings.driveRootFolderName)||"EVIDENCIAS_LOGISTICA_ELECTROINGENIERIA";}
+function driveConfigured(){var id=driveClientId();return !!(id && id.indexOf("PEGAR_")<0 && id.indexOf(".apps.googleusercontent.com")>0);}
+function waitForGoogleDriveClient(){
+  if(window.google && google.accounts && google.accounts.oauth2)return Promise.resolve(true);
+  return new Promise(function(resolve,reject){
+    var started=Date.now();
+    var timer=setInterval(function(){
+      if(window.google && google.accounts && google.accounts.oauth2){clearInterval(timer);resolve(true);return;}
+      if(Date.now()-started>12000){clearInterval(timer);reject(new Error("No cargó Google Identity Services. Revise conexión, bloqueadores o dominios autorizados del OAuth Client."));}
+    },250);
+  });
+}
+function ensureDriveToken(promptMode){
+  if(driveAccessToken && Date.now()<driveTokenExpiresAt)return Promise.resolve(driveAccessToken);
+  if(!driveConfigured())return Promise.reject(new Error("Drive no está configurado. Falta el Google OAuth Client ID en firebase-config.js > appSettings.googleDriveClientId."));
+  return waitForGoogleDriveClient().then(function(){
+    return new Promise(function(resolve,reject){
+      try{
+        if(!driveTokenClient){
+          driveTokenClient=google.accounts.oauth2.initTokenClient({client_id:driveClientId(),scope:DRIVE_SCOPE,callback:function(){}});
+        }
+        driveTokenClient.callback=function(resp){
+          if(resp && resp.access_token){
+            driveAccessToken=resp.access_token;
+            var expires=Number(resp.expires_in||3600);
+            driveTokenExpiresAt=Date.now()+Math.max(60,expires-60)*1000;
+            resolve(driveAccessToken);
+          }else{
+            reject(new Error((resp&&resp.error_description)||"No se autorizó Google Drive."));
+          }
+        };
+        driveTokenClient.requestAccessToken({prompt:promptMode || "consent"});
+      }catch(e){reject(e);}
+    });
+  });
+}
+function driveFetch(url,options){
+  return ensureDriveToken("").then(function(token){
+    options=options||{};
+    var headers=new Headers(options.headers||{});
+    headers.set("Authorization","Bearer "+token);
+    return fetch(url,Object.assign({},options,{headers:headers})).then(function(res){
+      if(res.status===401 || res.status===403){
+        driveAccessToken="";driveTokenExpiresAt=0;
+        throw new Error("Google Drive requiere autorización nuevamente. Presione la acción otra vez y autorice el acceso.");
+      }
+      if(!res.ok){return res.text().catch(function(){return "";}).then(function(txt){throw new Error("Error Google Drive "+res.status+": "+txt.slice(0,220));});}
+      return res;
+    });
+  });
+}
+function driveQueryEscape(value){return String(value||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");}
+function safeDrivePart(value){return String(value||"SIN_DATO").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[\\/:*?\"<>|#%{}~&]+/g,"-").replace(/\s+/g," ").trim().slice(0,90)||"SIN_DATO";}
+function safeDriveFileName(value){return String(value||("evidencia_"+Date.now())).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[\\/:*?\"<>|#%{}~&]+/g,"-").replace(/\s+/g," ").trim().slice(0,150)||("evidencia_"+Date.now());}
+function driveFindFolder(name,parentId){
+  var q="name = '"+driveQueryEscape(name)+"' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+  if(parentId)q+=" and '"+parentId+"' in parents";
+  var url="https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id,name,webViewLink)&q="+encodeURIComponent(q);
+  return driveFetch(url,{method:"GET"}).then(function(res){return res.json();}).then(function(data){return data.files&&data.files[0]?data.files[0]:null;});
+}
+function driveCreateFolder(name,parentId){
+  var meta={name:name,mimeType:"application/vnd.google-apps.folder"};
+  if(parentId)meta.parents=[parentId];
+  return driveFetch("https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(meta)}).then(function(res){return res.json();});
+}
+function driveEnsureFolder(name,parentId){
+  var key="ei_drive_folder_"+(parentId||"root")+"_"+safeDrivePart(name);
+  var cached=localStorage.getItem(key);
+  if(cached)return Promise.resolve({id:cached,name:name});
+  return driveFindFolder(name,parentId).then(function(existing){
+    if(existing&&existing.id){localStorage.setItem(key,existing.id);return existing;}
+    return driveCreateFolder(name,parentId).then(function(folder){localStorage.setItem(key,folder.id);return folder;});
+  });
+}
+function driveEnsurePath(parts){
+  var parent="";
+  var folderPath=[];
+  return parts.reduce(function(chain,part){
+    return chain.then(function(){
+      var name=safeDrivePart(part);
+      folderPath.push(name);
+      return driveEnsureFolder(name,parent).then(function(folder){parent=folder.id;return folder;});
+    });
+  },Promise.resolve()).then(function(folder){return {folderId:parent,folderPath:folderPath.join(" / "),folder:folder};});
+}
+function base64ToBlob(base64,mimeType){
+  var bin=atob(base64);var len=bin.length;var bytes=new Uint8Array(len);
+  for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type:mimeType||"application/octet-stream"});
+}
+function driveUploadMultipart(blob,metadata){
+  var boundary="eiDriveBoundary"+Date.now()+Math.random().toString(16).slice(2);
+  var body=new Blob(["--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n",JSON.stringify(metadata),"\r\n--"+boundary+"\r\nContent-Type: "+(metadata.mimeType||"application/octet-stream")+"\r\n\r\n",blob,"\r\n--"+boundary+"--"],{type:"multipart/related; boundary="+boundary});
+  return driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,mimeType,size",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:body}).then(function(res){return res.json();});
+}
+function driveTryShare(fileId){
+  if(!fileId)return Promise.resolve(false);
+  return driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(fileId)+"/permissions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"anyone",role:"reader"})}).then(function(){return true;}).catch(function(){return false;});
+}
 function uploadFileToDrive(file,c,processOrOptions,fileName){
   var opts=typeof processOrOptions==="object"?(processOrOptions||{}):{processName:processOrOptions,fileName:fileName};
-  var url=(window.appSettings&&window.appSettings.driveUploadUrl)||"";
-  if(!url){return Promise.reject(new Error("Drive no está configurado. Publique el Apps Script y pegue la URL en firebase-config.js > appSettings.driveUploadUrl. La app no registra evidencias sin Drive para no dejar auditoría incompleta."));}
-  return prepareFileForDrive(file).then(function(prep){
-    var payload={
-      base64:prep.base64,
-      mimeType:prep.mimeType,
-      fileName:opts.fileName||prep.fileName||file.name||("evidencia_"+Date.now()),
-      originalFileName:file.name||"",
-      sizeBytes:prep.sizeBytes||file.size||0,
-      compressed:!!prep.compressed,
-      caseId:c.id,
-      orderNumber:c.reference,
-      clientName:c.client||"",
-      processName:opts.processName||processTitle(c.currentProcess),
-      processKey:opts.processKey||c.currentProcess,
-      evidenceType:opts.evidenceType||"EVIDENCIA",
-      cutId:opts.cutId||"",
-      ownerName:state.user?state.user.name:"Responsable",
-      ownerRole:state.user?state.user.role:"",
-      uploadedAt:now()
-    };
-    return fetch(url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)}).then(function(res){return res.json();}).then(function(out){
-      if(!out||out.ok!==true){throw new Error((out&&out.error)||"Drive no confirmó el cargue de la evidencia.");}
-      out.fileName=payload.fileName;out.mimeType=payload.mimeType;out.evidenceType=payload.evidenceType;out.uploadedAt=payload.uploadedAt;out.processKey=payload.processKey;out.processName=payload.processName;out.cutId=payload.cutId;return out;
+  return ensureDriveToken("consent").then(function(){return prepareFileForDrive(file);}).then(function(prep){
+    var uploadedAt=now();
+    var date=new Date(uploadedAt);
+    var year=String(date.getFullYear());
+    var month=year+"-"+("0"+(date.getMonth()+1)).slice(-2);
+    var processName=opts.processName||processTitle(c.currentProcess);
+    var evidenceType=opts.evidenceType||"EVIDENCIA";
+    var ownerName=state.user?state.user.name:"Responsable";
+    var orderNumber=c.reference||c.pedido||"SIN_PEDIDO";
+    var caseNumber=c.caseNumber||c.id||"SIN_CASO";
+    var path=[driveRootFolderName(),year,month,processName,ownerName,orderNumber,caseNumber,evidenceType];
+    return driveEnsurePath(path).then(function(folderInfo){
+      var name=safeDriveFileName(opts.fileName||prep.fileName||file.name||("evidencia_"+Date.now()));
+      var blob=base64ToBlob(prep.base64,prep.mimeType);
+      var meta={name:name,mimeType:prep.mimeType||file.type||"application/octet-stream",parents:[folderInfo.folderId]};
+      return driveUploadMultipart(blob,meta).then(function(uploaded){
+        return driveTryShare(uploaded.id).then(function(){
+          return {ok:true,fileId:uploaded.id,url:uploaded.webViewLink||uploaded.webContentLink||"",contentUrl:uploaded.webContentLink||"",name:uploaded.name,fileName:uploaded.name,mimeType:uploaded.mimeType||prep.mimeType,evidenceType:evidenceType,uploadedAt:uploadedAt,processKey:opts.processKey||c.currentProcess,processName:processName,cutId:opts.cutId||"",folderPath:folderInfo.folderPath,folder:folderInfo.folderId,sizeBytes:prep.sizeBytes||file.size||0,compressed:!!prep.compressed};
+        });
+      });
     });
   });
 }
@@ -596,7 +744,8 @@ function renderDetail(id){
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="";
   if(!c.closedAt){
     if(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button><button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia</button>';
+    if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
+    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
     if(c.status==="espera_ventas"&&state.user.role==="ventas")actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">Responder</button>';
     if(c.status==="en_espera"&&state.user.role===c.assignedRole)actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(state.user.role==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
@@ -1143,15 +1292,23 @@ function assignToProcess(c,next,detail){
 
 function openEvidence(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Subir evidencia del proceso",'<form class="form" id="evidenceForm"><div class="notice">Toda evidencia se guarda en Drive por año, mes, proceso, responsable, pedido, caso y tipo de evidencia.</div><label class="field"><span>Archivo o foto</span><input class="input" type="file" name="evidence" id="evidenceInput" accept="image/*,application/pdf" required></label><label class="field"><span>Tipo de evidencia</span><select class="select" name="evidenceType"><option value="EVIDENCIA_PROCESO">Evidencia general del proceso</option><option value="FOTO_DESPACHO">Foto despacho / carro</option><option value="FOTO_ALISTAMIENTO">Foto alistamiento</option><option value="SOPORTE_DOCUMENTAL">Soporte documental</option><option value="NOVEDAD">Novedad operativa</option></select></label><label class="field"><span>Descripción</span><textarea class="textarea" name="detail" placeholder="Foto de despacho, carro, alistamiento, novedad, entrega o soporte operativo."></textarea></label><button class="btn btn-primary" type="submit">Guardar evidencia en Drive</button></form>'));
+  if(!canUploadEvidenceForCase(c)){alert("Este usuario no tiene permiso para anexar evidencias en este caso.");return;}
+  var current=c.currentProcess||"recepcion_pedidos";
+  drawer(modal("Subir evidencia a Drive",'<form class="form" id="evidenceForm"><div class="notice">La evidencia se guarda en Google Drive con la misma cuenta autorizada por Google Cloud. La carpeta se crea por año, mes, proceso, responsable, pedido, caso y tipo de evidencia.</div><section class="grid grid-2"><label class="field"><span>Proceso / módulo de la evidencia</span><select class="select" name="processKey" id="evidenceProcessSelect">'+evidenceProcessOptions(current)+'</select></label><label class="field"><span>Tipo de evidencia</span><select class="select" name="evidenceType" id="evidenceTypeSelect">'+evidenceTypeOptions()+'</select></label></section><label class="field"><span>Archivo o foto</span><input class="input" type="file" name="evidence" id="evidenceInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv" required></label><label class="field"><span>Descripción</span><textarea class="textarea" name="detail" placeholder="Ej.: PDF del pedido, foto del carro, soporte de despacho, guía, novedad, evidencia de alistamiento, soporte de caja o auditoría."></textarea></label><div class="notice" id="evidenceStatus">Seleccione el archivo y guarde. No se registra en el caso hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia en Drive</button></form>'));
+  var processSelect=qs("#evidenceProcessSelect"), typeSelect=qs("#evidenceTypeSelect");
+  if(typeSelect)typeSelect.value=defaultEvidenceTypeForProcess(current);
+  if(processSelect && typeSelect){processSelect.onchange=function(){typeSelect.value=defaultEvidenceTypeForProcess(processSelect.value);};}
   qs("#evidenceForm").onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target), file=qs("#evidenceInput").files&&qs("#evidenceInput").files[0];
-    if(!file){alert("Seleccione un archivo.");return;}
-    uploadFileToDrive(file,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:file.name,evidenceType:fd.get("evidenceType")||"EVIDENCIA_PROCESO"}).then(function(up){
+    if(!file){alert("Seleccione una evidencia.");return;}
+    var processKey=fd.get("processKey")||c.currentProcess;
+    var evidenceType=fd.get("evidenceType")||defaultEvidenceTypeForProcess(processKey);
+    var statusEl=qs("#evidenceStatus");if(statusEl)statusEl.textContent="Subiendo evidencia a Drive...";
+    uploadFileToDrive(file,c,{processName:processTitle(processKey),processKey:processKey,fileName:file.name,evidenceType:evidenceType}).then(function(up){
       appendEvidence(c,up,fd.get("detail")||"");
-      return persistCase(c,{type:"PROCESS_EVIDENCE_UPLOADED",detail:(fd.get("detail")||file.name)+" · "+processTitle(c.currentProcess)});
-    }).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+      return persistCase(c,{type:"PROCESS_EVIDENCE_UPLOADED",process:processKey,detail:(fd.get("detail")||file.name)+" · "+processTitle(processKey)+" · "+evidenceType}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||"");});
+    }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
 

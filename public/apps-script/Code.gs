@@ -1,8 +1,10 @@
 const ROOT_FOLDER_NAME = 'EVIDENCIAS_LOGISTICA_ELECTROINGENIERIA';
 
 function doPost(e) {
+  let uploadToken = '';
   try {
-    const payload = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    const payload = parsePayload_(e);
+    uploadToken = payload._uploadToken || '';
     if (!payload.base64) throw new Error('No llegó archivo en base64.');
 
     const now = new Date();
@@ -33,7 +35,7 @@ function doPost(e) {
     ].join(' · '));
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-    return json_({
+    return htmlPostMessage_({
       ok: true,
       fileId: file.getId(),
       url: file.getUrl(),
@@ -41,18 +43,55 @@ function doPost(e) {
       folder: typeFolder.getName(),
       folderPath: [ROOT_FOLDER_NAME, yearFolder.getName(), monthFolder.getName(), processFolder.getName(), ownerFolder.getName(), orderFolder.getName(), caseFolder.getName(), typeFolder.getName()].join('/'),
       uploadedAt: payload.uploadedAt || now.toISOString()
-    });
+    }, uploadToken);
   } catch (error) {
-    return json_({ ok: false, error: error && error.message ? error.message : String(error) });
+    return htmlPostMessage_({ ok: false, error: error && error.message ? error.message : String(error) }, uploadToken);
   }
 }
 
 function doGet() {
-  return json_({ ok: true, service: 'Drive evidencias logística', root: ROOT_FOLDER_NAME });
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, service: 'Drive evidencias logística', root: ROOT_FOLDER_NAME, mode: 'iframe-postmessage' }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+function parsePayload_(e) {
+  if (e && e.parameter && e.parameter.payload) return JSON.parse(e.parameter.payload || '{}');
+  if (e && e.postData && e.postData.contents) return JSON.parse(e.postData.contents || '{}');
+  return {};
+}
+
+function htmlPostMessage_(obj, token) {
+  const message = JSON.stringify({
+    source: 'drive-evidence-upload',
+    token: token || '',
+    result: obj || {}
+  }).replace(/</g, '\\u003c');
+  const html = `<!doctype html>
+<html><head><meta charset="UTF-8"></head><body>
+<script>
+(function(){
+  var message = ${message};
+  try {
+    window.top.postMessage(message, '*');
+    window.parent.postMessage(message, '*');
+  } catch (e) {}
+})();
+</script>
+<pre>${escapeHtml_(JSON.stringify(obj || {}, null, 2))}</pre>
+</body></html>`;
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('Drive evidencias logística')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function escapeHtml_(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function getOrCreateFolder_(name) {

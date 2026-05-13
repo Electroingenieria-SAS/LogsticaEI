@@ -11,7 +11,9 @@ window.firebaseConfig = {
 window.appSettings = {
   companyName: "Electroingeniería",
   logoPath: "./assets/logo-electroingenieria.jpeg",
-  driveUploadUrl: "https://script.google.com/macros/s/AKfycbw1VMosGdtxqJo59ABdGm9Tkd5nAKV-90xFlfV_TB3OnrhQKDCBosEMZWB8FY0Zte8yvQ/exec",
+  driveUploadUrl: "",
+  googleDriveClientId: "125993982318-gn2177d3muf2iip0co9pf9mii7d12cre.apps.googleusercontent.com",
+  driveRootFolderName: "EVIDENCIAS_LOGISTICA_ELECTROINGENIERIA",
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v8-drive-configurado"
+  version: "flujo-unificado-v11-drive-evidencias-todos-modulos"
 };
