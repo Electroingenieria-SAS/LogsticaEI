@@ -169,17 +169,64 @@ function initFirebase(){
   }
 }
 
+function docsToList(snap){
+  var out=[];
+  if(!snap)return out;
+  snap.forEach(function(d){var x=d.data();x.id=d.id;out.push(x);});
+  return out;
+}
+
+function uniqueById(list){
+  var map={}, out=[];
+  list.forEach(function(x){if(!x||!x.id||map[x.id])return;map[x.id]=1;out.push(x);});
+  return out;
+}
+
+function sortByUpdated(list){
+  return list.sort(function(a,b){return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0);});
+}
+
+function loadCasesForRole(){
+  if(canSeeAll()){
+    return db.collection("cases").orderBy("updatedAt","desc").get().then(docsToList);
+  }
+
+  var queries=[];
+
+  if(state.user.role==="auxiliar_corte"){
+    queries.push(db.collection("cases").where("hasCuts","==",true).get());
+  }else{
+    queries.push(db.collection("cases").where("assignedRole","==",state.user.role).get());
+    queries.push(db.collection("cases").where("createdBy","==",state.user.uid).get());
+  }
+
+  return Promise.all(queries).then(function(snaps){
+    var all=[];
+    snaps.forEach(function(snap){all=all.concat(docsToList(snap));});
+    return sortByUpdated(uniqueById(all));
+  });
+}
+
+function loadEventsForRole(){
+  if(!canSeeAll())return Promise.resolve([]);
+  return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
+}
+
+function loadUsersForRole(){
+  if(!canSeeAll() && !canManageUsers())return Promise.resolve([]);
+  return db.collection("users").get().then(docsToList).catch(function(){return [];});
+}
+
 function loadData(){
   if(!firebaseReady || !db || !state.user){return Promise.resolve();}
   return Promise.all([
-    db.collection("cases").orderBy("updatedAt","desc").get(),
-    db.collection("case_events").orderBy("timestamp","desc").limit(900).get(),
-    db.collection("users").get().catch(function(){return null;})
-  ]).then(function(snaps){
-    state.cases=[];snaps[0].forEach(function(d){var x=d.data();x.id=d.id;state.cases.push(x);});
-    state.events=[];snaps[1].forEach(function(d){var x=d.data();x.id=d.id;state.events.push(x);});
-    state.users=[];
-    if(snaps[2])snaps[2].forEach(function(d){var x=d.data();x.id=d.id;state.users.push(x);});
+    loadCasesForRole(),
+    loadEventsForRole(),
+    loadUsersForRole()
+  ]).then(function(res){
+    state.cases=res[0]||[];
+    state.events=res[1]||[];
+    state.users=res[2]||[];
   });
 }
 
@@ -270,20 +317,32 @@ function renderLogin(){
   qs("#loginForm").onsubmit=function(e){e.preventDefault();login(new FormData(e.target));};
 }
 
+function showLoading(msg){
+  appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>Cargando la app</h1><p>'+esc(msg||"Validando sesión y permisos...")+'</p><pre>Espere un momento.</pre></section></main>';
+}
+
+function applyProfileFromDoc(fbUser,doc){
+  if(!doc.exists)throw new Error("El usuario existe en Authentication, pero no tiene perfil en Firestore users/"+fbUser.uid+". Cree ese documento con role e isActive:true.");
+  var p=doc.data();
+  if(p.isActive===false)throw new Error("Usuario inactivo en Firestore.");
+  state.user={uid:fbUser.uid,email:fbUser.email||p.email||"",name:p.name||p.email||fbUser.email||"Usuario",role:p.role||"coordinador_logistico"};
+  sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
+  state.route=defaultRoute(state.user.role);
+}
+
+function loadProfileAndRender(fbUser){
+  showLoading("Sesión detectada. Cargando perfil y módulo asignado...");
+  return db.collection("users").doc(fbUser.uid).get().then(function(doc){
+    applyProfileFromDoc(fbUser,doc);
+    return loadData();
+  }).then(render);
+}
+
 function login(fd){
   var email=String(fd.get("email")||"").trim();var password=String(fd.get("password")||"");
   if(!firebaseReady){showError("Firebase no está conectado. "+(firebaseInitError||""));return;}
-  auth.signInWithEmailAndPassword(email,password).then(function(cred){
-    return db.collection("users").doc(cred.user.uid).get().then(function(doc){
-      if(!doc.exists)throw new Error("El usuario existe en Authentication, pero no tiene perfil en Firestore users/"+cred.user.uid);
-      var p=doc.data();
-      if(p.isActive===false)throw new Error("Usuario inactivo.");
-      state.user={uid:cred.user.uid,email:email,name:p.name||email,role:p.role||"coordinador_logistico"};
-      sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
-      state.route=defaultRoute(state.user.role);
-      return loadData().then(render);
-    });
-  }).catch(function(err){showError(err.message||err);});
+  showLoading("Validando correo, contraseña y permisos...");
+  auth.signInWithEmailAndPassword(email,password).catch(function(err){showError(err.message||err);});
 }
 
 function visibleCases(){
@@ -1004,10 +1063,21 @@ window.addEventListener("message",function(event){
 function boot(){
   try{
     initFirebase();
-    var saved=sessionStorage.getItem(storageKey+"_session");
-    if(saved){try{state.user=JSON.parse(saved);state.route=defaultRoute(state.user.role);}catch(e){}}
-    if(state.user){loadData().then(render).catch(function(e){showError(e.message||e);});}
-    else renderLogin();
+    if(!firebaseReady || !auth){renderLogin();return;}
+    showLoading("Verificando sesión de Firebase...");
+    auth.onAuthStateChanged(function(fbUser){
+      if(!fbUser){
+        sessionStorage.removeItem(storageKey+"_session");
+        state.user=null;
+        renderLogin();
+        return;
+      }
+      loadProfileAndRender(fbUser).catch(function(e){
+        sessionStorage.removeItem(storageKey+"_session");
+        state.user=null;
+        showError(e.message||e);
+      });
+    },function(e){showError(e.message||e);});
   }catch(e){showError(e.message||e);}
 }
 
