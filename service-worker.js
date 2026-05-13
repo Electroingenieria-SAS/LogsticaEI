@@ -1,12 +1,50 @@
-var CACHE_VERSION = "ei-trazabilidad-v14-admin-delete-ventas-panel";
-var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./corte-control/index.html","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];
+var CACHE_VERSION = "ei-trazabilidad-v15-pdf-submit-fix";
+var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];
 function sameOrigin(request){try{return new URL(request.url).origin===self.location.origin;}catch(e){return false;}}
-function isHtml(request){return request.mode==="navigate"||(request.headers.get("accept")||"").indexOf("text/html")>=0;}
+function isHtml(request){return request.mode==="navigate" || ((request.headers.get("accept")||"").indexOf("text/html")>=0);}
 function isCore(url){return /\/(index\.html|app\.js|styles\.css|firebase-config\.js|manifest\.json)$/.test(url.pathname);}
-function cachePut(req,res){if(!res||res.status!==200||res.type==="opaque")return Promise.resolve(res);return caches.open(CACHE_VERSION).then(function(c){return c.put(req,res.clone()).then(function(){return res;});}).catch(function(){return res;});}
-function networkFirst(req){return fetch(req,{cache:"no-store"}).then(function(res){return cachePut(req,res);}).catch(function(){return caches.match(req).then(function(c){return c||(isHtml(req)?caches.match("./index.html"):undefined);});});}
-function cacheFirst(req){return caches.match(req).then(function(cached){if(cached){fetch(req).then(function(res){cachePut(req,res);}).catch(function(){});return cached;}return fetch(req).then(function(res){return cachePut(req,res);});});}
-self.addEventListener("install",function(e){self.skipWaiting();e.waitUntil(caches.open(CACHE_VERSION).then(function(c){return c.addAll(APP_SHELL);}));});
-self.addEventListener("activate",function(e){e.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){if(k!==CACHE_VERSION&&k.indexOf("ei-trazabilidad")===0)return caches.delete(k);}));}).then(function(){return self.clients.claim();}));});
-self.addEventListener("message",function(e){if(e.data&&e.data.type==="SKIP_WAITING")self.skipWaiting();if(e.data&&e.data.type==="CLEAR_CACHE")e.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));});
-self.addEventListener("fetch",function(e){var req=e.request;if(req.method!=="GET"||!sameOrigin(req))return;var url=new URL(req.url);if(isHtml(req)||isCore(url)){e.respondWith(networkFirst(req));return;}e.respondWith(cacheFirst(req));});
+function safeCachePut(cache,request,response){
+  if(!response || response.status!==200 || response.type==="opaque")return Promise.resolve(response);
+  return cache.put(request,response.clone()).then(function(){return response;}).catch(function(){return response;});
+}
+function networkFirst(request){
+  return caches.open(CACHE_VERSION).then(function(cache){
+    return fetch(request,{cache:"no-store"}).then(function(response){return safeCachePut(cache,request,response);}).catch(function(){
+      return cache.match(request).then(function(cached){
+        if(cached)return cached;
+        if(isHtml(request))return cache.match("./index.html").then(function(home){return home || new Response("Aplicación sin conexión",{status:503,headers:{"Content-Type":"text/plain; charset=utf-8"}});});
+        return new Response("",{status:504,statusText:"Offline"});
+      });
+    });
+  });
+}
+function cacheFirst(request){
+  return caches.open(CACHE_VERSION).then(function(cache){
+    return cache.match(request).then(function(cached){
+      if(cached){fetch(request).then(function(response){return safeCachePut(cache,request,response);}).catch(function(){});return cached;}
+      return fetch(request).then(function(response){return safeCachePut(cache,request,response);}).catch(function(){return new Response("",{status:504,statusText:"Offline"});});
+    });
+  });
+}
+self.addEventListener("install",function(event){
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE_VERSION).then(function(cache){
+    return Promise.all(APP_SHELL.map(function(url){return fetch(url,{cache:"reload"}).then(function(response){return safeCachePut(cache,url,response);}).catch(function(){return null;});}));
+  }));
+});
+self.addEventListener("activate",function(event){
+  event.waitUntil(caches.keys().then(function(keys){
+    return Promise.all(keys.map(function(key){if(key!==CACHE_VERSION && key.indexOf("ei-trazabilidad")===0)return caches.delete(key);}));
+  }).then(function(){return self.clients.claim();}));
+});
+self.addEventListener("message",function(event){
+  if(event.data && event.data.type==="SKIP_WAITING")self.skipWaiting();
+  if(event.data && event.data.type==="CLEAR_CACHE")event.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(key){return caches.delete(key);}));}));
+});
+self.addEventListener("fetch",function(event){
+  var request=event.request;
+  if(request.method!=="GET" || !sameOrigin(request))return;
+  var url=new URL(request.url);
+  if(isHtml(request) || isCore(url)){event.respondWith(networkFirst(request));return;}
+  event.respondWith(cacheFirst(request));
+});

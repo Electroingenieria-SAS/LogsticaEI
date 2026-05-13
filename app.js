@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v14_admin_delete_ventas_panel";
+var storageKey = "ei_trazabilidad_v15_pdf_submit_fix";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -967,6 +967,70 @@ function evidencePanel(c){
   var list=c.evidence||[];
   if(!list.length)return "";
   return '<section class="card" style="margin-top:16px"><h3>Evidencias del proceso</h3><div class="table-wrap"><table><thead><tr><th>Proceso</th><th>Archivo</th><th>Descripción</th><th>Responsable</th><th>Fecha</th><th>Drive</th></tr></thead><tbody>'+list.slice().reverse().map(function(e){return '<tr><td>'+esc(e.processName||processTitle(e.process))+'</td><td>'+esc(e.fileName||'')+'</td><td>'+esc(e.detail||'')+'</td><td>'+esc(e.uploadedByName||'')+'</td><td>'+esc(fmtDate(e.uploadedAt))+'</td><td>'+(e.driveUrl?'<a href="'+esc(e.driveUrl)+'" target="_blank" rel="noopener">Abrir</a>':'Sin URL')+'</td></tr>';}).join('')+'</tbody></table></div></section>';
+}
+
+
+function blankPdfValue(value){
+  return value === undefined || value === null || String(value).trim() === "";
+}
+function assignPdfField(c, key, value, label, filled){
+  if(blankPdfValue(value))return;
+  if(blankPdfValue(c[key])){
+    c[key]=value;
+    filled.push(label||key);
+  }
+}
+function mergePdfItemsIntoCase(c, parsed){
+  var incoming=(parsed && parsed.items) ? parsed.items : [];
+  c.orderItems=c.orderItems||[];
+  var seen={};
+  c.orderItems.forEach(function(it){
+    var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
+    seen[k]=1;
+  });
+  var added=0;
+  incoming.forEach(function(it){
+    var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
+    if(seen[k])return;
+    seen[k]=1;
+    c.orderItems.push(Object.assign({
+      id: uid("LIN"),
+      estado: it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO",
+      origen: "PDF_RECEPCION",
+      createdAt: now()
+    }, it));
+    added++;
+  });
+  return added;
+}
+function mergePdfExtractionIntoCase(c, parsed){
+  parsed=parsed||{};
+  var filled=[];
+  c.pdfExtraction=parsed;
+  assignPdfField(c,"reference",parsed.orderNumber,"pedido",filled);
+  assignPdfField(c,"orderKind",parsed.orderKind,"tipo de pedido",filled);
+  assignPdfField(c,"client",parsed.client,"cliente",filled);
+  assignPdfField(c,"nit",parsed.nit,"NIT/CC",filled);
+  assignPdfField(c,"address",parsed.address,"dirección",filled);
+  assignPdfField(c,"city",parsed.city,"ciudad",filled);
+  assignPdfField(c,"phone",parsed.phone,"teléfono",filled);
+  assignPdfField(c,"paymentCondition",parsed.paymentCondition,"forma de pago",filled);
+  assignPdfField(c,"salesAdvisor",parsed.salesAdvisor,"asesor",filled);
+  assignPdfField(c,"orderDate",parsed.orderDate,"fecha del pedido",filled);
+  assignPdfField(c,"requestedDelivery",parsed.requestedDelivery,"tipo de entrega",filled);
+  if(blankPdfValue(c.description) && !blankPdfValue(parsed.observations)){
+    c.description=parsed.observations;
+    filled.push("observaciones");
+  }
+  c.documentFlow=c.documentFlow||{};
+  c.documentFlow.extractionMode="PDFJS_TEXT_EXHAUSTIVO";
+  c.documentFlow.lastPdfExtractionAt=now();
+  c.documentFlow.lastPdfExtractionBy=state.user ? state.user.name : "";
+  c.documentFlow.fieldsFilled=filled.slice();
+  c.documentFlow.pdfReadStatus="LEIDO";
+  mergePdfItemsIntoCase(c, parsed);
+  c.hasCuts=(c.cutRequests&&c.cutRequests.length>0) || (c.orderItems||[]).some(function(it){return !!it.requiereCorte;});
+  return filled;
 }
 
 function openReceptionPdf(id){
