@@ -13,5 +13,5 @@ window.appSettings = {
   logoPath: "./assets/logo-electroingenieria.jpeg",
   driveUploadUrl: "",
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v4-firebase-principal"
+  version: "flujo-unificado-v7-flujo-real-drive-corte"
 };
