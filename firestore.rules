@@ -217,6 +217,13 @@ service cloud.firestore {
       allow create, update, delete: if isAdminOrSuper();
     }
 
+
+    match /siesa_exports/{exportId} {
+      allow read: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
+      allow create: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
+      allow update, delete: if isAdminOrSuper();
+    }
+
     match /system_config/{configId} {
       allow read: if canSeeAll();
       allow create, update, delete: if isAdminOrSuper();

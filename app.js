@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v15_pdf_submit_fix";
+var storageKey = "ei_trazabilidad_v16_siesa_flow_commitment";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -43,9 +43,10 @@ var roles = {
 
 var FLOW = [
   "recepcion_pedidos",
+  "compromiso_mercancia",
   "alistamiento",
   "corte_cable",
-  "compromiso_mercancia",
+  "ratificacion_compromiso",
   "facturacion",
   "caja",
   "cliente_punto",
@@ -58,15 +59,15 @@ var FLOW = [
 var processes = {
   recepcion_pedidos:{
     code:"S-PR-2", title:"Recepción de pedidos", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RP",
-    checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Observaciones revisadas","Pedido listo para alistamiento"],
+    checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Compromiso inicial registrado en SIESA/ERP","Observaciones revisadas","Pedido listo para compromiso inicial"],
     waits:["Falta PDF del pedido","PDF ilegible","Falta referencia","Falta cantidad","Falta unidad de medida","Falta tipo de entrega","Falta forma de pago","Falta autorización comercial","Falta aclaración del asesor","Pedido no coincide con lo registrado por ventas"],
-    next:["alistamiento"]
+    next:["compromiso_mercancia"]
   },
   alistamiento:{
     code:"S-PR-4", title:"Alistamiento de mercancía", ownerRoles:["aux_logistica"], icon:"AL",
-    checklist:["Pedido recibido desde recepción","Productos y cantidades ubicadas","Referencia coincide","Descripción coincide","Cantidad coincide","Unidad de medida coincide","Ubicación correcta","Estado físico conforme","Líneas que requieren corte definidas","Cortes enviados al módulo de corte si aplica","Cortes terminados o en seguimiento","Mercancía lista para compromiso"],
+    checklist:["Pedido recibido desde recepción","Productos y cantidades ubicadas","Referencia coincide","Descripción coincide","Cantidad coincide","Unidad de medida coincide","Ubicación correcta","Estado físico conforme","Líneas que requieren corte definidas","Cortes enviados al módulo de corte si aplica","Cortes terminados o en seguimiento","Mercancía lista para ratificar compromiso"],
     waits:["No se encuentra mercancía","Cantidad insuficiente","Referencia diferente","Unidad de medida diferente","Ubicación errada","Mercancía averiada","Remanente crítico","Requiere aprobación logística","Requiere ajuste de ventas","Corte pendiente por finalizar"],
-    next:["compromiso_mercancia"]
+    next:["ratificacion_compromiso"]
   },
   corte_cable:{
     code:"S-PR-9", title:"Corte de cable", ownerRoles:["auxiliar_corte"], icon:"CT",
@@ -75,9 +76,15 @@ var processes = {
     next:[]
   },
   compromiso_mercancia:{
-    code:"S-PR-4", title:"Comprometer mercancía", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"CM",
-    checklist:["Mercancía físicamente conforme","Pedido validado contra alistamiento","Aprobación de conformidad registrada","Cambio de lote validado si aplica","Conversión de unidad validada si aplica","Mercancía comprometida en ERP","Documento actualizado","Pedido listo para facturación"],
-    waits:["Diferencia entre físico y sistema","Requiere cambio de lote","Requiere conversión de unidad","Error al comprometer en ERP","Pedido bloqueado","Requiere autorización logística"],
+    code:"S-PR-4", title:"Compromiso inicial de mercancía", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"CM",
+    checklist:["Pedido recibido desde recepción","PDF validado contra pedido","Compromiso inicial revisado","Producto bloqueado para evitar doble venta","Novedades de devolución o cancelación revisadas","Requerimientos resueltos si aplica","Pedido liberado para alistamiento"],
+    waits:["No se logró comprometer mercancía","Producto ya fue vendido o reservado","Cantidad insuficiente para comprometer","Devolución reportada","Pedido cancelado por ventas o cliente","Error al comprometer en SIESA/ERP","Requiere autorización logística"],
+    next:["alistamiento"]
+  },
+  ratificacion_compromiso:{
+    code:"S-PR-4", title:"Ratificar compromiso antes de facturar", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RC",
+    checklist:["Alistamiento validado","Cortes finalizados si aplica","Compromiso inicial revisado","Compromiso ratificado en SIESA/ERP","Novedades de devolución revisadas","Cancelaciones descartadas","Pedido listo para facturación"],
+    waits:["Diferencia entre pedido y compromiso","Hubo devolución","Pedido cancelado","Producto liberado por error","Error al ratificar compromiso en SIESA/ERP","Requiere ajuste de ventas","Requiere autorización logística"],
     next:["facturacion"]
   },
   facturacion:{
@@ -186,7 +193,7 @@ function evidenceTypeOptions(){
   return opts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("");
 }
 function defaultEvidenceTypeForProcess(p){
-  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
+  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",ratificacion_compromiso:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
   return map[p]||"EVIDENCIA_PROCESO";
 }
 function persistEvidenceDocument(c,up,detail){
@@ -887,7 +894,7 @@ function extractPedidoItems(text){
 
 function createCase(fd){
   var created=now(), p="recepcion_pedidos", def=processes[p], priority=fd.get("priorityMode")==="gerencia";
-  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Coordinador logístico / Líder logístico",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null},processStats:{}};
+  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Coordinador logístico / Líder logístico",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE",initialCommitmentDetail:""},processStats:{}};
   procStats(c,p).startedAt=created;
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   def.checklist.forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"?"ok":"pending";});
@@ -911,6 +918,7 @@ function renderDetail(id){
     if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Definir cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
     if(c.status==="pendiente_gerencia"&&state.user.role==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)){
+      if(c.currentProcess==="compromiso_mercancia"||c.currentProcess==="ratificacion_compromiso")actions+='<button class="btn btn-danger" data-action="close" data-id="'+c.id+'">Cancelar / cerrar por devolución</button>';
       if(c.currentProcess==="facturacion")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
       else if(c.currentProcess==="caja")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Confirmar caja / enviar a despacho</button>';
       else actions+=nextActionButtons(c);
@@ -925,8 +933,8 @@ function nextActionButtons(c){
   var next=(processes[c.currentProcess]||{}).next||[];
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){return'<button class="btn btn-primary" data-action="transfer" data-next="'+n+'" data-id="'+c.id+'">Enviar a '+esc(processTitle(n))+'</button>';}).join("");
 }
-function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0 || c.currentProcess==="compromiso_mercancia" || c.currentProcess==="ratificacion_compromiso";}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Compromiso recepción",df.initialCommitmentStatus||"Pendiente"],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -1035,7 +1043,7 @@ function mergePdfExtractionIntoCase(c, parsed){
 
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar datos generales, líneas del pedido y cortes automáticos por unidades en metros.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><button class="btn btn-primary" type="submit">Guardar PDF, datos, líneas y cortes automáticos</button></form>'));
+  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar datos generales, líneas del pedido y cortes automáticos por unidades en metros.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><section class="grid grid-2"><label class="field"><span>¿Mercancía comprometida inicialmente en SIESA/ERP?</span><select class="select" name="initialCommitmentStatus" required><option value="PENDIENTE">Pendiente por confirmar</option><option value="SI">Sí, comprometida</option><option value="NO">No, requiere gestión</option><option value="PARCIAL">Parcial / con novedad</option></select></label><label class="field"><span>Detalle del compromiso inicial</span><input class="input" name="initialCommitmentDetail" placeholder="Ej.: comprometido en SIESA, pendiente por validar, parcial, etc."></label></section><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><button class="btn btn-primary" type="submit">Guardar PDF, datos, líneas y cortes automáticos</button></form>'));
   var parsed=null,fileName="",selectedFile=null,previewUrl="";
   qs("#receptionPdfInput").onchange=function(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -1057,9 +1065,10 @@ function openReceptionPdf(id){
   qs("#recPdfForm").onsubmit=function(e){
     e.preventDefault();
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
+    var fd=new FormData(e.target);
     var filledFields=mergePdfExtractionIntoCase(c,parsed);
-    c.documentFlow=c.documentFlow||{};c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
-    c.checklist=c.checklist||{};["PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Forma de pago definida"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
+    c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus=fd.get("initialCommitmentStatus")||"PENDIENTE";c.documentFlow.initialCommitmentDetail=fd.get("initialCommitmentDetail")||"";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
+    c.checklist=c.checklist||{};["PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Forma de pago definida","Compromiso inicial registrado en SIESA/ERP"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
     var added=autoCreateCutsFromItems(c,state.user.name);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
       c.documentFlow.receptionPdfDriveUrl=up.url;c.documentFlow.receptionPdfDriveId=up.fileId;c.documentFlow.receptionPdfDriveFolder=up.folderPath||up.folder;
@@ -1093,7 +1102,10 @@ function autoCreateCutsFromItems(c,createdByName){
       createdAt:now(),
       createdByName:createdByName||state.user.name,
       generatedBy:"PDF_AUTO_CABLE_METROS",
-      detectionReason:it.detectionReason||"Cable en metros detectado desde PDF"
+      detectionReason:it.detectionReason||"Cable en metros detectado desde PDF",
+      siesaExportStatus:"PENDIENTE",
+      siesaExportedAt:"",
+      siesaBatchId:""
     });
     added++;
   });
@@ -1107,8 +1119,8 @@ function openCutsPlanner(id){
   var c=caseById(id);if(!c)return;var items=c.orderItems||[];
   var rows=items.length?items.map(function(it,i){var checked=it.requiereCorte?'checked':'';return'<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.cantidad||"")+'"></td><td><input class="input" name="available_'+i+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';}).join(""):'<tr><td colspan="5">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
   drawer(modal("Definir / ajustar cortes del pedido",'<form class="form" id="cutsPlanForm"><div class="notice">Los cortes por unidades en metros se generan automáticamente desde el PDF. Este panel solo sirve para revisar, corregir disponibilidad o crear cortes manuales adicionales.</div><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Descripción</th><th>Metros</th><th>Disponible</th></tr></thead><tbody>'+rows+'</tbody></table></div><fieldset><legend>Corte manual opcional</legend><div class="grid grid-3"><label class="field"><span>Referencia</span><input class="input" name="manualRef"></label><label class="field"><span>Metros</span><input class="input" name="manualMeters"></label><label class="field"><span>Disponible</span><input class="input" name="manualAvailable"></label></div><label class="field"><span>Observación</span><textarea class="textarea" name="manualObs"></textarea></label></fieldset><button class="btn btn-primary" type="submit">Guardar solicitudes de corte</button></form>'));
-  qs("#cutsPlanForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);c.cutRequests=c.cutRequests||[];var added=0;items.forEach(function(it,i){if(!fd.get("cut_"+i))return;var meters=fd.get("meters_"+i)||it.cantidad||"";var ref=it.referencia||"";var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});if(exists){c.cutRequests.forEach(function(x){if(x.sourceLineId===it.id){x.metrosSolicitados=meters;x.disponibleAntes=fd.get("available_"+i)||x.disponibleAntes||"";}});return;}var idc=uid("CUT");c.cutRequests.push({id:idc,code:"CT-"+(c.cutRequests.length+1),sourceLineId:it.id,caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:ref,descripcion:it.descripcion||"",metrosSolicitados:meters,disponibleAntes:fd.get("available_"+i)||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"ALISTAMIENTO"});added++;});
-    if(fd.get("manualRef")||fd.get("manualMeters")){var idm=uid("CUT");c.cutRequests.push({id:idm,code:"CT-"+(c.cutRequests.length+1),caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:fd.get("manualRef")||"Corte manual",descripcion:fd.get("manualObs")||"",metrosSolicitados:fd.get("manualMeters")||"",disponibleAntes:fd.get("manualAvailable")||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"MANUAL"});added++;}
+  qs("#cutsPlanForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);c.cutRequests=c.cutRequests||[];var added=0;items.forEach(function(it,i){if(!fd.get("cut_"+i))return;var meters=fd.get("meters_"+i)||it.cantidad||"";var ref=it.referencia||"";var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});if(exists){c.cutRequests.forEach(function(x){if(x.sourceLineId===it.id){x.metrosSolicitados=meters;x.disponibleAntes=fd.get("available_"+i)||x.disponibleAntes||"";}});return;}var idc=uid("CUT");c.cutRequests.push({id:idc,code:"CT-"+(c.cutRequests.length+1),sourceLineId:it.id,caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:ref,descripcion:it.descripcion||"",metrosSolicitados:meters,disponibleAntes:fd.get("available_"+i)||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"ALISTAMIENTO",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;});
+    if(fd.get("manualRef")||fd.get("manualMeters")){var idm=uid("CUT");c.cutRequests.push({id:idm,code:"CT-"+(c.cutRequests.length+1),caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:fd.get("manualRef")||"Corte manual",descripcion:fd.get("manualObs")||"",metrosSolicitados:fd.get("manualMeters")||"",disponibleAntes:fd.get("manualAvailable")||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"MANUAL",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;}
     c.hasCuts=(c.cutRequests||[]).length>0;var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();c.checklist=c.checklist||{};if(c.checklist["Líneas que requieren corte definidas"]!==undefined)c.checklist["Líneas que requieren corte definidas"]="ok";if(c.checklist["Cortes enviados al módulo de corte si aplica"]!==undefined&&c.cutRequests.length)c.checklist["Cortes enviados al módulo de corte si aplica"]="ok";
     persistCase(c,{type:"CUT_REQUESTS_CREATED",detail:"Solicitudes de corte creadas/ajustadas: "+added}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
@@ -1343,17 +1355,17 @@ function handleCutAction(c,cut,action){
   if(action==="registerCut"){
     if(!cutFinalOk(cut)){alert("No se puede registrar sin foto inicial en Drive, foto final en Drive, hora inicial y hora final.");return;}
     if(!cutQualityOk(cut)){alert("Falta confirmar corte uniforme, tramo rotulado y evidencia/registro realizado.");return;}
-    cut.status="FINALIZADO";cut.registeredAt=now();cut.registeredBy=state.user.uid;cut.registeredByName=state.user.name;refreshCutStats(c);
+    cut.status="FINALIZADO";cut.registeredAt=now();cut.siesaExportStatus=cut.siesaExportStatus||"PENDIENTE";cut.registeredBy=state.user.uid;cut.registeredByName=state.user.name;refreshCutStats(c);
     var pending=(c.cutRequests||[]).filter(function(x){return !cutDone(x.status) && x.id!==cut.id;});
     var event={type:"CUT_REGISTERED",detail:"Corte registrado: "+(cut.code||cut.id)+" · "+(cut.durationText||"")};
     if(pending.length===0 && (c.currentProcess==="alistamiento"||c.currentProcess==="corte_cable")){
       stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=now();
-      c.currentProcess="compromiso_mercancia";c.status="asignado";c.assignedRole=primaryOwnerRole("compromiso_mercancia");c.assignedName=processOwnerTitle("compromiso_mercancia");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.compromiso_mercancia.checklist.forEach(function(x){c.checklist[x]="pending";});
-      event.detail+=". Todos los cortes finalizados; pasa a Comprometer mercancía.";
+      c.currentProcess="ratificacion_compromiso";c.status="asignado";c.assignedRole=primaryOwnerRole("ratificacion_compromiso");c.assignedName=processOwnerTitle("ratificacion_compromiso");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.ratificacion_compromiso.checklist.forEach(function(x){c.checklist[x]="pending";});
+      event.detail+=". Todos los cortes finalizados; pasa a Ratificar compromiso antes de facturar.";
     }else{
       c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.status="asignado";
     }
-    persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();enforceSiesaExportIfNeeded(c);}).catch(function(e){showError(e.message||e);});
     return;
   }
 }
@@ -1392,7 +1404,7 @@ function syncCutBridge(id){
   });
   chain.then(function(){localStorage.setItem("ei_trazabilidad_corte_bridge_events",JSON.stringify(list.slice(-100)));renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
-function renderCutsQueue(){var list=state.cases.filter(function(c){return (c.cutRequests||[]).some(function(x){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)<0;});});var rows=[];list.forEach(function(c){(c.cutRequests||[]).forEach(function(cut){if(["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(cut.status)>=0)return;rows.push({c:c,cut:cut});});});layout(header("Cortes de cable","Solicitudes generadas desde alistamiento y operadas dentro del mismo Firebase principal. El PDF del pedido queda disponible para consulta antes y durante el corte.")+'<section class="card"><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+(rows.length?rows.map(function(r){return'<tr><td>'+esc(r.c.reference)+'</td><td>'+esc(r.c.client||"")+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.referencia)+'</td><td>'+esc(r.cut.metrosSolicitados)+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join(""):'<tr><td colspan="8">No hay cortes pendientes.</td></tr>')+'</tbody></table></div></section>');}
+function renderCutsQueue(){var list=state.cases.filter(function(c){return (c.cutRequests||[]).some(function(x){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)<0;});});var rows=[];list.forEach(function(c){(c.cutRequests||[]).forEach(function(cut){if(["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(cut.status)>=0)return;rows.push({c:c,cut:cut});});});layout(header("Cortes de cable","Solicitudes generadas desde alistamiento y operadas dentro del mismo Firebase principal. El PDF del pedido queda disponible para consulta antes y durante el corte.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button>')+'<section class="card"><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+(rows.length?rows.map(function(r){return'<tr><td>'+esc(r.c.reference)+'</td><td>'+esc(r.c.client||"")+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.referencia)+'</td><td>'+esc(r.cut.metrosSolicitados)+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join(""):'<tr><td colspan="8">No hay cortes pendientes.</td></tr>')+'</tbody></table></div></section>');}
 
 function isRequirementVisibleForUser(c){
   if(!state.user)return false;
@@ -1489,6 +1501,78 @@ function bindKpiFilters(){
   from.value=state.kpiFilters.from||"";to.value=state.kpiFilters.to||"";proc.value=state.kpiFilters.process||"";
   [from,to,proc].forEach(function(el){el.onchange=function(){state.kpiFilters.from=from.value;state.kpiFilters.to=to.value;state.kpiFilters.process=proc.value;renderIndicators();};});
 }
+function siesaSettings(){
+  var cfg=(window.appSettings&&window.appSettings.siesaFlatFile)||{};
+  return {delimiter:cfg.delimiter||"|",movementCode:cfg.movementCode||"CORTE",warehouse:cfg.warehouse||"",company:cfg.company||"",includeHeader:!!cfg.includeHeader,cutBatchSize:Number(cfg.cutBatchSize||20)};
+}
+function plainSiesa(v){
+  return String(v==null?"":v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[\r\n|;]/g," ").trim();
+}
+function countPendingSiesaCutsInCase(c){
+  var n=0;(c.cutRequests||[]).forEach(function(cut){if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO")n++;});return n;
+}
+function pendingSiesaCuts(){
+  var rows=[];
+  state.cases.forEach(function(c){
+    if(c.excludeFromKpi===true)return;
+    (c.cutRequests||[]).forEach(function(cut){
+      if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"){rows.push({caseObj:c,cut:cut});}
+    });
+  });
+  return rows.sort(function(a,b){return new Date(a.cut.registeredAt||a.cut.finishedAt||a.caseObj.updatedAt||0)-new Date(b.cut.registeredAt||b.cut.finishedAt||b.caseObj.updatedAt||0);});
+}
+function siesaLine(row,batchId){
+  var c=row.caseObj, cut=row.cut, cfg=siesaSettings(), d=cfg.delimiter;
+  var fields=[
+    cfg.movementCode,
+    cfg.company,
+    cfg.warehouse,
+    c.reference||cut.pedido||"",
+    cut.code||cut.id||"",
+    (cut.fechaCorte||String(cut.registeredAt||now()).slice(0,10)),
+    cut.referencia||"",
+    cut.descripcion||"",
+    String(cut.metrosFinales||cut.metrosSolicitados||"").replace(",","."),
+    "M",
+    String(cut.disponibleAntes||"").replace(",","."),
+    String(cut.sobranteReal||cut.remanenteProyectado||"").replace(",","."),
+    cut.takenByName||cut.finishedByName||"",
+    batchId,
+    cut.observacion||cut.detail||""
+  ];
+  return fields.map(plainSiesa).join(d);
+}
+function downloadTextFile(filename,content,mime){
+  var blob=new Blob([content],{type:mime||"text/plain;charset=utf-8"});
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+function exportSiesaPendingCuts(){
+  if(!(state.user&&(state.user.role==="auxiliar_corte"||state.user.role==="jefe_logistica"||state.user.role==="gerencia"||isAdminRoleValue(state.user.role)))){alert("No tiene permiso para exportar planos SIESA.");return;}
+  var rows=pendingSiesaCuts();
+  if(!rows.length){alert("No hay cortes finalizados pendientes por exportar a SIESA.");return;}
+  var cfg=siesaSettings(), batchId="SIESA_"+new Date().toISOString().replace(/[-:TZ.]/g,"").slice(0,14);
+  var chosen=rows.slice(0,Math.max(cfg.cutBatchSize,rows.length<cfg.cutBatchSize?rows.length:cfg.cutBatchSize));
+  if(rows.length<cfg.cutBatchSize && !confirm("Hay "+rows.length+" corte(s) pendiente(s), menos de "+cfg.cutBatchSize+". ¿Exportar de todas formas para actualizar SIESA?"))return;
+  var lines=[];
+  if(cfg.includeHeader)lines.push(["MOV","EMPRESA","BODEGA","PEDIDO","CORTE","FECHA","REFERENCIA","DESCRIPCION","CANTIDAD","UNIDAD","DISPONIBLE","SOBRANTE","RESPONSABLE","LOTE_EXPORTACION","OBSERVACION"].join(cfg.delimiter));
+  chosen.forEach(function(r){lines.push(siesaLine(r,batchId));});
+  downloadTextFile("siesa_cortes_"+batchId+".txt",lines.join("\r\n"),"text/plain;charset=utf-8");
+  if(confirm("Se descargó el archivo plano. ¿Marcar estos "+chosen.length+" corte(s) como EXPORTADOS a SIESA?")){
+    var ps=[];
+    chosen.forEach(function(r){r.cut.siesaExportStatus="EXPORTADO";r.cut.siesaBatchId=batchId;r.cut.siesaExportedAt=now();r.cut.siesaExportedBy=state.user.uid;r.cut.siesaExportedByName=state.user.name;ps.push(persistCase(r.caseObj,{type:"SIESA_FLAT_FILE_CUT_EXPORTED",detail:"Corte "+(r.cut.code||r.cut.id)+" exportado en lote "+batchId}));});
+    Promise.all(ps).then(function(){return db.collection("siesa_exports").doc(batchId).set({id:batchId,type:"CORTES",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,count:chosen.length,fileName:"siesa_cortes_"+batchId+".txt",delimiter:cfg.delimiter,status:"DESCARGADO_MARCADO"}).catch(function(){return null;});}).then(function(){loadData().then(render);}).catch(function(e){showError(e.message||e);});
+  }
+}
+function enforceSiesaExportIfNeeded(c){
+  var pending=pendingSiesaCuts();
+  var cfg=siesaSettings();
+  var casePending=countPendingSiesaCutsInCase(c);
+  var allCaseDone=(c.cutRequests||[]).length>0 && (c.cutRequests||[]).every(function(x){return cutDone(x.status);});
+  if(pending.length>=cfg.cutBatchSize || (allCaseDone && casePending>0)){
+    setTimeout(function(){alert("Hay cortes finalizados pendientes por exportar a SIESA. Se debe descargar el archivo plano antes de seguir acumulando registros.");exportSiesaPendingCuts();},300);
+  }
+}
+
 function renderIndicators(){
   if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin.</div>');return;}
   var data=kpiFilteredCases(), total=data.length||1, open=data.filter(function(c){return !c.closedAt;}), closed=data.filter(function(c){return c.closedAt;});
@@ -1499,7 +1583,7 @@ function renderIndicators(){
   var nva=wait+dead, vaPct=Math.round(va/Math.max(va+nva,1)*100), fpy=closed.length?Math.round((closed.length-rework)/closed.length*100):0, reworkPct=Math.round(rework/total*100);
   var rows=processRows(data);
   var filterHtml='<section class="filters"><input class="input" type="date" id="kpiFrom"><input class="input" type="date" id="kpiTo"><select class="select" id="kpiProcess"><option value="">Todos los macroprocesos</option>'+Object.keys(processes).map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>';
-  layout(header("Dashboard VSM y KPIs","Indicadores por módulo, fecha, cuello de botella, tiempos, requerimientos y cortes.",'<button class="btn btn-primary" data-action="exportKpiExcel">Exportar informe Excel</button>')+filterHtml+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(lead/total)+'</strong><small>Promedio</small></article><article class="card kpi"><span>% VA</span><strong>'+vaPct+'%</strong><small>Valor agregado</small></article><article class="card kpi"><span>WIP</span><strong>'+open.length+'</strong><small>En proceso</small></article><article class="card kpi"><span>FPY</span><strong>'+Math.max(0,fpy)+'%</strong><small>Correctos primera vez</small></article><article class="card kpi"><span>Reproceso</span><strong>'+reworkPct+'%</strong><small>Con requerimientos</small></article><article class="card kpi"><span>No conformidades</span><strong>'+defects+'</strong><small>Checks no conformes</small></article><article class="card kpi"><span>Cortes</span><strong>'+cutFinished+'/'+cutTotal+'</strong><small>Finalizados / total</small></article><article class="card kpi"><span>Handoffs</span><strong>'+handoffs+'</strong><small>Relevos</small></article></section><section class="grid grid-2" style="margin-top:16px"><article class="chart-card"><div class="chart-title">Tiempo por macroproceso</div>'+bars(rows)+'</article><article class="chart-card"><div class="chart-title">VA vs NVA</div>'+bars([{label:"VA",value:va},{label:"NVA",value:nva},{label:"Espera",value:wait},{label:"Tiempo muerto",value:dead}])+'</article></section><section class="card" style="margin-top:16px"><h3>Tabla VSM por macroproceso</h3><div class="table-wrap"><table><thead><tr><th>Macroproceso</th><th>Casos</th><th>VA</th><th>Espera</th><th>Muerto</th><th>Total</th><th>Req.</th><th>Cortes</th><th>Cuello</th></tr></thead><tbody>'+rows.map(function(r,i){return'<tr><td>'+esc(r.label)+'</td><td>'+r.count+'</td><td>'+fmt(r.active)+'</td><td>'+fmt(r.wait)+'</td><td>'+fmt(r.dead)+'</td><td>'+fmt(r.value)+'</td><td>'+r.requirements+'</td><td>'+r.finishedCuts+'/'+r.cuts+'</td><td>'+(i===0?'Principal':'—')+'</td></tr>';}).join("")+'</tbody></table></div></section>');
+  layout(header("Dashboard VSM y KPIs","Indicadores por módulo, fecha, cuello de botella, tiempos, requerimientos y cortes.",'<button class="btn btn-primary" data-action="exportKpiExcel">Exportar informe Excel</button><button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>')+filterHtml+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(lead/total)+'</strong><small>Promedio</small></article><article class="card kpi"><span>% VA</span><strong>'+vaPct+'%</strong><small>Valor agregado</small></article><article class="card kpi"><span>WIP</span><strong>'+open.length+'</strong><small>En proceso</small></article><article class="card kpi"><span>FPY</span><strong>'+Math.max(0,fpy)+'%</strong><small>Correctos primera vez</small></article><article class="card kpi"><span>Reproceso</span><strong>'+reworkPct+'%</strong><small>Con requerimientos</small></article><article class="card kpi"><span>No conformidades</span><strong>'+defects+'</strong><small>Checks no conformes</small></article><article class="card kpi"><span>Cortes</span><strong>'+cutFinished+'/'+cutTotal+'</strong><small>Finalizados / total</small></article><article class="card kpi"><span>Handoffs</span><strong>'+handoffs+'</strong><small>Relevos</small></article></section><section class="grid grid-2" style="margin-top:16px"><article class="chart-card"><div class="chart-title">Tiempo por macroproceso</div>'+bars(rows)+'</article><article class="chart-card"><div class="chart-title">VA vs NVA</div>'+bars([{label:"VA",value:va},{label:"NVA",value:nva},{label:"Espera",value:wait},{label:"Tiempo muerto",value:dead}])+'</article></section><section class="card" style="margin-top:16px"><h3>Tabla VSM por macroproceso</h3><div class="table-wrap"><table><thead><tr><th>Macroproceso</th><th>Casos</th><th>VA</th><th>Espera</th><th>Muerto</th><th>Total</th><th>Req.</th><th>Cortes</th><th>Cuello</th></tr></thead><tbody>'+rows.map(function(r,i){return'<tr><td>'+esc(r.label)+'</td><td>'+r.count+'</td><td>'+fmt(r.active)+'</td><td>'+fmt(r.wait)+'</td><td>'+fmt(r.dead)+'</td><td>'+fmt(r.value)+'</td><td>'+r.requirements+'</td><td>'+r.finishedCuts+'/'+r.cuts+'</td><td>'+(i===0?'Principal':'—')+'</td></tr>';}).join("")+'</tbody></table></div></section>');
   bindKpiFilters();
 }
 function bars(rows){if(!rows.length)return'<div class="empty">Sin datos.</div>';var max=Math.max.apply(null,rows.map(function(r){return r.value;}))||1;return'<div class="bars">'+rows.map(function(r){return'<div class="bar-row"><span>'+esc(r.label)+'</span><div><b style="width:'+Math.max(4,Math.round(r.value/max*100))+'%"></b></div><strong>'+fmt(r.value)+'</strong></div>';}).join("")+'</div>';}
@@ -1777,6 +1861,7 @@ function bindActions(){
     if(a==="syncCuts")syncCutBridge(id);
     if(a==="notifyOn")requestNotifications();
     if(a==="exportKpiExcel")downloadKpiExcel();
+    if(a==="exportSiesaCuts")exportSiesaPendingCuts();
     if(a==="toggleKpiCase")toggleCaseKpi(id);
     if(a==="deleteCase")deleteCaseHard(id);
   };});
