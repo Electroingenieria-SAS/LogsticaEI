@@ -1,0 +1,14 @@
+{
+  "name": "electroingenieria-trazabilidad-logistica",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "serve": "firebase emulators:start --only hosting",
+    "deploy": "firebase deploy",
+    "deploy:hosting": "firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore:rules"
+  },
+  "devDependencies": {
+    "firebase-tools": "latest"
+  }
+}

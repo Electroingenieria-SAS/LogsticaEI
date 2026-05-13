@@ -1,0 +1,18 @@
+CONTROL DE CORTE DE CABLE - V3.6
+
+Esta versión bloquea el corte cuando el sobrante requiere aprobación.
+
+Flujo operativo:
+1. Operario registra cable, metros a cortar, carrete y sobrante.
+2. Si el sobrante queda =50 m o <50 m, usa ENVIAR APROBACIÓN.
+3. El corte queda bloqueado hasta que Líder Logístico o Gerencia apruebe.
+4. Al aprobarse, el operario puede continuar el corte y registrar hora de inicio y hora final.
+5. El Excel conserva las columnas separadas y la trazabilidad del usuario.
+
+Después de subir estos archivos a GitHub Pages, copie el contenido de firestore.rules en Firebase > Firestore Database > Reglas y publique.
+
+
+Versión 3.8.6: corrige cálculo de sobrante con decimales usando coma y despliegue de aprobación automática por remanente.
+
+
+Versión 3.8.7: cronómetro en vivo para inicio/finalización de corte. No cambia reglas de Firestore.

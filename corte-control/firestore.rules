@@ -1,0 +1,2 @@
+// V4: corte-control ya no usa Firebase separado.
+// El módulo de corte opera desde el Firebase principal y las reglas raíz.

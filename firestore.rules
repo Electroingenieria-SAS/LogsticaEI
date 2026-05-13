@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    function userExists() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function role() {
+      return userDoc().role;
+    }
+
+    function activeUser() {
+      return userExists()
+        && userDoc().isActive == true;
+    }
+
+    function isAdmin() {
+      return activeUser()
+        && role() in ['admin', 'super_admin'];
+    }
+
+    function isManager() {
+      return activeUser()
+        && role() == 'gerencia';
+    }
+
+    function canManageUsers() {
+      return isAdmin() || isManager();
+    }
+
+    function validRole() {
+      return request.resource.data.role in [
+        'admin',
+        'super_admin',
+        'gerencia',
+        'ventas',
+        'jefe_logistica',
+        'lider_logistico',
+        'coordinador_logistico',
+        'aux_logistica',
+        'auxiliar_corte',
+        'caja',
+        'inventarios',
+        'auditoria'
+      ];
+    }
+
+    match /users/{userId} {
+      allow read: if activeUser();
+      allow create: if canManageUsers() && validRole();
+      allow update: if canManageUsers() && validRole();
+      allow delete: if isAdmin();
+    }
+
+    match /cases/{caseId} {
+      allow read, create, update: if activeUser();
+      allow delete: if isAdmin();
+    }
+
+    match /case_events/{eventId} {
+      allow read, create: if activeUser();
+      allow update, delete: if false;
+    }
+  }
+}

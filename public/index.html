@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#061B46">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="EI Logística">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Electroingeniería · Trazabilidad Logística</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./assets/app-icon.svg">
+  <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
+  <link rel="stylesheet" href="./styles.css?v=unificado-firebase-principal-v4">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <main class="boot-screen">
+      <section class="boot-card">
+        <img src="./assets/logo-electroingenieria.jpeg" alt="Electroingeniería">
+        <strong>Cargando trazabilidad integrada</strong>
+        <span>Inicializando flujo documental y corte unificado</span>
+      </section>
+    </main>
+  </div>
+
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script defer src="./firebase-config.js?v=unificado-firebase-principal-v4"></script>
+  <script defer src="./app.js?v=unificado-firebase-principal-v4"></script>
+  <script>
+    window.addEventListener("load", function () {
+      if (!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.register("./service-worker.js", { scope: "./" }).then(function(reg){
+        reg.update();
+        if (reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
+      }).catch(function(){});
+      var refreshed = false;
+      navigator.serviceWorker.addEventListener("controllerchange", function () {
+        if (refreshed) return;
+        refreshed = true;
+        location.reload();
+      });
+    });
+  </script>
+</body>
+</html>

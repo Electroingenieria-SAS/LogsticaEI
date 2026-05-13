@@ -1,0 +1,22 @@
+CONFIGURACIÓN GOOGLE DRIVE - CONTROL CORTE CABLE
+
+Estado: Configurado.
+
+OAuth Client ID:
+125993982318-gn2177d3muf2iip0co9pf9mii7d12cre.apps.googleusercontent.com
+
+Carpeta principal Drive:
+1F9wHqNiakY_36k8w9SV2qotS3SnI1Aql
+
+Correo sugerido para autorizar Drive:
+corteseilogistica@gmail.com
+
+Antes de usar en GitHub Pages:
+1. Verifique que Google Drive API esté habilitada en Google Cloud.
+2. En OAuth Client ID > Authorized JavaScript origins agregue el dominio de GitHub Pages.
+   Ejemplo: https://jeptac.github.io
+3. En OAuth consent screen agregue como usuario de prueba el correo corteseilogistica@gmail.com, si la app está en modo Testing.
+4. Suba todos los archivos de este paquete a la raíz del repositorio.
+5. Abra la app con ?v=420 para evitar caché.
+
+Nota: No se debe subir ni compartir Client Secret. Esta app usa solo Client ID para flujo web.

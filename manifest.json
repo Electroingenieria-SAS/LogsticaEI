@@ -1,0 +1,18 @@
+{
+  "name": "Electroingeniería Trazabilidad Logística Integrada",
+  "short_name": "EI Logística",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F6F8FC",
+  "theme_color": "#061B46",
+  "icons": [
+    {
+      "src": "./assets/app-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
