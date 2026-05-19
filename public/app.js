@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v19_qa_pdf_cortes_fix";
+var storageKey = "ei_trazabilidad_v20_vsm_admin_access_fix";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -159,7 +159,8 @@ function normalizeRole(r){
   return x;
 }
 function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Sin rol";}
-function isAdminRoleValue(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin";}
+function isAdminRoleValue(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="superadministrador";}
+function isPrivilegedKpiRole(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="gerencia"||nr==="jefe_logistica";}
 function isSuperAdminRoleValue(r){return normalizeRole(r)==="super_admin";}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function processOwnerRoles(p){return processes[p] ? processes[p].ownerRoles : [];}
@@ -176,9 +177,9 @@ function isJefeLogistica(){return state.user && normalizeRole(state.user.role)==
 function isExecutive(){return state.user && normalizeRole(state.user.role)==="gerencia";}
 function canManageUsers(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="gerencia");}
 function canApprovePriority(){return state.user && normalizeRole(state.user.role)==="gerencia";}
-function canSeeAll(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="gerencia" || normalizeRole(state.user.role)==="jefe_logistica");}
+function canSeeAll(){return state.user && isPrivilegedKpiRole(state.user.role);}
 function canCreate(){return state.user && (normalizeRole(state.user.role)==="ventas" || isAdminRoleValue(state.user.role));}
-function canSeeKpis(){return canSeeAll();}
+function canSeeKpis(){return state.user && isPrivilegedKpiRole(state.user.role);}
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
   if(canSeeAll())return true;
@@ -424,7 +425,8 @@ function applyProfileFromDoc(fbUser,doc){
   if(!doc.exists)throw new Error("El usuario existe en Authentication, pero no tiene perfil en Firestore users/"+fbUser.uid+". Cree ese documento con role e isActive:true.");
   var p=doc.data();
   if(p.isActive===false)throw new Error("Usuario inactivo en Firestore.");
-  state.user={uid:fbUser.uid,email:fbUser.email||p.email||"",name:p.name||p.email||fbUser.email||"Usuario",role:p.role||"coordinador_logistico"};
+  var normalizedRole=normalizeRole(p.role||"coordinador_logistico");
+  state.user={uid:fbUser.uid,email:fbUser.email||p.email||"",name:p.name||p.email||fbUser.email||"Usuario",role:normalizedRole,rawRole:p.role||normalizedRole};
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   state.route=defaultRoute(state.user.role);
 }
@@ -1753,7 +1755,7 @@ function enforceSiesaExportIfNeeded(c){
 }
 
 function renderIndicators(){
-  if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin.</div>');return;}
+  if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin. Rol detectado: '+esc(state.user?state.user.role:'sin sesión')+'</div>');return;}
   var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows;
   var filterHtml='<section class="card" style="margin-bottom:16px"><div class="grid grid-3"><label class="field"><span>Desde</span><input class="input" type="date" id="kpiFrom"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="kpiTo"></label><label class="field"><span>Macroproceso</span><select class="select" id="kpiProcess"><option value="">Todos</option>'+FLOW.map(function(p){return'<option value="'+p+'">'+esc(processTitle(p))+'</option>';}).join('')+'</select></label></div></section>';
   var bottleneck=s.bottleneck?esc(s.bottleneck.label):"Sin datos";
@@ -2133,6 +2135,8 @@ function bindActions(){
 
 function render(){
   if(!state.user){renderLogin();return;}
+  if(state.route==="vsm"||state.route==="kpis"||state.route==="indicadores")state.route="indicators";
+  if(state.route==="administracion"||state.route==="administrador")state.route="admin";
   startReminderLoop();
   if(state.route==="corte_cable"){renderCutsQueue();return;}
   if(processes[state.route]){state.filters.process=state.route;renderCases();return;}
