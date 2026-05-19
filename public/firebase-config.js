@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v16-siesa-compromiso"
+  version: "flujo-unificado-v17-vsm-compromiso"
 };

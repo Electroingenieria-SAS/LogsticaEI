@@ -214,3 +214,18 @@ button,input,select,textarea{font:inherit} button{border:0;cursor:pointer} texta
 @media(max-width:900px){.cut-grid,.cut-grid-2,.cut-grid-3,.cut-grid-4,.cut-checks{grid-template-columns:1fr}.cut-timer-card{display:grid}.modal:has(.cut-full){max-height:94vh}}
 .section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.section-title h3{margin:0}.section-title p{margin:4px 0 0;color:#64748b;font-size:.9rem}.evidence-link{font-weight:800;color:#0b4db3}.drive-warning{border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:16px;padding:12px;margin:12px 0;font-weight:800}
 @media(max-width:760px){.section-title{display:block}.section-title .btn{margin-top:10px;width:100%}}
+
+/* V17: chequeos de compromiso y ratificación */
+.check-card{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:14px 16px;
+  border:1px solid #dbe7f4;
+  border-radius:16px;
+  background:#fff;
+  font-weight:800;
+  color:#061B46;
+}
+.check-card input{width:18px;height:18px;accent-color:#0b4ab3;}
+.notice.danger{border-color:#fecaca;background:#fff1f2;color:#991b1b;}
