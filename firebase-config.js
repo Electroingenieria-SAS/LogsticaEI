@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v17-vsm-compromiso"
+  version: "flujo-unificado-v19-qa-pdf-cortes-fix"
 };

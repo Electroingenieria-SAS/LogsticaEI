@@ -28,11 +28,11 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return activeUser() && role() == 'admin';
+      return activeUser() && role() in ['admin', 'administrador'];
     }
 
     function isSuperAdmin() {
-      return activeUser() && role() in ['super_admin', 'super_administrador'];
+      return activeUser() && role() in ['super_admin', 'super_administrador', 'super admin', 'superadmin', 'super-administrador'];
     }
 
     function isAdminOrSuper() {
@@ -60,6 +60,10 @@ service cloud.firestore {
         'admin',
         'super_admin',
         'super_administrador',
+        'super admin',
+        'superadmin',
+        'super-administrador',
+        'administrador',
         'gerencia',
         'ventas',
         'jefe_logistica',
