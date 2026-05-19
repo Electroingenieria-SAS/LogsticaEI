@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v20_vsm_admin_access_fix";
+var storageKey = "ei_trazabilidad_v21_vsm_functional_fix";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -406,7 +406,7 @@ function mobileFullMenuHtml(){
 function layout(content){
   var rs=routes();
   appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
-  qsa("[data-route]").forEach(function(b){b.onclick=function(){state.route=b.getAttribute("data-route");closeMobileMenu();render();};});
+  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
   bindActions();
 }
 
@@ -1558,6 +1558,38 @@ function renderApprovals(){
   layout(header(title,subtitle)+cutHtml+caseList(list));
 }
 
+
+function bars(items){
+  items=(items||[]).filter(function(x){return x&&Number.isFinite(Number(x.value||0));});
+  if(!items.length)return '<div class="empty" style="padding:12px">Sin datos suficientes para graficar.</div>';
+  var max=items.reduce(function(m,x){return Math.max(m,Number(x.value||0));},0)||1;
+  return '<div class="bars">'+items.map(function(x){
+    var val=Number(x.value||0);
+    var w=clamp((val/max)*100,0,100);
+    return '<div class="bar-row"><span>'+esc(x.label||'Sin etiqueta')+'</span><div><b style="width:'+w.toFixed(1)+'%"></b></div><small>'+fmt(val)+'</small></div>';
+  }).join('')+'</div>';
+}
+
+function modal(title,body){
+  return '<section class="modal"><div class="modal-head"><div><h3>'+esc(title||'Detalle')+'</h3></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+(body||'')+'</section>';
+}
+
+function drawer(html){
+  var d=qs('#drawer');
+  if(!d){d=document.createElement('div');d.id='drawer';d.className='drawer';document.body.appendChild(d);}
+  d.innerHTML=html||'';
+  d.classList.add('open');
+  qsa('[data-action="closeDrawer"]',d).forEach(function(btn){btn.onclick=function(ev){ev.preventDefault();closeDrawer();};});
+  d.onclick=function(ev){if(ev.target===d)closeDrawer();};
+}
+
+function closeDrawer(){
+  var d=qs('#drawer');
+  if(!d)return;
+  d.classList.remove('open');
+  window.setTimeout(function(){if(!d.classList.contains('open'))d.innerHTML='';},120);
+}
+
 function renderUsers(){
   if(!canManageUsers()){layout(header("Usuarios","Acceso restringido.")+'<div class="empty">Solo admin y gerencia.</div>');return;}
   var ger=state.users.filter(function(u){return u.role==="gerencia";}).length;
@@ -2120,6 +2152,7 @@ function bindActions(){
     if(a==="clearPwa")clearPwaCache();
     if(a==="openMobileMenu")openMobileMenu();
     if(a==="closeMobileMenu")closeMobileMenu();
+    if(a==="closeDrawer")closeDrawer();
     if(a==="supervise")openSupervisorNote(id);
     if(a==="receptionPdf")openReceptionPdf(id);
     if(a==="planCuts")openCutsPlanner(id);
