@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v20-vsm-admin-access-fix"
+  version: "flujo-unificado-v22-sin-compromisos"
 };

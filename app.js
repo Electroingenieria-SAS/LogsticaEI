@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v21_vsm_functional_fix";
+var storageKey = "ei_trazabilidad_v22_flujo_sin_compromisos";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -43,10 +43,8 @@ var roles = {
 
 var FLOW = [
   "recepcion_pedidos",
-  "compromiso_mercancia",
   "alistamiento",
   "corte_cable",
-  "ratificacion_compromiso",
   "facturacion",
   "caja",
   "cliente_punto",
@@ -59,15 +57,15 @@ var FLOW = [
 var processes = {
   recepcion_pedidos:{
     code:"S-PR-2", title:"Recepción de pedidos", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RP",
-    checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Cortes automáticos detectados si aplica","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Observaciones revisadas","Pedido listo para compromiso inicial"],
-    waits:["Falta PDF del pedido","PDF ilegible","Falta referencia","Falta cantidad","Falta unidad de medida","Falta tipo de entrega","Falta forma de pago","Falta autorización comercial","Falta aclaración del asesor","Pedido no coincide con lo registrado por ventas"],
-    next:["compromiso_mercancia"]
+    checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Cortes automáticos detectados si aplica","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Mercancía comprometida en SIESA/ERP","Observaciones revisadas","Pedido listo para alistamiento"],
+    waits:["Falta PDF del pedido","PDF ilegible","Falta referencia","Falta cantidad","Falta unidad de medida","Falta tipo de entrega","Falta forma de pago","Mercancía sin comprometer","Falta autorización comercial","Falta aclaración del asesor","Pedido no coincide con lo registrado por ventas"],
+    next:["alistamiento"]
   },
   alistamiento:{
     code:"S-PR-4", title:"Alistamiento de mercancía", ownerRoles:["aux_logistica"], icon:"AL",
-    checklist:["Pedido recibido desde recepción","Productos y cantidades ubicadas","Referencia coincide","Descripción coincide","Cantidad coincide","Unidad de medida coincide","Ubicación correcta","Estado físico conforme","Líneas que requieren corte definidas","Cortes enviados al módulo de corte si aplica","Cortes terminados o en seguimiento","Mercancía lista para ratificar compromiso"],
+    checklist:["Pedido recibido desde recepción","Productos y cantidades ubicadas","Referencia coincide","Descripción coincide","Cantidad coincide","Unidad de medida coincide","Ubicación correcta","Estado físico conforme","Líneas que requieren corte definidas","Cortes enviados al módulo de corte si aplica","Cortes terminados o en seguimiento","Pedido listo para facturación"],
     waits:["No se encuentra mercancía","Cantidad insuficiente","Referencia diferente","Unidad de medida diferente","Ubicación errada","Mercancía averiada","Remanente crítico","Requiere aprobación logística","Requiere ajuste de ventas","Corte pendiente por finalizar"],
-    next:["ratificacion_compromiso"]
+    next:["facturacion"]
   },
   corte_cable:{
     code:"S-PR-9", title:"Corte de cable", ownerRoles:["auxiliar_corte"], icon:"CT",
@@ -76,20 +74,22 @@ var processes = {
     next:[]
   },
   compromiso_mercancia:{
-    code:"S-PR-4", title:"Compromiso inicial de mercancía", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"CM",
+    hidden:true, legacy:true,
+    code:"S-PR-4", title:"Compromiso inicial de mercancía (legacy)", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"CM",
     checklist:["Pedido recibido desde recepción","PDF revisado contra pedido","Pedido correcto para comprometer","Referencias principales identificadas","Cantidades revisadas","Cortes automáticos identificados si aplica","Mercancía comprometida/bloqueada en SIESA/ERP","Novedades de devolución o cancelación descartadas","Pedido liberado para alistamiento"],
     waits:["No se logró comprometer mercancía","Producto ya fue vendido o reservado","Cantidad insuficiente para comprometer","Devolución reportada","Pedido cancelado por ventas o cliente","Error al comprometer en SIESA/ERP","Requiere autorización logística","Requiere corrección de Ventas"],
     next:["alistamiento"]
   },
   ratificacion_compromiso:{
-    code:"S-PR-4", title:"Ratificar compromiso antes de facturar", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RC",
+    hidden:true, legacy:true,
+    code:"S-PR-4", title:"Ratificación compromiso (legacy)", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RC",
     checklist:["Alistamiento validado","Cortes finalizados si aplica","Producto correcto contra PDF","Referencia correcta","Cantidad correcta","Unidad de medida correcta","Sin devolución pendiente","Sin cancelación pendiente","Compromiso inicial revisado","Compromiso ratificado en SIESA/ERP","Pedido listo para facturación"],
     waits:["Diferencia entre pedido y compromiso","Hubo devolución","Pedido cancelado","Producto liberado por error","Error al ratificar compromiso en SIESA/ERP","Requiere ajuste de ventas","Requiere autorización logística","Corte pendiente por finalizar"],
     next:["facturacion"]
   },
   facturacion:{
     code:"S-PR-5", title:"Facturación del pedido", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"FC",
-    checklist:["Pedido recibido para facturar","Tipo de pedido validado","Si es PVC, continúa facturación logística","Si no es PVC, relevar a caja","Factura generada correctamente","Documento validado","Tipo de entrega seleccionado","Factura entregada a despacho"],
+    checklist:["Pedido recibido para facturar","Compromiso ratificado por facturación","Tipo de pedido validado","Si es PVC, continúa facturación logística","Si no es PVC, relevar a caja","Factura generada correctamente","Documento validado","Tipo de entrega seleccionado","Factura entregada a despacho"],
     waits:["Pago pendiente","Soporte incompleto","Error en Siesa","Error de factura electrónica","Documento rechazado","Falta autorización de cartera","Cliente con datos incompletos"],
     next:["caja","cliente_punto","cliente_recoge","despacho_local","despacho_nacional"]
   },
@@ -164,6 +164,7 @@ function isPrivilegedKpiRole(r){var nr=normalizeRole(r);return nr==="admin"||nr=
 function isSuperAdminRoleValue(r){return normalizeRole(r)==="super_admin";}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function processOwnerRoles(p){return processes[p] ? processes[p].ownerRoles : [];}
+function activeProcessKeys(){return Object.keys(processes).filter(function(k){return !processes[k].hidden;});}
 function canAccessProcess(role,p){
   if(isAdminRoleValue(role))return true;
   var nr=normalizeRole(role);
@@ -212,7 +213,7 @@ function evidenceTypeOptions(){
   return opts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("");
 }
 function defaultEvidenceTypeForProcess(p){
-  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",ratificacion_compromiso:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
+  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
   return map[p]||"EVIDENCIA_PROCESO";
 }
 function persistEvidenceDocument(c,up,detail){
@@ -352,11 +353,11 @@ function routes(){
   var r=normalizeRole(state.user.role);
   if(r==="auxiliar_corte")return{main:["corte_cable"],processes:[]};
   if(r==="gerencia")return{main:["indicators","approvals","users","admin","dashboard"],processes:[]};
-  if(isAdminRoleValue(r))return{main:["dashboard","create","cases","requirements","approvals","indicators","users","admin"],processes:Object.keys(processes)};
+  if(isAdminRoleValue(r))return{main:["dashboard","create","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="jefe_logistica"){
-    return{main:["dashboard","cases","requirements","approvals","indicators","admin"],processes:Object.keys(processes).filter(function(k){return k!=="caja";})};
+    return{main:["dashboard","cases","requirements","approvals","indicators","admin"],processes:activeProcessKeys().filter(function(k){return k!=="caja";})};
   }
-  var own=Object.keys(processes).filter(function(k){return canAccessProcess(r,k);});
+  var own=activeProcessKeys().filter(function(k){return canAccessProcess(r,k);});
   return{main:["dashboard"].concat(canCreate()?["create"]:[]).concat(["requirements"]),processes:own};
 }
 
@@ -474,7 +475,7 @@ function caseList(list){
 }
 
 function renderCases(){
-  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+Object.keys(processes).map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+caseList(visibleCases());
+  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+activeProcessKeys().map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+caseList(visibleCases());
   layout(content);
   qs("#fSearch").value=state.filters.search;qs("#fStatus").value=state.filters.status;qs("#fProcess").value=state.filters.process;
   ["fSearch","fStatus","fProcess"].forEach(function(id){qs("#"+id).oninput=function(){state.filters.search=qs("#fSearch").value;state.filters.status=qs("#fStatus").value;state.filters.process=qs("#fProcess").value;renderCases();};});
@@ -946,7 +947,7 @@ function extractPedidoItems(text){
 
 function createCase(fd){
   var created=now(), p="recepcion_pedidos", def=processes[p], priority=fd.get("priorityMode")==="gerencia";
-  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Coordinador logístico / Líder logístico",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE_COMPROMISO_INICIAL",initialCommitmentDetail:""},processStats:{}};
+  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Coordinador logístico / Líder logístico",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE_RECEPCION",initialCommitmentDetail:""},processStats:{}};
   procStats(c,p).startedAt=created;
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   def.checklist.forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"?"ok":"pending";});
@@ -967,16 +968,14 @@ function renderDetail(id){
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar / releer PDF recepción</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="compromiso_mercancia"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="initialCommit" data-id="'+c.id+'">Comprometer mercancía</button><button class="btn btn-danger" data-action="close" data-id="'+c.id+'">Cancelar / cerrar por devolución</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="ratificacion_compromiso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="ratifyCommit" data-id="'+c.id+'">Ratificar compromiso</button><button class="btn btn-danger" data-action="close" data-id="'+c.id+'">Cancelar / cerrar por devolución</button>';
     if(c.status==="pendiente_gerencia"&&normalizeRole(state.user.role)==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)){
       if(c.currentProcess==="facturacion")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
       else if(c.currentProcess==="caja")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Confirmar caja / enviar a despacho</button>';
-      else if(c.currentProcess!=="compromiso_mercancia"&&c.currentProcess!=="ratificacion_compromiso")actions+=nextActionButtons(c);
+      else actions+=nextActionButtons(c);
     }
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c)&&c.currentProcess!=="compromiso_mercancia"&&c.currentProcess!=="ratificacion_compromiso")actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
+    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
   var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
   layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+orderItemsPanel(c)+cutsPanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
@@ -986,13 +985,13 @@ function nextActionButtons(c){
   var next=(processes[c.currentProcess]||{}).next||[];
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){
     var disabled="", label="Enviar a "+processTitle(n), cls="btn btn-primary";
-    if(c.currentProcess==="recepcion_pedidos" && n==="compromiso_mercancia" && !receptionPdfIsComplete(c)){cls="btn btn-gold";label="PDF obligatorio antes de compromiso";}
-    if(c.currentProcess==="alistamiento" && n==="ratificacion_compromiso")label="Enviar a ratificación del compromiso";
+    if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento" && !receptionPdfIsComplete(c)){cls="btn btn-gold";label="PDF y compromiso obligatorios";}
+    if(c.currentProcess==="alistamiento" && n==="facturacion")label="Enviar a facturación";
     return '<button class="'+cls+'" data-action="transfer" data-next="'+n+'" data-id="'+c.id+'">'+esc(label)+'</button>';
   }).join("");
 }
-function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0 || c.currentProcess==="compromiso_mercancia" || c.currentProcess==="ratificacion_compromiso";}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Compromiso inicial",df.initialCommitmentStatus||"Pendiente"],["Detalle compromiso inicial",df.initialCommitmentDetail||""],["Ratificación compromiso",df.finalCommitmentStatus||"Pendiente"],["Detalle ratificación",df.finalCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -1114,8 +1113,9 @@ function applyReceptionChecklistFromPdf(c, parsed){
     "Tipo PVC/PVN validado":(c.orderKind||parsed.orderKind)?"ok":"pending",
     "Tipo de entrega definido":(c.requestedDelivery||parsed.requestedDelivery)?"ok":"pending",
     "Forma de pago definida":(c.paymentCondition||parsed.paymentCondition)?"ok":"pending",
+    "Mercancía comprometida en SIESA/ERP":df.initialCommitmentStatus==="SI"?"ok":"pending",
     "Observaciones revisadas":"ok",
-    "Pedido listo para compromiso inicial":(df.receptionPdfLoadedAt && (c.reference||parsed.orderNumber) && (c.client||parsed.client) && items.length>0)?"ok":"pending"
+    "Pedido listo para alistamiento":(df.receptionPdfLoadedAt && df.initialCommitmentStatus==="SI" && (c.reference||parsed.orderNumber) && (c.client||parsed.client) && items.length>0)?"ok":"pending"
   };
   Object.keys(vals).forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]=vals[k];});
 }
@@ -1134,19 +1134,19 @@ function applyAlistamientoAutoChecklist(c){
     "Líneas que requieren corte definidas":cuts.length || items.every(function(it){return !it.requiereCorte;})?"ok":"pending",
     "Cortes enviados al módulo de corte si aplica":cuts.length || items.every(function(it){return !it.requiereCorte;})?"ok":"pending",
     "Cortes terminados o en seguimiento":cuts.length? (cd.done===cd.total?"ok":"pending") : "ok",
-    "Mercancía lista para ratificar compromiso":"pending"
+    "Pedido listo para facturación":cuts.length? (cd.done===cd.total?"ok":"pending") : "ok"
   };
   Object.keys(vals).forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]=vals[k];});
 }
 function receptionPdfIsComplete(c){
   var df=c.documentFlow||{};
   var items=c.orderItems||[];
-  return !!(df.receptionPdfLoadedAt && df.receptionPdfDriveUrl && c.reference && c.client && items.length>0);
+  return !!(df.receptionPdfLoadedAt && df.receptionPdfDriveUrl && df.initialCommitmentStatus==="SI" && c.reference && c.client && items.length>0);
 }
 
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los cortes detectados por unidades en metros. El compromiso de mercancía se hace en el siguiente módulo.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><button class="btn btn-primary" type="submit">Guardar PDF, datos, líneas y cortes automáticos</button></form>'));
+  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los cortes detectados por unidades en metros. En esta misma recepción se registra el compromiso de mercancía para pasar directo a alistamiento.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><section class="card" style="margin-top:12px"><h3>Compromiso de mercancía en recepción</h3><label class="check-card"><input type="checkbox" name="merchCommitted" required> Confirmo que la mercancía fue comprometida/bloqueada en SIESA/ERP</label><label class="field"><span>Observación del compromiso</span><textarea class="textarea" name="commitDetail" placeholder="Ej.: mercancía comprometida en SIESA, parcial con novedad, validación realizada contra el PDF."></textarea></label></section><button class="btn btn-primary" type="submit">Guardar PDF, compromiso, datos, líneas y cortes automáticos</button></form>'));
   var parsed=null,fileName="",selectedFile=null,previewUrl="";
   qs("#receptionPdfInput").onchange=function(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -1169,13 +1169,14 @@ function openReceptionPdf(id){
     e.preventDefault();
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
     var fd=new FormData(e.target);
+    if(!fd.get("merchCommitted")){alert("Recepción debe confirmar que la mercancía fue comprometida/bloqueada antes de continuar a alistamiento.");return;}
     var filledFields=mergePdfExtractionIntoCase(c,parsed);
-    c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus=c.documentFlow.initialCommitmentStatus||"PENDIENTE_COMPROMISO_INICIAL";c.documentFlow.initialCommitmentDetail=c.documentFlow.initialCommitmentDetail||"";c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
+    c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus="SI";c.documentFlow.initialCommitmentDetail=fd.get("commitDetail")||"Mercancía comprometida/bloqueada en SIESA/ERP desde recepción.";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
     var added=autoCreateCutsFromItems(c,state.user.name);
     applyReceptionChecklistFromPdf(c,parsed);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
       c.documentFlow.receptionPdfDriveUrl=up.url;c.documentFlow.receptionPdfDriveId=up.fileId;c.documentFlow.receptionPdfDriveFolder=up.folderPath||up.folder;
-      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos.");
+      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos, con mercancía comprometida. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos.");
       return persistCase(c,{type:"RECEPTION_PDF_EXTRACTED",detail:"PDF leído y guardado en Drive. Pedido: "+(c.reference||"")+". Campos autollenados: "+(filledFields.length?filledFields.join(", "):"sin campos vacíos pendientes")+". Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
     }).then(function(){if(previewUrl)URL.revokeObjectURL(previewUrl);closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
@@ -1468,8 +1469,8 @@ function handleCutAction(c,cut,action){
     var event={type:"CUT_REGISTERED",detail:"Corte registrado: "+(cut.code||cut.id)+" · "+(cut.durationText||"")};
     if(pending.length===0 && (c.currentProcess==="alistamiento"||c.currentProcess==="corte_cable")){
       stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=now();
-      c.currentProcess="ratificacion_compromiso";c.status="asignado";c.assignedRole=primaryOwnerRole("ratificacion_compromiso");c.assignedName=processOwnerTitle("ratificacion_compromiso");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.ratificacion_compromiso.checklist.forEach(function(x){c.checklist[x]="pending";});
-      event.detail+=". Todos los cortes finalizados; pasa a Ratificar compromiso antes de facturar.";
+      c.currentProcess="facturacion";c.status="asignado";c.assignedRole=primaryOwnerRole("facturacion");c.assignedName=processOwnerTitle("facturacion");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.facturacion.checklist.forEach(function(x){c.checklist[x]="pending";});if(c.checklist["Compromiso ratificado por facturación"]!==undefined)c.checklist["Compromiso ratificado por facturación"]="pending";
+      event.detail+=". Todos los cortes finalizados; pasa a Facturación. La facturación ratifica el compromiso de mercancía.";
     }else{
       c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.status="asignado";
     }
@@ -1955,6 +1956,7 @@ function openDelivery(id){
     e.preventDefault();
     var fd=new FormData(e.target), next=fd.get("next"), billingType=fd.get("billingType")||"CAJA_OK";
     c.deliveryType=next;
+    if(c.currentProcess==="facturacion"){c.documentFlow=c.documentFlow||{};c.documentFlow.finalCommitmentStatus="RATIFICADO_POR_FACTURACION";c.documentFlow.finalCommitmentDetail=(fd.get("detail")||"") || "Al facturar se ratifica el compromiso de mercancía.";c.documentFlow.finalCommitmentAt=now();c.documentFlow.finalCommitmentBy=state.user.name;if(c.checklist&&c.checklist["Compromiso ratificado por facturación"]!==undefined)c.checklist["Compromiso ratificado por facturación"]="ok";}
     if(!isCaja && billingType==="NO_PVC"){
       c.pendingDeliveryType=next;
       c.billingType="NO_PVC";
@@ -2005,9 +2007,10 @@ function reject(id){
 function accept(id){var c=caseById(id);startActive(c);persistCase(c,{type:"CASE_ACCEPTED",detail:"Caso aceptado por "+state.user.name}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});}
 function transfer(id,next){
   var c=caseById(id);
-  if(c.currentProcess==="recepcion_pedidos" && next!=="compromiso_mercancia"){alert("El flujo es obligatorio: Recepción de pedidos → Compromiso inicial de mercancía.");return;}
-  if(next==="compromiso_mercancia" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: debe cargar el PDF oficial, leerlo correctamente, guardar el PDF en Drive y detectar las líneas del pedido.");return;}
-  if(c.currentProcess==="alistamiento" && next!=="ratificacion_compromiso"){alert("Después de alistamiento el flujo obligatorio es Ratificación del compromiso de mercancía.");return;}
+  if(c.currentProcess==="recepcion_pedidos" && next!=="alistamiento"){alert("El flujo obligatorio es: Recepción de pedidos → Alistamiento. El compromiso de mercancía se registra dentro de Recepción.");return;}
+  if(next==="alistamiento" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: debe cargar el PDF oficial, leerlo correctamente, guardarlo en Drive, detectar las líneas del pedido y confirmar que la mercancía fue comprometida.");return;}
+  if(c.currentProcess==="alistamiento" && next!=="facturacion"){alert("Después de alistamiento el flujo continúa directamente a Facturación. Si hay cortes, primero deben quedar registrados.");return;}
+  if(c.currentProcess==="alistamiento" && next==="facturacion"){var cd=cutDoneCount(c);if(cd.total>0 && cd.done<cd.total){alert("No puede enviar a facturación: hay cortes pendientes por finalizar y registrar.");return;}}
   assignToProcess(c,next,"Relevo a "+processTitle(next)).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function updateCheck(el){
