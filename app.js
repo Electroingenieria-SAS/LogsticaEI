@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v37_pdf_simple_ubicacion";
+var storageKey = "ei_trazabilidad_v38_pdf_descripcion_completa";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1035,7 +1035,13 @@ function strictHeaderX(groups, pageMin, pageMax){
   return cols;
 }
 function strictJoin(items){
-  return cleanPdfValue((items||[]).slice().sort(function(a,b){return b.y-a.y || a.x-b.x;}).map(function(it){return it.text;}).join(' '));
+  var arr=(items||[]).slice().sort(function(a,b){
+    if(Math.abs((b.y||0)-(a.y||0))>1.8)return (b.y||0)-(a.y||0);
+    return (a.x||0)-(b.x||0);
+  });
+  // Une todos los fragmentos de una celda PDF sin perder palabras intermedias.
+  // El problema anterior era que, al verse en un input angosto, parecía tomar solo la última palabra.
+  return cleanPdfValue(arr.map(function(it){return it.text;}).join(' '));
 }
 function strictPick(items,rx){
   var sorted=(items||[]).slice().sort(function(a,b){return a.x-b.x;});
@@ -1466,7 +1472,9 @@ function lineLooksHeader(line){
   return /(valor\s*unit|valor\s*parcial|subtotal|iva|total\s|descuento|vendedor|forma\s+de\s+pago|referencia\s+descripci|cantidad\s+unidad|pedido\s+de\s+venta|orden\s+de\s+entrega|nit\s|cliente\s*:|direcci[oó]n\s*:|elaborado|aprobado|recibido|pagina|página)/i.test(line);
 }
 function cleanDesc(desc){
-  return cleanPdfValue(String(desc||"").replace(/\b(?:VR|VALOR|UNITARIO|PARCIAL|DTO|IVA|SUBTOTAL|TOTAL)\b.*$/i,""));
+  var s=cleanPdfValue(String(desc||"").replace(/\b(?:VR|VALOR|UNITARIO|PARCIAL|DTO|IVA|SUBTOTAL|TOTAL)\b.*$/i,""));
+  s=s.replace(/\bPARQUE\s+INDUSTRIAL\b/gi,"").replace(/\s+/g," " ).trim();
+  return s;
 }
 function refFromBefore(before){
   var tokens=cleanPdfValue(before).split(/\s+/).filter(Boolean);
@@ -1576,10 +1584,17 @@ function parseStructuredPipeRow(line, seen, items){
   var before=cells.slice(0,qtyIdx);
   if(before.length<2)return false;
   var ref=before[0];
-  var desc=before[1];
-  var middle=parseMiddleColumns(before.slice(2));
-  // Se conserva lo operativo requerido más ubicación para facilitar alistamiento.
-  addPdfItem(items,seen,ref,desc,qty,unit,line,"Fila PDF estructurada: Referencia, Descripción, Cantidad, U.M. y Ubicación.",{ubicacion:middle.ubicacion});
+  // La descripción puede venir dividida en varias celdas o fragmentos.
+  // Se toma todo el texto entre Referencia y las columnas operativas finales, evitando bodega/ubicación si son detectables.
+  var middle=before.slice(1);
+  var ubicacion="";
+  for(var bi=middle.length-1;bi>=0;bi--){
+    if(looksLikeLocationCode(middle[bi])){ubicacion=middle[bi];middle.splice(bi,1);break;}
+  }
+  // Quita bodega típica para que PARQUE INDUSTRIAL no contamine descripción.
+  middle=middle.filter(function(x){return !/^PARQUE(?:\s+INDUSTRIAL)?$/i.test(cleanPdfValue(x));});
+  var desc=cleanDesc(middle.join(' '));
+  addPdfItem(items,seen,ref,desc,qty,unit,line,"Fila PDF estructurada: Referencia, Descripción completa, Cantidad, U.M. y Ubicación.",{ubicacion:ubicacion});
   return true;
 }
 
@@ -2172,24 +2187,63 @@ function recalcReceptionItemFlags(it){
   it.detectionReason=it.detectionReason || (it.manualEntry?"Línea agregada/corregida manualmente en recepción":"Línea detectada y validada en recepción");
   return it;
 }
+function receptionReadCell(name, idx, value, cls){
+  value=cleanPdfValue(value||"");
+  return '<div class="read-cell '+(cls||'')+'">'+esc(value||'—')+'</div><input type="hidden" name="'+name+'_'+idx+'" value="'+esc(value)+'">';
+}
+function receptionEditCell(name, idx, value, placeholder, cls){
+  return '<input class="input input-sm '+(cls||'')+'" name="'+name+'_'+idx+'" value="'+esc(value||"")+'" placeholder="'+esc(placeholder||"")+'">';
+}
 function receptionItemRowHtml(it, idx){
   it=recalcReceptionItemFlags(Object.assign({},it||{}));
+  var edit=!!it._editing || !!it.manualEntry;
   var decision=it.posibleCorte?'<select class="select" name="itemDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.decisionCorteRecepcion!=="CARRETO_COMPLETO"?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO" '+(it.decisionCorteRecepcion==="CARRETO_COMPLETO"?'selected':'')+'>No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span><input type="hidden" name="itemDecision_'+idx+'" value="NO_APLICA">';
-  return '<tr data-reception-item-row="'+idx+'"><td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td><td><input class="input input-sm" name="itemRef_'+idx+'" value="'+esc(it.referencia||"")+'" placeholder="Referencia"></td><td><input class="input input-sm input-desc" name="itemDesc_'+idx+'" value="'+esc(it.descripcion||"")+'" placeholder="Descripción del material"></td><td><input class="input input-sm" name="itemQty_'+idx+'" value="'+esc(it.cantidad||"")+'" placeholder="Cantidad"></td><td><input class="input input-sm" name="itemUnit_'+idx+'" value="'+esc(it.unidad||"")+'" placeholder="U.M."></td><td><input class="input input-sm" name="itemLoc_'+idx+'" value="'+esc(it.ubicacion||"")+'" placeholder="Ubicación"></td><td>'+decision+'</td><td><input class="input input-sm" name="itemObs_'+idx+'" value="'+esc(it.receptionObservation||"")+'" placeholder="Corrección / observación"></td></tr>';
+  var cells='';
+  cells+='<td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td>';
+  if(edit){
+    cells+='<td>'+receptionEditCell('itemRef',idx,it.referencia,'Referencia')+'</td>';
+    cells+='<td>'+receptionEditCell('itemDesc',idx,it.descripcion,'Descripción completa del material','input-desc')+'</td>';
+    cells+='<td>'+receptionEditCell('itemQty',idx,it.cantidad,'Cantidad')+'</td>';
+    cells+='<td>'+receptionEditCell('itemUnit',idx,it.unidad,'U.M.')+'</td>';
+    cells+='<td>'+receptionEditCell('itemLoc',idx,it.ubicacion,'Ubicación')+'</td>';
+    cells+='<td>'+decision+'</td>';
+    cells+='<td>'+receptionEditCell('itemObs',idx,it.receptionObservation,'Observación')+'</td>';
+    cells+='<td><span class="chip success">Editando</span></td>';
+  }else{
+    cells+='<td>'+receptionReadCell('itemRef',idx,it.referencia,'ref-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemDesc',idx,it.descripcion,'desc-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemQty',idx,it.cantidad,'qty-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemUnit',idx,it.unidad,'unit-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemLoc',idx,it.ubicacion,'loc-cell')+'</td>';
+    cells+='<td>'+decision+'</td>';
+    cells+='<td>'+receptionReadCell('itemObs',idx,it.receptionObservation,'obs-cell')+'</td>';
+    cells+='<td><button class="btn btn-small" type="button" data-reception-edit="'+idx+'">Editar</button></td>';
+  }
+  return '<tr data-reception-item-row="'+idx+'">'+cells+'</tr>';
 }
 function renderReceptionItemsEditor(parsed,c){
   var items=(parsed.items||[]);
   var auto=items.filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
   var rows=items.map(function(it,idx){return receptionItemRowHtml(it,idx);}).join('');
-  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura enfocada:</strong> la app solo debe identificar y guardar <strong>Referencia, Descripción, Cantidad, U.M. y Ubicación</strong>. No se muestran bodega, valores ni columnas contables. Revise, corrija, elimine o agregue líneas antes de guardar.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Candidatos de corte</small><strong>'+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table"><thead><tr><th>Usar</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="8">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
+  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura enfocada:</strong> se valida únicamente <strong>Referencia, Descripción completa, Cantidad, U.M. y Ubicación</strong>. La tabla queda en modo lectura para ver el texto completo; use <strong>Editar</strong> solo si debe corregir una fila.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Candidatos de corte</small><strong>'+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table clean-lines-table"><thead><tr><th>Usar</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th><th>Acción</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="9">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
 }
 function bindReceptionItemsEditor(parsed,c){
+  qsa('[data-reception-edit]').forEach(function(btn){
+    btn.onclick=function(){
+      var fd=new FormData(qs('#recPdfForm'));
+      parsed.items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});
+      var idx=Number(btn.getAttribute('data-reception-edit'));
+      if(parsed.items[idx])parsed.items[idx]._editing=true;
+      qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);
+      bindReceptionItemsEditor(parsed,c);
+    };
+  });
   var btn=qs('#addReceptionItemBtn');
   if(!btn)return;
   btn.onclick=function(){
     var fd=new FormData(qs('#recPdfForm'));
-    parsed.items=collectReceptionItemsFromForm(fd,true);
-    parsed.items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',ubicacion:'',requiereCorte:false,posibleCorte:false,decisionCorteRecepcion:'NO_APLICA',manualEntry:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});
+    parsed.items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});
+    parsed.items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',ubicacion:'',requiereCorte:false,posibleCorte:false,decisionCorteRecepcion:'NO_APLICA',manualEntry:true,_editing:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});
     qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);
     bindReceptionItemsEditor(parsed,c);
   };
@@ -2255,7 +2309,7 @@ function openReceptionPdf(id){
     readPdfFile(f).then(function(text){
       parsed=extractPedido(text);
       var auto=(parsed.items||[]).filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
-      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído en modo estricto.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto+"<br><strong>Revise únicamente referencia, descripción, cantidad y U.M. antes de guardar.</strong>";
+      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído en modo estricto.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto+"<br><strong>Revise referencia, descripción completa, cantidad, U.M. y ubicación. Para corregir una fila use el botón Editar.</strong>";
       qs("#pdfExtractPreview").innerHTML=renderReceptionItemsEditor(parsed,c);
       bindReceptionItemsEditor(parsed,c);
     }).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e)+". Si es un PDF escaneado como imagen, el lector no puede extraer texto sin OCR.";});
