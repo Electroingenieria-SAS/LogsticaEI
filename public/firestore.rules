@@ -179,7 +179,14 @@ service cloud.firestore {
       allow read: if activeUser() && (
         canSeeAll() ||
         resource.data.userId == request.auth.uid ||
-        resource.data.createdBy == request.auth.uid
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.assignedTo == request.auth.uid ||
+        resource.data.assignedUid == request.auth.uid ||
+        resource.data.targetRole == role() ||
+        resource.data.assignedRole == role() ||
+        resource.data.sourceRole == role() ||
+        resource.data.role == role() ||
+        (resource.data.visibleRoles is list && role() in resource.data.visibleRoles)
       );
 
       allow create: if activeUser();

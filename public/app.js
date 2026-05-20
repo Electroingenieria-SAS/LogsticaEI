@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v25_live_updates";
+var storageKey = "ei_trazabilidad_v26_notifications_all";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -23,7 +23,8 @@ var state = {
   filters: { search:"", status:"", process:"" },
   kpiFilters: { from:"", to:"", process:"" },
   pdfExtraction: null,
-  realtime: { caseUnsubs: [], eventUnsub: null, userUnsub: null, pollTimer: null, buckets: {}, initialCasesLoaded: false, lastHash: "", lastChangeAt: 0, startedAt: 0, pendingRender: false }
+  realtime: { caseUnsubs: [], eventUnsub: null, eventUnsubs: [], userUnsub: null, pollTimer: null, buckets: {}, eventBuckets: {}, initialCasesLoaded: false, initialEventsLoaded: false, lastHash: "", lastEventHash: "", lastChangeAt: 0, lastEventAt: 0, startedAt: 0, pendingRender: false },
+  notifications: { enabled: true, memory: {}, queue: [], queueTimer: null, lastSoundAt: 0 }
 };
 
 var roles = {
@@ -369,8 +370,9 @@ function loadCasesForRole(){
 }
 
 function loadEventsForRole(){
-  if(!canSeeAll())return Promise.resolve([]);
-  return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
+  if(canSeeAll())return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
+  if(!state.user)return Promise.resolve([]);
+  return db.collection("case_events").where("visibleRoles","array-contains",normalizeRole(state.user.role)).limit(120).get().then(docsToList).catch(function(){return [];});
 }
 
 function loadUsersForRole(){
@@ -444,6 +446,173 @@ function showLiveToast(title,msg,withButton){
   if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";try{render();}catch(e){location.reload();}};}
   clearTimeout(box.__hideTimer);
   box.__hideTimer=setTimeout(function(){if(!withButton)box.style.display="none";},6500);
+}
+
+
+function uniqueArray(arr){
+  var out=[];
+  (arr||[]).forEach(function(x){x=normalizeRole(x||"");if(x && out.indexOf(x)<0)out.push(x);});
+  return out;
+}
+
+function notificationVisibleRolesForEvent(c,event){
+  var roles=[];
+  if(c){
+    roles.push(c.assignedRole,c.createdByRole);
+    if(c.currentProcess)roles.push(primaryOwnerRole(c.currentProcess));
+    if(c.openRequirement){roles.push(c.openRequirement.targetRole,c.openRequirement.sourceRole);}
+  }
+  if(event){
+    roles.push(event.assignedRole,event.targetRole,event.sourceRole,event.role,event.createdByRole,event.toRole,event.fromRole);
+    if(event.process)roles.push(primaryOwnerRole(event.process));
+  }
+  return uniqueArray(roles);
+}
+
+function enrichCaseEvent(c,event){
+  event=event||{};
+  var visible=notificationVisibleRolesForEvent(c,event);
+  return Object.assign({
+    caseReference:(c&&(c.reference||c.pedido||c.caseNumber))||"",
+    caseClient:(c&&c.client)||"",
+    caseStatus:(c&&c.status)||"",
+    currentProcess:(c&&c.currentProcess)||event.process||"",
+    processName:processTitle((c&&c.currentProcess)||event.process),
+    assignedRole:(c&&c.assignedRole)||event.assignedRole||"",
+    assignedTo:(c&&(c.assignedTo||c.assignedUid))||"",
+    sourceRole:state.user?state.user.role:"",
+    createdBy:state.user?state.user.uid:"",
+    createdByRole:state.user?state.user.role:"",
+    visibleRoles:visible
+  },event);
+}
+
+function eventHash(list){
+  return (list||[]).map(function(e){return [e.id,e.timestamp||"",e.type||"",e.caseId||"",e.detail||e.reason||""].join("|");}).sort().join("~");
+}
+
+function eventRelevantToCurrentUser(e){
+  if(!state.user || !e)return false;
+  if(canSeeAll())return true;
+  var r=normalizeRole(state.user.role);
+  if(e.userId===state.user.uid || e.createdBy===state.user.uid || e.assignedTo===state.user.uid || e.assignedUid===state.user.uid)return true;
+  if(normalizeRole(e.targetRole)===r || normalizeRole(e.assignedRole)===r || normalizeRole(e.sourceRole)===r || normalizeRole(e.role)===r)return true;
+  if(Array.isArray(e.visibleRoles) && e.visibleRoles.map(normalizeRole).indexOf(r)>=0)return true;
+  var c=e.caseId?caseById(e.caseId):null;
+  return c?caseRelevantToCurrentUser(c):false;
+}
+
+function eventKindLabel(type){
+  var map={
+    CASE_CREATED:"Pedido creado",
+    CASE_ACCEPTED:"Caso aceptado",
+    TRANSFER_SENT:"Cambio de etapa",
+    CHECK_UPDATED:"Checklist actualizado",
+    REQUIREMENT_SENT:"Requerimiento generado",
+    REQUIREMENT_ANSWERED:"Requerimiento respondido",
+    EVIDENCE_UPLOADED:"Evidencia cargada",
+    DELIVERY_EVIDENCE_UPLOADED:"Foto de entrega cargada",
+    CUT_REGISTERED:"Corte registrado",
+    CUT_STARTED:"Corte iniciado",
+    CUT_FINISHED:"Corte finalizado",
+    SIESA_FLAT_FILE_CUT_EXPORTED:"Plano SIESA exportado",
+    CASE_CLOSED:"Caso cerrado",
+    MANAGER_APPROVED:"Gerencia aprobó",
+    MANAGER_REJECTED:"Gerencia rechazó",
+    USER_CREATED:"Usuario creado",
+    CASE_DELETED_ADMIN:"Caso eliminado"
+  };
+  return map[type]||String(type||"Movimiento").replace(/_/g," ");
+}
+
+function eventMessage(e){
+  var ref=e.caseReference||e.pedido||e.caseNumber||e.caseId||"Caso";
+  var proc=e.processName||processTitle(e.currentProcess||e.process)||"";
+  var det=e.detail||e.reason||"";
+  return ref+(proc?" · "+proc:"")+(det?" · "+det:"");
+}
+
+function dispatchNotification(title,msg,forceSound){
+  showLiveToast(title,msg,false);
+  var nowMs=Date.now();
+  if(canNotify() && Notification.permission==="granted"){
+    try{new Notification(title,{body:msg,icon:"./assets/app-icon.svg",badge:"./assets/app-icon.svg",tag:"ei-logistica-"+title,renotify:true});}catch(e){}
+  }
+  if(forceSound || !(canNotify() && Notification.permission==="granted")){
+    if(nowMs-(state.notifications.lastSoundAt||0)>900){state.notifications.lastSoundAt=nowMs;playBeep();}
+  }
+}
+
+function queueEventNotification(e){
+  if(!e || !e.id || !eventRelevantToCurrentUser(e))return;
+  if(state.realtime.startedAt && Date.now()-state.realtime.startedAt<2500)return;
+  var key=e.id+"_"+(e.timestamp||"");
+  if(state.notifications.memory[key])return;
+  state.notifications.memory[key]=true;
+  state.notifications.queue.push(e);
+  clearTimeout(state.notifications.queueTimer);
+  state.notifications.queueTimer=setTimeout(flushEventNotifications,700);
+}
+
+function flushEventNotifications(){
+  var q=state.notifications.queue.splice(0);
+  if(!q.length)return;
+  if(q.length===1){
+    var e=q[0];
+    dispatchNotification(eventKindLabel(e.type),eventMessage(e),true);
+    return;
+  }
+  var ref=q[0].caseReference||q[0].caseId||"el sistema";
+  dispatchNotification("Nuevos movimientos",q.length+" movimientos registrados. Último: "+eventMessage(q[q.length-1]),true);
+}
+
+function applyRealtimeEvents(list){
+  list=(list||[]).filter(eventRelevantToCurrentUser).sort(function(a,b){return new Date(b.timestamp||0)-new Date(a.timestamp||0);});
+  var h=eventHash(list);
+  if(!state.realtime.initialEventsLoaded){
+    state.events=list;
+    state.realtime.lastEventHash=h;
+    state.realtime.initialEventsLoaded=true;
+    (list||[]).slice(0,60).forEach(function(e){if(e&&e.id)state.notifications.memory[e.id+"_"+(e.timestamp||"")]=true;});
+    return;
+  }
+  if(h===state.realtime.lastEventHash)return;
+  var old={};
+  (state.events||[]).forEach(function(e){if(e&&e.id)old[e.id]=true;});
+  state.events=list;
+  state.realtime.lastEventHash=h;
+  list.forEach(function(e){if(!old[e.id])queueEventNotification(e);});
+  renderAfterLiveChange();
+}
+
+function rebuildRealtimeEventsFromBuckets(){
+  var all=[];
+  Object.keys(state.realtime.eventBuckets||{}).forEach(function(k){all=all.concat(state.realtime.eventBuckets[k]||[]);});
+  applyRealtimeEvents(uniqueById(all));
+}
+
+function addEventRealtimeListener(key,query){
+  try{
+    var unsub=query.onSnapshot(function(snap){
+      state.realtime.eventBuckets[key]=docsToList(snap);
+      rebuildRealtimeEventsFromBuckets();
+    },function(err){console.warn("Escucha de notificaciones falló",key,err);});
+    state.realtime.eventUnsubs.push(unsub);
+  }catch(e){console.warn("No se pudo activar listener de notificaciones",key,e);}
+}
+
+function startNotificationListeners(){
+  if(!db || !state.user)return;
+  var r=normalizeRole(state.user.role);
+  if(canSeeAll()){
+    addEventRealtimeListener("events_all",db.collection("case_events").orderBy("timestamp","desc").limit(200));
+    return;
+  }
+  addEventRealtimeListener("events_user",db.collection("case_events").where("userId","==",state.user.uid).limit(100));
+  addEventRealtimeListener("events_created",db.collection("case_events").where("createdBy","==",state.user.uid).limit(100));
+  addEventRealtimeListener("events_target",db.collection("case_events").where("targetRole","==",r).limit(100));
+  addEventRealtimeListener("events_assigned",db.collection("case_events").where("assignedRole","==",r).limit(100));
+  addEventRealtimeListener("events_visible",db.collection("case_events").where("visibleRoles","array-contains",r).limit(100));
 }
 
 function notifyRealtimeChanges(newList, oldList){
@@ -520,9 +689,10 @@ function addCaseRealtimeListener(key,query){
 function stopRealtimeSync(){
   try{(state.realtime.caseUnsubs||[]).forEach(function(fn){try{fn();}catch(e){}});}catch(e){}
   try{if(state.realtime.eventUnsub)state.realtime.eventUnsub();}catch(e){}
+  try{(state.realtime.eventUnsubs||[]).forEach(function(fn){try{fn();}catch(e){}});}catch(e){}
   try{if(state.realtime.userUnsub)state.realtime.userUnsub();}catch(e){}
   if(state.realtime.pollTimer)clearInterval(state.realtime.pollTimer);
-  state.realtime={caseUnsubs:[],eventUnsub:null,userUnsub:null,pollTimer:null,buckets:{},initialCasesLoaded:false,lastHash:"",lastChangeAt:0,startedAt:0,pendingRender:false};
+  state.realtime={caseUnsubs:[],eventUnsub:null,eventUnsubs:[],userUnsub:null,pollTimer:null,buckets:{},eventBuckets:{},initialCasesLoaded:false,initialEventsLoaded:false,lastHash:"",lastEventHash:"",lastChangeAt:0,lastEventAt:0,startedAt:0,pendingRender:false};
 }
 
 function startRealtimeSync(){
@@ -538,12 +708,8 @@ function startRealtimeSync(){
     addCaseRealtimeListener("assigned",db.collection("cases").where("assignedRole","==",r));
     addCaseRealtimeListener("created",db.collection("cases").where("createdBy","==",state.user.uid));
   }
+  startNotificationListeners();
   if(canSeeAll()){
-    try{
-      state.realtime.eventUnsub=db.collection("case_events").orderBy("timestamp","desc").limit(900).onSnapshot(function(snap){
-        state.events=docsToList(snap);
-      },function(e){console.warn("Eventos en vivo no disponibles",e);});
-    }catch(e){}
     try{
       state.realtime.userUnsub=db.collection("users").onSnapshot(function(snap){state.users=docsToList(snap);},function(e){console.warn("Usuarios en vivo no disponibles",e);});
     }catch(e){}
@@ -588,13 +754,21 @@ function persistCase(c,event){
   return db.collection("cases").doc(c.id).set(c,{merge:true}).then(function(){
     var i=-1;for(var x=0;x<state.cases.length;x++){if(state.cases[x].id===c.id)i=x;}
     if(i>=0)state.cases[i]=c;else state.cases.unshift(c);
-    if(event)return createEvent(Object.assign({caseId:c.id,process:c.currentProcess},event));
+    if(event)return createEvent(enrichCaseEvent(c,Object.assign({caseId:c.id,process:c.currentProcess},event)));
   });
 }
 
 function createEvent(e){
-  e.id=e.id||uid("ev");e.timestamp=e.timestamp||now();e.userId=state.user?state.user.uid:"";e.userName=state.user?state.user.name:"Usuario";
-  return db.collection("case_events").doc(e.id).set(e).then(function(){state.events.unshift(e);});
+  e=e||{};
+  e.id=e.id||uid("ev");
+  e.timestamp=e.timestamp||now();
+  e.userId=e.userId||(state.user?state.user.uid:"");
+  e.userName=e.userName||(state.user?state.user.name:"Usuario");
+  e.createdBy=e.createdBy||e.userId;
+  e.createdByRole=e.createdByRole||(state.user?state.user.role:"");
+  e.sourceRole=e.sourceRole||(state.user?state.user.role:"");
+  e.visibleRoles=uniqueArray(e.visibleRoles||notificationVisibleRolesForEvent(null,e));
+  return db.collection("case_events").doc(e.id).set(e).then(function(){state.events.unshift(e);queueEventNotification(e);});
 }
 
 function caseById(id){for(var i=0;i<state.cases.length;i++){if(state.cases[i].id===id)return state.cases[i];}return null;}
@@ -2313,6 +2487,8 @@ function createUser(fd){
   var second=firebase.initializeApp(window.firebaseConfig,"creator_"+Date.now());
   second.auth().createUserWithEmailAndPassword(email,pass).then(function(cred){
     return db.collection("users").doc(cred.user.uid).set({name:name,email:email,role:role,isActive:true,createdAt:now(),createdBy:state.user.uid});
+  }).then(function(){
+    return createEvent({type:"USER_CREATED",detail:"Usuario creado: "+name+" · "+roleTitle(role),targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","gerencia"]}).catch(function(){return null;});
   }).then(function(){return second.auth().signOut();}).then(function(){return second.delete();}).then(function(){return loadData();}).then(function(){closeDrawer();renderUsers();}).catch(function(e){showError(e.message||e);});
 }
 function approve(id){
@@ -2348,7 +2524,7 @@ function canNotify(){
 
 function requestNotifications(){
   if(!canNotify()){alert("Este navegador no soporta notificaciones.");return;}
-  Notification.requestPermission().then(function(){notifyUser("Notificaciones activadas","Recibirás recordatorios de casos asignados y retrasos.",true);});
+  Notification.requestPermission().then(function(){notifyUser("Notificaciones activadas","Recibirás avisos de asignaciones, cambios de etapa, evidencias, requerimientos, cortes, cierres, aprobaciones, entregas y exportaciones SIESA.",true);});
 }
 
 function playBeep(){
@@ -2449,6 +2625,7 @@ function deleteCaseHard(id){
   if(!confirm("¿Eliminar definitivamente el caso "+(c.reference||id)+"? Esta acción es solo para pruebas y no se puede deshacer."))return;
   Promise.all([deleteQueryBatch("case_events","caseId",id),deleteQueryBatch("evidences","caseId",id),deleteQueryBatch("requirements","caseId",id)])
     .then(function(){return db.collection("cases").doc(id).delete();})
+    .then(function(){return createEvent({type:"CASE_DELETED_ADMIN",detail:"Caso eliminado de pruebas: "+(c.reference||id),targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});})
     .then(function(){state.cases=state.cases.filter(function(x){return x.id!==id;});state.events=state.events.filter(function(x){return x.caseId!==id;});renderAdmin();})
     .catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar. Revise reglas de Firestore para admin/super admin.");});
 }
