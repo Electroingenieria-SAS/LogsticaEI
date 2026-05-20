@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v35-pdf-filas-estrictas"
+  version: "flujo-unificado-v37-pdf-simple-ubicacion"
 };

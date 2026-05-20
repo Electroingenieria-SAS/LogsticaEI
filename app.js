@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v35_pdf_filas_estrictas";
+var storageKey = "ei_trazabilidad_v37_pdf_simple_ubicacion";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1522,18 +1522,13 @@ function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason, extra){
     descripcion:desc,
     cantidad:qty,
     unidad:unit,
+    ubicacion:cleanPdfValue(extra.ubicacion||""),
     requiereCorte:posibleCorte,
     posibleCorte:posibleCorte,
     esCable:posibleCorte,
     decisionCorteRecepcion:posibleCorte?"MANDAR_CORTE":"NO_APLICA",
     estado:posibleCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO",
     rawLine:String(rawLine||"").slice(0,350),
-    ext1:extra.ext1||"",
-    ext2:extra.ext2||"",
-    bodega:extra.bodega||"",
-    ubicacion:extra.ubicacion||"",
-    valorUnitario:extra.valorUnitario||"",
-    valorParcial:extra.valorParcial||"",
     detectionReason:reason||(posibleCorte?"Cable con unidad en metros detectado desde PDF":"Línea de pedido detectada desde PDF ("+unit+")")
   });
 }
@@ -1580,19 +1575,11 @@ function parseStructuredPipeRow(line, seen, items){
   if(qtyIdx<0 || unitIdx<0)return false;
   var before=cells.slice(0,qtyIdx);
   if(before.length<2)return false;
-  var after=cells.slice(unitIdx+1);
-  var money=after.filter(isMoneyLike);
-  var valorUnitario=money.length>=2?money[money.length-2]:(money.length===1?money[0]:"");
-  var valorParcial=money.length>=2?money[money.length-1]:"";
   var ref=before[0];
   var desc=before[1];
-  var mid=parseMiddleColumns(before.slice(2));
-  addPdfItem(items,seen,ref,desc,qty,unit,line,"Fila PDF estructurada por columnas: Refer|Descripción|Ext1|Ext2|Bodega|Ubicación|Cant.Comp.|U.M.|Valores",mid);
-  var added=items.length && items[items.length-1].rawLine===String(line||"").slice(0,350);
-  if(added){
-    var it=items[items.length-1];
-    it.ext1=mid.ext1;it.ext2=mid.ext2;it.bodega=mid.bodega;it.ubicacion=mid.ubicacion;it.valorUnitario=valorUnitario;it.valorParcial=valorParcial;
-  }
+  var middle=parseMiddleColumns(before.slice(2));
+  // Se conserva lo operativo requerido más ubicación para facilitar alistamiento.
+  addPdfItem(items,seen,ref,desc,qty,unit,line,"Fila PDF estructurada: Referencia, Descripción, Cantidad, U.M. y Ubicación.",{ubicacion:middle.ubicacion});
   return true;
 }
 
@@ -1601,7 +1588,7 @@ function parseStrictCoordinateRow(line, seen, items){
   if(String(line||"").indexOf('__PDF_ROW__')!==0)return false;
   try{
     var row=JSON.parse(String(line).slice('__PDF_ROW__'.length));
-    addPdfItem(items,seen,row.referencia,row.descripcion,row.cantidad,row.unidad,line,'Fila leída por coordenadas: Referencia, Descripción, Cantidad y U.M. sin mezclar bodega/ubicación',{bodega:row.bodega||'',ubicacion:row.ubicacion||''});
+    addPdfItem(items,seen,row.referencia,row.descripcion,row.cantidad,row.unidad,line,'Fila leída por coordenadas: Referencia, Descripción, Cantidad, U.M. y Ubicación.',{ubicacion:row.ubicacion});
     return true;
   }catch(e){return false;}
 }
@@ -1788,7 +1775,7 @@ function orderItemsPanel(c){
   var items=c.orderItems||[];
   var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':"");
-  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Refer.</th><th>Descripción</th><th>Ext 1</th><th>Ext 2</th><th>Bodega</th><th>Ubicación</th><th>Cant. Comp.</th><th>U.M.</th><th>Valor Unit.</th><th>Valor Parcial</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.ext1||"")+'</td><td>'+esc(it.ext2||"")+'</td><td>'+esc(it.bodega||"")+'</td><td>'+esc(it.ubicacion||"")+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.valorUnitario||"")+'</td><td>'+esc(it.valorParcial||"")+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas del pedido validadas</h3><p>Vista limpia de las líneas extraídas del PDF. Solo se muestran los datos operativos necesarios: referencia, descripción, cantidad, unidad de medida y ubicación. Recepción puede corregirlos antes de enviar a alistamiento.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión recepción</th><th>Destino</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
   if(c.currentProcess==="alistamiento")html+=alistamientoLineChecklistPanel(c,false);
   return html;
 }
@@ -1799,16 +1786,16 @@ function alistamientoStatusChip(st){
 }
 function alistamientoLineChecklistPanel(c, compact){
   var items=c.orderItems||[];
-  if(!items.length)return '<section class="card" style="margin-top:16px"><h3>Lista marcable de alistamiento</h3><div class="empty">No hay líneas leídas del PDF. Recepción debe cargar y leer el PDF antes de alistar.</div></section>';
+  if(!items.length)return '<section class="card" style="margin-top:16px"><h3>Lista marcable de alistamiento</h3><div class="empty">No hay líneas leídas del PDF. Recepción debe cargar, leer y validar el PDF antes de alistar.</div></section>';
   var canMark=c.status==="en_proceso" && c.currentProcess==="alistamiento" && canAccessProcess(state.user.role,c.currentProcess);
   var rows=items.map(function(it,i){
     var st=it.alistamientoStatus||'PENDIENTE';
     var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
     var actions=canMark?('<div class="row-actions"><button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+i+'">Encontrado</button><button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+i+'">No encontrado</button><button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+i+'">Novedad</button><button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+i+'">Pendiente</button></div>'):'—';
-    return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.bodega||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
+    return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
   }).join('');
   var total=items.length, found=items.filter(function(x){return x.alistamientoStatus==='ENCONTRADO';}).length, novelty=items.filter(function(x){return x.alistamientoStatus==='NOVEDAD'||x.alistamientoStatus==='NO_ENCONTRADO';}).length, pending=items.filter(function(x){return !x.alistamientoStatus||x.alistamientoStatus==='PENDIENTE';}).length;
-  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Bodega</th><th>Ubicación</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
+  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada referencia validada desde el PDF. Si una línea tiene novedad o no se encuentra, se envía solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
 }
 function refreshAlistamientoChecklist(c){
   applyAlistamientoAutoChecklist(c);
@@ -1923,7 +1910,7 @@ function createPartialShipment(id,fd){
     if(qty<=0)return;
     if(qty>x.pending)qty=x.pending;
     var it=x.item;
-    selected.push({index:x.index,lineId:it.id||String(x.index),referencia:it.referencia||'',descripcion:it.descripcion||'',cantidad:partialQtyFormat(qty),unidad:it.unidad||'',cantidadSolicitada:partialQtyFormat(x.requested),cantidadPendienteAntes:partialQtyFormat(x.pending),observacion:String(fd.get('note_'+x.index)||''),requiereCorte:!!it.requiereCorte});
+    selected.push({index:x.index,lineId:it.id||String(x.index),referencia:it.referencia||'',descripcion:it.descripcion||'',cantidad:partialQtyFormat(qty),unidad:it.unidad||'',ubicacion:it.ubicacion||'',cantidadSolicitada:partialQtyFormat(x.requested),cantidadPendienteAntes:partialQtyFormat(x.pending),observacion:String(fd.get('note_'+x.index)||''),requiereCorte:!!it.requiereCorte});
   });
   if(!selected.length){alert('Seleccione al menos una línea con cantidad disponible mayor a cero.');return;}
   var reason=String(fd.get('partialReason')||'').trim();
@@ -2168,6 +2155,7 @@ function recalcReceptionItemFlags(it){
   it.descripcion=cleanPdfValue(it.descripcion||it.description||"");
   it.cantidad=normalizePdfNumber(it.cantidad||it.quantity||"");
   it.unidad=normalizePdfUnit(it.unidad||it.unit||"");
+  it.ubicacion=cleanPdfValue(it.ubicacion||it.location||"");
   it.esCable=isLikelyCable(it.referencia,it.descripcion);
   it.posibleCorte=isMeterUnit(it.unidad) && it.esCable;
   var decision=String(it.decisionCorteRecepcion||"");
@@ -2187,13 +2175,13 @@ function recalcReceptionItemFlags(it){
 function receptionItemRowHtml(it, idx){
   it=recalcReceptionItemFlags(Object.assign({},it||{}));
   var decision=it.posibleCorte?'<select class="select" name="itemDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.decisionCorteRecepcion!=="CARRETO_COMPLETO"?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO" '+(it.decisionCorteRecepcion==="CARRETO_COMPLETO"?'selected':'')+'>No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span><input type="hidden" name="itemDecision_'+idx+'" value="NO_APLICA">';
-  return '<tr data-reception-item-row="'+idx+'"><td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td><td><input class="input input-sm" name="itemRef_'+idx+'" value="'+esc(it.referencia||"")+'" placeholder="Refer."></td><td><input class="input input-sm" name="itemDesc_'+idx+'" value="'+esc(it.descripcion||"")+'" placeholder="Descripción"></td><td><input class="input input-sm" name="itemExt1_'+idx+'" value="'+esc(it.ext1||"")+'" placeholder="Ext 1"></td><td><input class="input input-sm" name="itemExt2_'+idx+'" value="'+esc(it.ext2||"")+'" placeholder="Ext 2"></td><td><input class="input input-sm" name="itemBodega_'+idx+'" value="'+esc(it.bodega||"")+'" placeholder="Bodega"></td><td><input class="input input-sm" name="itemUbicacion_'+idx+'" value="'+esc(it.ubicacion||"")+'" placeholder="Ubicación"></td><td><input class="input input-sm" name="itemQty_'+idx+'" value="'+esc(it.cantidad||"")+'" placeholder="Cant. Comp."></td><td><input class="input input-sm" name="itemUnit_'+idx+'" value="'+esc(it.unidad||"")+'" placeholder="U.M."></td><td><input class="input input-sm" name="itemValorUnitario_'+idx+'" value="'+esc(it.valorUnitario||"")+'" placeholder="Valor Unit."></td><td><input class="input input-sm" name="itemValorParcial_'+idx+'" value="'+esc(it.valorParcial||"")+'" placeholder="Valor Parcial"></td><td>'+decision+'</td><td><input class="input input-sm" name="itemObs_'+idx+'" value="'+esc(it.receptionObservation||"")+'" placeholder="Corrección / observación"></td></tr>';
+  return '<tr data-reception-item-row="'+idx+'"><td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td><td><input class="input input-sm" name="itemRef_'+idx+'" value="'+esc(it.referencia||"")+'" placeholder="Referencia"></td><td><input class="input input-sm input-desc" name="itemDesc_'+idx+'" value="'+esc(it.descripcion||"")+'" placeholder="Descripción del material"></td><td><input class="input input-sm" name="itemQty_'+idx+'" value="'+esc(it.cantidad||"")+'" placeholder="Cantidad"></td><td><input class="input input-sm" name="itemUnit_'+idx+'" value="'+esc(it.unidad||"")+'" placeholder="U.M."></td><td><input class="input input-sm" name="itemLoc_'+idx+'" value="'+esc(it.ubicacion||"")+'" placeholder="Ubicación"></td><td>'+decision+'</td><td><input class="input input-sm" name="itemObs_'+idx+'" value="'+esc(it.receptionObservation||"")+'" placeholder="Corrección / observación"></td></tr>';
 }
 function renderReceptionItemsEditor(parsed,c){
   var items=(parsed.items||[]);
   var auto=items.filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
   var rows=items.map(function(it,idx){return receptionItemRowHtml(it,idx);}).join('');
-  return '<section class="card" style="margin-top:12px"><h3>Vista de extracción editable</h3><div class="notice"><strong>Lectura estricta por línea:</strong> la app ya no mezcla líneas vecinas. Revise lo detectado, corrija referencia/cantidad/unidad si el PDF salió mal, quite lo que no corresponda o agregue líneas manualmente. Lo que quede aquí será lo que verá Alistamiento.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Cortes candidatos</small><strong>'+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Usar</th><th>Refer.</th><th>Descripción</th><th>Ext 1</th><th>Ext 2</th><th>Bodega</th><th>Ubicación</th><th>Cant. Comp.</th><th>U.M.</th><th>Valor Unit.</th><th>Valor Parcial</th><th>Decisión corte</th><th>Observación</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="13">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
+  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura enfocada:</strong> la app solo debe identificar y guardar <strong>Referencia, Descripción, Cantidad, U.M. y Ubicación</strong>. No se muestran bodega, valores ni columnas contables. Revise, corrija, elimine o agregue líneas antes de guardar.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Candidatos de corte</small><strong>'+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table"><thead><tr><th>Usar</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="8">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
 }
 function bindReceptionItemsEditor(parsed,c){
   var btn=qs('#addReceptionItemBtn');
@@ -2201,7 +2189,7 @@ function bindReceptionItemsEditor(parsed,c){
   btn.onclick=function(){
     var fd=new FormData(qs('#recPdfForm'));
     parsed.items=collectReceptionItemsFromForm(fd,true);
-    parsed.items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',requiereCorte:false,posibleCorte:false,ext1:'',ext2:'',bodega:'',ubicacion:'',valorUnitario:'',valorParcial:'',decisionCorteRecepcion:'NO_APLICA',manualEntry:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});
+    parsed.items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',ubicacion:'',requiereCorte:false,posibleCorte:false,decisionCorteRecepcion:'NO_APLICA',manualEntry:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});
     qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);
     bindReceptionItemsEditor(parsed,c);
   };
@@ -2214,14 +2202,9 @@ function collectReceptionItemsFromForm(fd, keepBlank){
       id:uid('LIN'),
       referencia:fd.get('itemRef_'+i)||'',
       descripcion:fd.get('itemDesc_'+i)||'',
-      ext1:fd.get('itemExt1_'+i)||'',
-      ext2:fd.get('itemExt2_'+i)||'',
-      bodega:fd.get('itemBodega_'+i)||'',
-      ubicacion:fd.get('itemUbicacion_'+i)||'',
       cantidad:fd.get('itemQty_'+i)||'',
       unidad:fd.get('itemUnit_'+i)||'',
-      valorUnitario:fd.get('itemValorUnitario_'+i)||'',
-      valorParcial:fd.get('itemValorParcial_'+i)||'',
+      ubicacion:fd.get('itemLoc_'+i)||'',
       decisionCorteRecepcion:fd.get('itemDecision_'+i)||'NO_APLICA',
       receptionObservation:fd.get('itemObs_'+i)||'',
       manualEntry:true,
@@ -2234,12 +2217,11 @@ function collectReceptionItemsFromForm(fd, keepBlank){
   }
   return out;
 }
-
 function applyReceptionCutDecisions(parsed, fd){
   if(!parsed||!parsed.items)return parsed;
   parsed.items.forEach(function(it,idx){
     if(!it.posibleCorte){it.requiereCorte=false;it.decisionCorteRecepcion="NO_APLICA";it.estado="PENDIENTE_ALISTAMIENTO";return;}
-    var decision=String(fd.get("itemDecision_"+idx)||fd.get("cutDecision_"+idx)||it.decisionCorteRecepcion||"MANDAR_CORTE");
+    var decision=String(it.decisionCorteRecepcion||fd.get("itemDecision_"+idx)||fd.get("cutDecision_"+idx)||"MANDAR_CORTE");
     it.decisionCorteRecepcion=decision;
     if(decision==="CARRETO_COMPLETO"){
       it.requiereCorte=false;
@@ -2259,7 +2241,7 @@ function applyReceptionCutDecisions(parsed, fd){
 
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los líneas detectadas en cualquier unidad del pedido. Si la línea es cable en metros, recepción decide si se envía a corte o si no se corta porque se entrega carreto completo. En esta misma recepción se registra el compromiso de mercancía para pasar directo a alistamiento.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades, unidades KG/UND/MTR/etc. y candidatos de corte.</div><div id="pdfExtractPreview"></div><section class="card" style="margin-top:12px"><h3>Compromiso de mercancía en recepción</h3><label class="check-card"><input type="checkbox" name="merchCommitted" required> Confirmo que la mercancía fue comprometida/bloqueada en SIESA/ERP</label><label class="field"><span>Observación del compromiso</span><textarea class="textarea" name="commitDetail" placeholder="Ej.: mercancía comprometida en SIESA, parcial con novedad, validación realizada contra el PDF."></textarea></label></section><button class="btn btn-primary" type="submit">Guardar PDF, compromiso, datos, líneas y cortes automáticos</button></form>'));
+  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los líneas detectadas en cualquier unidad del pedido. Si la línea es cable en metros, recepción decide si se envía a corte o si no se corta porque se entrega carreto completo. En esta misma recepción se registra el compromiso de mercancía para pasar directo a alistamiento.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencia, descripción, cantidad, unidad de medida y candidatos de corte.</div><div id="pdfExtractPreview"></div><section class="card" style="margin-top:12px"><h3>Compromiso de mercancía en recepción</h3><label class="check-card"><input type="checkbox" name="merchCommitted" required> Confirmo que la mercancía fue comprometida/bloqueada en SIESA/ERP</label><label class="field"><span>Observación del compromiso</span><textarea class="textarea" name="commitDetail" placeholder="Ej.: mercancía comprometida en SIESA, parcial con novedad, validación realizada contra el PDF."></textarea></label></section><button class="btn btn-primary" type="submit">Guardar PDF, compromiso, datos, líneas y cortes automáticos</button></form>'));
   var parsed=null,fileName="",selectedFile=null,previewUrl="";
   qs("#receptionPdfInput").onchange=function(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -2273,7 +2255,7 @@ function openReceptionPdf(id){
     readPdfFile(f).then(function(text){
       parsed=extractPedido(text);
       var auto=(parsed.items||[]).filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
-      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído en modo estricto.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto+"<br><strong>Revise y corrija la tabla antes de guardar.</strong>";
+      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído en modo estricto.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto+"<br><strong>Revise únicamente referencia, descripción, cantidad y U.M. antes de guardar.</strong>";
       qs("#pdfExtractPreview").innerHTML=renderReceptionItemsEditor(parsed,c);
       bindReceptionItemsEditor(parsed,c);
     }).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e)+". Si es un PDF escaneado como imagen, el lector no puede extraer texto sin OCR.";});
