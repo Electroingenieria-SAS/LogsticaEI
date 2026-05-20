@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v32_alistamiento_marcable";
+var storageKey = "ei_trazabilidad_v33_envio_parcial_alistamiento";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -569,7 +569,9 @@ function eventKindLabel(type){
     MANAGER_APPROVED:"Gerencia aprobó",
     MANAGER_REJECTED:"Gerencia rechazó",
     USER_CREATED:"Usuario creado",
-    CASE_DELETED_ADMIN:"Caso eliminado"
+    CASE_DELETED_ADMIN:"Caso eliminado",
+    PARTIAL_SHIPMENT_CREATED:"Envío parcial creado",
+    PARTIAL_SHIPMENT_SENT_TO_BILLING:"Envío parcial a facturación"
   };
   return map[type]||String(type||"Movimiento").replace(/_/g," ");
 }
@@ -1490,7 +1492,7 @@ function renderDetail(id){
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar / releer PDF recepción</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-success" data-action="alistPartial" data-id="'+c.id+'">Crear envío parcial</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
     if(c.status==="pendiente_gerencia"&&normalizeRole(state.user.role)==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)){
       if(c.currentProcess==="facturacion")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
@@ -1513,7 +1515,7 @@ function nextActionButtons(c){
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -1563,7 +1565,7 @@ function alistamientoLineChecklistPanel(c, compact){
     return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
   }).join('');
   var total=items.length, found=items.filter(function(x){return x.alistamientoStatus==='ENCONTRADO';}).length, novelty=items.filter(function(x){return x.alistamientoStatus==='NOVEDAD'||x.alistamientoStatus==='NO_ENCONTRADO';}).length, pending=items.filter(function(x){return !x.alistamientoStatus||x.alistamientoStatus==='PENDIENTE';}).length;
-  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte.</div></section>';
+  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
 }
 function refreshAlistamientoChecklist(c){
   applyAlistamientoAutoChecklist(c);
@@ -1623,6 +1625,127 @@ function openAlistamientoChecklist(id){
   var c=caseById(id);if(!c)return;
   drawer(modal('Lista marcable de alistamiento',alistamientoLineChecklistPanel(c,true)+'<div style="margin-top:14px"><button class="btn" data-action="closeDrawer">Cerrar</button></div>'));
 }
+
+function partialQtyParse(v){
+  var s=String(v==null?"":v).trim();
+  if(!s)return 0;
+  s=s.replace(/[^0-9,.-]/g,"");
+  if(/,\d{1,4}$/.test(s))s=s.replace(',', '.');
+  s=s.replace(/,(?=\d{3}\b)/g,"").replace(/\.(?=\d{3}\b)/g,"");
+  var n=Number(s);
+  return Number.isFinite(n)?Math.max(0,n):0;
+}
+function partialQtyFormat(n){
+  n=Number(n||0);
+  if(!Number.isFinite(n))n=0;
+  return String(Number(n.toFixed(4))).replace('.', ',');
+}
+function eligiblePartialItems(c){
+  var cuts=c.cutRequests||[];
+  return (c.orderItems||[]).map(function(it,i){
+    var requested=partialQtyParse(it.cantidad||it.qty||it.quantity);
+    var already=partialQtyParse(it.partialDispatchedQty||0);
+    var pending=Math.max(0,requested-already);
+    var cutFinished=true;
+    if(it.requiereCorte){
+      var refNorm=normalizeRefText(it.referencia||it.descripcion||'');
+      var cut=cuts.find(function(x){return normalizeRefText(x.referencia||x.descripcion||'')===refNorm || String(x.sourceLineId||'')===String(it.id||'');});
+      cutFinished=!!cut && ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(cut.status)>=0;
+    }
+    return {item:it,index:i,requested:requested,already:already,pending:pending,cutFinished:cutFinished};
+  }).filter(function(x){return x.pending>0;});
+}
+function openPartialShipment(id){
+  var c=caseById(id);if(!c)return;
+  if(c.currentProcess!=="alistamiento"||c.status!=="en_proceso"){alert("El envío parcial solo se registra desde Alistamiento en proceso.");return;}
+  var items=eligiblePartialItems(c);
+  if(!items.length){alert("No hay líneas pendientes para registrar como envío parcial.");return;}
+  var rows=items.map(function(x){
+    var it=x.item;
+    var suggested=(it.alistamientoStatus==='ENCONTRADO' && x.cutFinished)?x.pending:0;
+    var block=it.requiereCorte && !x.cutFinished;
+    var status=it.alistamientoStatus||'PENDIENTE';
+    return '<tr><td><input type="checkbox" name="include_'+x.index+'" '+(suggested>0?'checked':'')+' '+(block?'disabled':'')+'></td><td>'+alistamientoStatusChip(status)+'</td><td><strong>'+esc(it.referencia||'')+'</strong><br><small>'+esc(it.descripcion||'')+'</small>'+(block?'<div class="mini-danger">Corte pendiente: no se puede enviar esta línea hasta registrar el corte.</div>':'')+'</td><td>'+esc(partialQtyFormat(x.pending))+' '+esc(it.unidad||'')+'</td><td><input class="input" type="number" step="0.0001" min="0" max="'+esc(x.pending)+'" name="qty_'+x.index+'" value="'+esc(suggested)+'"></td><td><input class="input" name="note_'+x.index+'" placeholder="Observación parcial"></td></tr>';
+  }).join('');
+  var html='<form class="form" id="partialShipmentForm"><div class="notice"><strong>Entrega parcial:</strong> registre solo lo que sí está disponible/encontrado. El sistema crea un caso parcial para facturación y despacho, mientras el pedido original queda abierto en alistamiento con el saldo pendiente.</div><div class="table-wrap"><table><thead><tr><th>Enviar</th><th>Estado</th><th>Línea PDF</th><th>Saldo pendiente</th><th>Cant. a enviar</th><th>Observación</th></tr></thead><tbody>'+rows+'</tbody></table></div><label class="field"><span>Motivo del envío parcial</span><textarea class="textarea" name="partialReason" required placeholder="Ej: se envía lo disponible y queda saldo pendiente por disponibilidad / corte / novedad."></textarea></label><button class="btn btn-success" type="submit">Crear envío parcial y mantener pedido abierto</button></form>';
+  drawer(modal('Crear envío parcial desde alistamiento',html));
+  qs('#partialShipmentForm').onsubmit=function(e){e.preventDefault();createPartialShipment(id,new FormData(e.target));};
+}
+function createPartialShipment(id,fd){
+  var c=caseById(id);if(!c)return;
+  var items=eligiblePartialItems(c), selected=[];
+  items.forEach(function(x){
+    if(!fd.get('include_'+x.index))return;
+    var qty=partialQtyParse(fd.get('qty_'+x.index));
+    if(qty<=0)return;
+    if(qty>x.pending)qty=x.pending;
+    var it=x.item;
+    selected.push({index:x.index,lineId:it.id||String(x.index),referencia:it.referencia||'',descripcion:it.descripcion||'',cantidad:partialQtyFormat(qty),unidad:it.unidad||'',cantidadSolicitada:partialQtyFormat(x.requested),cantidadPendienteAntes:partialQtyFormat(x.pending),observacion:String(fd.get('note_'+x.index)||''),requiereCorte:!!it.requiereCorte});
+  });
+  if(!selected.length){alert('Seleccione al menos una línea con cantidad disponible mayor a cero.');return;}
+  var reason=String(fd.get('partialReason')||'').trim();
+  if(!reason){alert('Debe indicar el motivo del envío parcial.');return;}
+  var seq=(c.partialShipments||[]).length+1;
+  var stamp=now();
+  c.partialShipments=c.partialShipments||[];
+  var partialId=uid('PAR');
+  var partialSummary={id:partialId,sequence:seq,status:'en_facturacion',createdAt:stamp,createdBy:state.user.uid,createdByName:state.user.name,reason:reason,items:selected};
+  c.partialShipments.push(partialSummary);
+  c.hasPartialShipment=true;
+  c.partialShipmentOpen=true;
+  c.partialPendingReason=reason;
+  c.orderItems=(c.orderItems||[]).map(function(it,i){
+    var sel=selected.find(function(s){return Number(s.index)===i;});
+    if(!sel)return it;
+    var dispatched=partialQtyParse(it.partialDispatchedQty||0)+partialQtyParse(sel.cantidad);
+    var requested=partialQtyParse(it.cantidad||it.qty||it.quantity);
+    it.partialDispatchedQty=partialQtyFormat(dispatched);
+    it.partialPendingQty=partialQtyFormat(Math.max(0,requested-dispatched));
+    it.partialLastShipmentId=partialId;
+    it.partialLastShipmentAt=stamp;
+    if(partialQtyParse(it.partialPendingQty)>0){
+      it.estado='ENTREGA_PARCIAL_SALDO_PENDIENTE';
+      it.alistamientoStatus=it.alistamientoStatus||'PENDIENTE';
+      it.alistamientoNote='Entrega parcial creada. Saldo pendiente: '+it.partialPendingQty+' '+(it.unidad||'');
+    }else{
+      it.estado=it.requiereCorte?'CORTE_ALISTADO_PARCIAL':'ALISTADO_PARCIAL';
+      it.alistamientoStatus='ENCONTRADO';
+      it.alistamientoNote='Cantidad enviada en parcial '+seq+'.';
+    }
+    return it;
+  });
+  addStateHistory(c,'partial_shipment','Envío parcial creado: '+selected.length+' líneas. Pedido original queda abierto.',{partialShipmentId:partialId,partialSequence:seq,tipo_estado:'valor',motivo_novedad:reason});
+  var child=JSON.parse(JSON.stringify(c));
+  child.id=partialId;
+  child.parentCaseId=c.id;
+  child.isPartialShipment=true;
+  child.partialSequence=seq;
+  child.partialReason=reason;
+  child.reference=(c.reference||c.id)+'-PARCIAL-'+String(seq).padStart(2,'0');
+  child.description='Envío parcial generado desde alistamiento. '+reason;
+  child.currentProcess='facturacion';
+  child.status='asignado';
+  child.assignedRole=primaryOwnerRole('facturacion');
+  child.assignedName=processOwnerTitle('facturacion');
+  child.assignedTo='';
+  child.createdAt=stamp;
+  child.createdBy=state.user.uid;
+  child.createdByName=state.user.name;
+  child.updatedAt=stamp;
+  child.closedAt=null;
+  child.openRequirement=null;
+  child.checklist={};
+  processes.facturacion.checklist.forEach(function(x){child.checklist[x]='pending';});
+  child.orderItems=selected.map(function(s){return {id:s.lineId,referencia:s.referencia,descripcion:s.descripcion,cantidad:s.cantidad,unidad:s.unidad,sourceRequestedQty:s.cantidadSolicitada,sourcePendingBefore:s.cantidadPendienteAntes,observacion:s.observacion,requiereCorte:s.requiereCorte,alistamientoStatus:'ENCONTRADO',estado:'PARCIAL_A_FACTURAR'};});
+  child.cutRequests=[];child.hasCuts=false;
+  child.processStats={};procStats(child,'facturacion').startedAt=stamp;
+  child.partialSource={caseId:c.id,shipmentId:partialId,sequence:seq,reason:reason,createdAt:stamp,createdByName:state.user.name};
+  return db.collection('cases').doc(child.id).set(child).then(function(){
+    state.cases.unshift(child);
+    return persistCase(c,{type:'PARTIAL_SHIPMENT_CREATED',detail:'Envío parcial '+seq+' creado con '+selected.length+' líneas. El pedido original queda abierto en alistamiento.',targetRole:'coordinador_logistico',visibleRoles:['coordinador_logistico','lider_logistico','jefe_logistica','facturacion','admin','super_admin','super_administrador']});
+  }).then(function(){return createEvent(enrichCaseEvent(child,{caseId:child.id,type:'PARTIAL_SHIPMENT_SENT_TO_BILLING',process:'facturacion',detail:'Envío parcial '+seq+' enviado a facturación desde '+(c.reference||c.id),targetRole:'coordinador_logistico',visibleRoles:['coordinador_logistico','lider_logistico','jefe_logistica','admin','super_admin','super_administrador']}));}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+}
+
 function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],APROBADO_PENDIENTE_CORTE:["Aprobado, pendiente corte","warning"],PENDIENTE_REGISTRO:["Pendiente registrar","warning"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente jefe logística","warning"],PENDIENTE_JEFE_LOGISTICA:["Pendiente jefe logística","warning"],REQUERIMIENTO:["Requerimiento a ventas","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
 function cutsPanel(c){
   var cuts=c.cutRequests||[];if(!cuts.length)return "";
@@ -2788,7 +2911,7 @@ function transfer(id,next){
     var pendingItems=items.filter(function(it){return !it.alistamientoStatus||it.alistamientoStatus==="PENDIENTE";}).length;
     var noveltyItems=items.filter(function(it){return it.alistamientoStatus==="NOVEDAD"||it.alistamientoStatus==="NO_ENCONTRADO";}).length;
     if(items.length && pendingItems>0){alert("No puede enviar a facturación: todavía hay líneas del PDF pendientes por marcar en alistamiento.");return;}
-    if(noveltyItems>0){alert("No puede enviar a facturación: hay novedades de alistamiento pendientes de resolver por líder/coordinador.");return;}
+    if(noveltyItems>0){alert("No puede enviar a facturación como pedido completo: hay novedades de alistamiento pendientes de resolver por líder/coordinador. Si necesita despachar lo disponible, use Crear envío parcial.");return;}
     var cd=cutDoneCount(c);if(cd.total>0 && cd.done<cd.total){alert("No puede enviar a facturación: hay cortes pendientes por finalizar y registrar.");return;}
   }
   assignToProcess(c,next,"Relevo a "+processTitle(next)).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
@@ -2945,6 +3068,7 @@ function bindActions(){
     if(a==="supervise")openSupervisorNote(id);
     if(a==="receptionPdf")openReceptionPdf(id);
     if(a==="alistChecklist")openAlistamientoChecklist(id);
+    if(a==="alistPartial")openPartialShipment(id);
     if(a==="alistFound")markAlistamientoItem(id,b.getAttribute("data-line"),"ENCONTRADO","Mercancía encontrada y validada físicamente.","").catch(function(e){showError(e.message||e);});
     if(a==="alistPending")markAlistamientoItem(id,b.getAttribute("data-line"),"PENDIENTE","Pendiente por validar físicamente.","").catch(function(e){showError(e.message||e);});
     if(a==="alistMissing")openAlistamientoNovelty(id,b.getAttribute("data-line"),true);
