@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v26_notifications_all";
+var storageKey = "ei_trazabilidad_v27_pdf_unidades_decision_corte";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1238,28 +1238,33 @@ function extractPedido(text){
 }
 
 function meterUnitPattern(){return "MTRS?|MTS?|MT|M\\/L|ML|M|METROS?";}
+function orderUnitPattern(){return "(?:"+meterUnitPattern()+"|KGS?|KG|KLS?|KL|GRAMOS?|GRS?|GR|LB|LBS|UND(?:S)?|UN(?:DAD(?:ES)?)?|UNIDAD(?:ES)?|PZA|PZAS|PCS|PCE|CAJ(?:A|AS)?|CJ|ROL(?:LO|LOS)?|BOLSA(?:S)?|PAQ(?:UETE|S)?|PAQS?|PAR(?:ES)?|JGO|JUEGO|KIT|GL|GAL|LT|LTS|LITRO(?:S)?|CM|MM|M2|M3)";}
+function normalizePdfUnit(unit){return String(unit||"").toUpperCase().replace(/\./g,"").trim();}
 function isMeterUnit(unit){
-  return new RegExp("^(?:"+meterUnitPattern()+")$","i").test(String(unit||"").replace(/\./g,"").trim());
+  return new RegExp("^(?:"+meterUnitPattern()+")$","i").test(normalizePdfUnit(unit));
+}
+function isOrderUnit(unit){
+  return new RegExp("^(?:"+orderUnitPattern()+")$","i").test(normalizePdfUnit(unit));
 }
 function isLikelyCable(ref, desc){
   var t=stripAccents((String(ref||"")+" "+String(desc||"")).toUpperCase());
   if(/\b(TUBO|PVC|CPVC|EMT|IMC|GALVANIZ|CANALETA|BISAGRA|RIEL|PERFIL|ANGULO|CINTA|MANGUERA|CORAZA|DUCTO|TUBERIA|TUBERÍA|ABRAZADERA|BARRA|VARILLA|CADENA)\b/.test(t) && !/\b(CABLE|CONDUCTOR|ALAMBRE)\b/.test(t)){
     return false;
   }
-  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO|MALLA|FIBRA|VFD|SOLDADOR|CONTROL|MONOPOLAR|BIPOLAR|TRENZADO|BAJANTE|SUBTERRANEO|SUBTERRANEO)/.test(t);
+  return /(CABLE|CONDUCTOR|ALAMBRE|THHN|THHW|AWG|ENCAUCH|ACOMET|UTP|COAX|COBRE|ALUMINIO|DUPLEX|TRIPLEX|MULTIPLEX|FLEXIBLE|ALUMBRADO|CORDON|CALIBRE|XLPE|NYLON|DESNUDO|AISLADO|MALLA|FIBRA|VFD|SOLDADOR|CONTROL|MONOPOLAR|BIPOLAR|TRENZADO|BAJANTE|SUBTERRANEO|SUBTERRANEO|ESMALTADO)/.test(t);
 }
 function normalizePdfNumber(v){
   var s=String(v||"").trim();
   if(!s)return "";
   s=s.replace(/\s+/g,"");
-  if(/,\d{1,3}$/.test(s) && s.indexOf('.')>=0)s=s.replace(/\./g,"").replace(',', '.');
-  else if(/,\d{1,3}$/.test(s))s=s.replace(',', '.');
+  if(/,\d{1,4}$/.test(s) && s.indexOf('.')>=0)s=s.replace(/\./g,"").replace(',', '.');
+  else if(/,\d{1,4}$/.test(s))s=s.replace(',', '.');
   else s=s.replace(/,(?=\d{3}\b)/g,"").replace(/\.(?=\d{3}\b)/g,"");
   return s;
 }
 function isProbablyPriceContext(line, index){
-  var near=String(line||"").slice(Math.max(0,index-18), index+35);
-  return /\$|VALOR|UNITARIO|PARCIAL|PRECIO|IVA|DTO/i.test(near);
+  var near=String(line||"").slice(Math.max(0,index-24), index+42);
+  return /\$|VALOR|UNITARIO|PARCIAL|PRECIO|IVA|DTO|SUBTOTAL|TOTAL/i.test(near);
 }
 function normalizeRefText(v){return stripAccents(String(v||"").toUpperCase()).replace(/[^A-Z0-9]+/g,"");}
 function normalizeQty(v){
@@ -1268,10 +1273,10 @@ function normalizeQty(v){
   return s.replace(/\s+/g,"").replace(/,(?=\d{3}\b)/g,"").replace(/\.(?=\d{3}\b)/g,"");
 }
 function lineLooksHeader(line){
-  return /(valor\s*unit|valor\s*parcial|subtotal|iva|total\s|descuento|vendedor|forma\s+de\s+pago|referencia\s+descripci|cantidad\s+unidad|pedido\s+de\s+venta|nit\s|cliente\s*:|direcci[oó]n\s*:)/i.test(line);
+  return /(valor\s*unit|valor\s*parcial|subtotal|iva|total\s|descuento|vendedor|forma\s+de\s+pago|referencia\s+descripci|cantidad\s+unidad|pedido\s+de\s+venta|orden\s+de\s+entrega|nit\s|cliente\s*:|direcci[oó]n\s*:|elaborado|aprobado|recibido|pagina|página)/i.test(line);
 }
 function cleanDesc(desc){
-  return cleanPdfValue(String(desc||"").replace(/\b(?:VR|VALOR|UNITARIO|PARCIAL|DTO|IVA)\b.*$/i,""));
+  return cleanPdfValue(String(desc||"").replace(/\b(?:VR|VALOR|UNITARIO|PARCIAL|DTO|IVA|SUBTOTAL|TOTAL)\b.*$/i,""));
 }
 function refFromBefore(before){
   var tokens=cleanPdfValue(before).split(/\s+/).filter(Boolean);
@@ -1280,23 +1285,35 @@ function refFromBefore(before){
   var ref=tokens[0];
   if(/^(COD|CODIGO|CÓDIGO|REF|REFERENCIA|ITEM)$/i.test(ref) && tokens[1]){tokens.shift();ref=tokens[0];}
   var desc=tokens.slice(1).join(" ");
-  if(!/[A-Za-zÁÉÍÓÚÑ0-9]/.test(ref) || ref.length<2)return {ref:"",desc:""};
+  if(!/[A-Za-zÁÉÍÓÚÑ0-9]/.test(ref))return {ref:"",desc:""};
   return {ref:ref,desc:cleanDesc(desc)};
+}
+function fallbackRefFromDesc(desc){
+  var t=cleanPdfValue(desc||"");
+  if(!t)return "ITEM";
+  var parts=t.split(/\s+/).filter(Boolean);
+  var code=parts.filter(function(x){return /^[A-Z0-9][A-Z0-9._\-/]{2,}$/i.test(x);})[0];
+  if(code)return code;
+  return cleanPdfValue(parts.slice(0,4).join(" ")).slice(0,32)||"ITEM";
+}
+function shouldIgnorePdfItem(ref,desc,qty,unit,line){
+  var t=stripAccents((String(ref||"")+" "+String(desc||"")+" "+String(line||"")).toUpperCase());
+  if(!qty || !unit || !isOrderUnit(unit))return true;
+  if(lineLooksHeader(t))return true;
+  if(/\b(SUBTOTAL|TOTAL|IVA|APROBADO|ELABORADO|RECIBIDO|ORIGINAL|REIMPRESO|PAGINA)\b/.test(t))return true;
+  return false;
 }
 function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
   ref=cleanPdfValue(ref||"");
   desc=cleanDesc(desc||"");
   qty=normalizePdfNumber(qty);
-  unit=String(unit||"").toUpperCase().replace(/\./g,"");
+  unit=normalizePdfUnit(unit);
   if(!ref && desc){var rd=refFromBefore(desc);ref=rd.ref;desc=rd.desc||desc;}
-  if(!qty || !isMeterUnit(unit))return;
-  if(!ref || ref.length<2)return;
-  if(!desc || desc.length<3)desc=ref;
-  // QA V19: no se acepta una línea como corte solo porque otra línea cercana contiene la palabra cable.
-  // La referencia/descripción específica del ítem debe parecer cable/conductor/alambre.
-  var cable=isLikelyCable(ref,desc);
-  if(!cable)return;
-  // Dedupe operativo: si el mismo PDF repite el mismo ref + cantidad + unidad por lectura combinada, solo se crea un corte.
+  if(!desc && ref)desc=ref;
+  if(!ref || ref.length<2)ref=fallbackRefFromDesc(desc||rawLine);
+  if(!desc || desc.length<2)desc=ref;
+  if(shouldIgnorePdfItem(ref,desc,qty,unit,rawLine))return;
+  var posibleCorte=isMeterUnit(unit) && isLikelyCable(ref,desc);
   var itemText=normalizeRefText(ref+" "+desc);
   for(var ei=0;ei<items.length;ei++){
     var ex=items[ei];
@@ -1305,7 +1322,7 @@ function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
       if(exText && itemText && (exText.indexOf(itemText)>=0 || itemText.indexOf(exText)>=0))return;
     }
   }
-  var key=[normalizeRefText(ref),qty,unit].join("|");
+  var key=[normalizeRefText(ref),normalizeRefText(desc),qty,unit].join("|");
   if(seen[key])return;
   seen[key]=1;
   items.push({
@@ -1314,67 +1331,84 @@ function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
     descripcion:desc,
     cantidad:qty,
     unidad:unit,
-    requiereCorte:true,
-    esCable:true,
-    estado:"PENDIENTE_CORTE",
+    requiereCorte:posibleCorte,
+    posibleCorte:posibleCorte,
+    esCable:posibleCorte,
+    decisionCorteRecepcion:posibleCorte?"MANDAR_CORTE":"NO_APLICA",
+    estado:posibleCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO",
     rawLine:String(rawLine||"").slice(0,350),
-    detectionReason:reason||"Cable con unidad en metros detectado automáticamente desde PDF"
+    detectionReason:reason||(posibleCorte?"Cable con unidad en metros detectado desde PDF":"Línea de pedido detectada desde PDF ("+unit+")")
   });
 }
 function parseItemCandidate(candidate, seen, items){
-  var unit=meterUnitPattern();
+  var unit=orderUnitPattern();
   var line=cleanPdfValue(candidate);
   if(!line || lineLooksHeader(line))return;
-  var rx=new RegExp("\\b([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
   var match;
+  // REF + DESCRIPCIÓN + CANTIDAD + UNIDAD
+  var rx2=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190}?)\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\b","ig");
+  while((match=rx2.exec(line))){
+    if(isProbablyPriceContext(line, match.index))continue;
+    addPdfItem(items,seen,match[1],match[2],match[3],match[4],line,"Referencia + descripción + cantidad + unidad");
+  }
+  // REF + DESCRIPCIÓN + UNIDAD + CANTIDAD, común cuando la tabla tiene columnas U.M. y Cantidad.
+  var rx4=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190}?)\\s+("+unit+")\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\b","ig");
+  while((match=rx4.exec(line))){
+    if(isProbablyPriceContext(line, match.index))continue;
+    addPdfItem(items,seen,match[1],match[2],match[4],match[3],line,"Referencia + descripción + unidad + cantidad");
+  }
+  // CANTIDAD + UNIDAD + REF + DESCRIPCIÓN
+  var rx3=new RegExp("^(?:\\d{1,3}\\s+)?([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\s+([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190})$","i");
+  var m3=line.match(rx3);
+  if(m3)addPdfItem(items,seen,m3[3],m3[4],m3[1],m3[2],line,"Cantidad + unidad + referencia + descripción");
+  // DESCRIPCIÓN + UNIDAD + CANTIDAD + CÓDIGO OPCIONAL
+  var rx5=new RegExp("^(.{3,190}?)\\s+("+unit+")\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)(?:\\s*([A-Z0-9][A-Z0-9._\\-/]{2,}))?$","i");
+  var m5=line.match(rx5);
+  if(m5){
+    var ref=m5[4]||fallbackRefFromDesc(m5[1]);
+    addPdfItem(items,seen,ref,m5[1],m5[3],m5[2],line,"Descripción + unidad + cantidad");
+  }
+  // Búsqueda más flexible por cantidad/unidad en medio de la línea.
+  var rx=new RegExp("\\b([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\b","ig");
   while((match=rx.exec(line))){
     if(isProbablyPriceContext(line, match.index))continue;
     var qty=match[1], u=match[2];
     var before=line.slice(0,match.index);
     var after=line.slice(rx.lastIndex);
     var rd=refFromBefore(before);
-    if(rd.ref && rd.desc){
-      addPdfItem(items,seen,rd.ref,rd.desc,qty,u,line,"Cantidad + unidad en metros después de referencia/descripción");
+    if(rd.ref || rd.desc){
+      addPdfItem(items,seen,rd.ref,rd.desc,qty,u,line,"Cantidad/unidad asociada a descripción previa");
       continue;
     }
-    var afterClean=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/," ");
+    var afterClean=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/,"");
     var parts=afterClean.split(/\s+/).filter(Boolean);
-    if(parts.length>=2){
+    if(parts.length>=1){
       var ref=parts[0];
-      var desc=parts.slice(1,14).join(" ");
+      var desc=parts.slice(1,16).join(" ")||ref;
       addPdfItem(items,seen,ref,desc,qty,u,line,"Cantidad + unidad antes de referencia/descripción");
     }
   }
-  // Patrones de tablas donde la unidad aparece separada: REF DESC ... CANTIDAD M ...
-  var rx2=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{2,})\\s+(.{4,170}?)\\s+([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\b","ig");
-  while((match=rx2.exec(line))){
-    if(isProbablyPriceContext(line, match.index))continue;
-    addPdfItem(items,seen,match[1],match[2],match[3],match[4],line,"Referencia + descripción + cantidad en metros");
-  }
-  // Patrones de tablas tipo ITEM CANT UND REF DESC
-  var rx3=new RegExp("^(?:\\d{1,3}\\s+)?([0-9]{1,7}(?:[.,][0-9]{1,3})?)\\s*("+unit+")\\s+([A-Z0-9][A-Z0-9._\\-/]{2,})\\s+(.{4,170})$","i");
-  var m3=line.match(rx3);
-  if(m3)addPdfItem(items,seen,m3[3],m3[4],m3[1],m3[2],line,"Cantidad/unidad antes de referencia");
 }
 function extractPedidoItems(text){
   var raw=String(text||"").replace(/\r/g,"\n");
   var lines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
   var candidates=[];
-  var unitRx=new RegExp("\\b[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\b","i");
+  var anyUnitRx=new RegExp("\\b(?:(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+"))|(?:(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*))\\b","i");
   lines.forEach(function(l,i){
     candidates.push(l);
-    // QA V19: solo une con la línea siguiente cuando la línea actual no trae cantidad/unidad,
-    // para evitar que varios ítems consecutivos se mezclen y generen cortes falsos.
-    if(lines[i+1] && !unitRx.test(l) && unitRx.test(lines[i+1]))candidates.push(l+" "+lines[i+1]);
+    if(lines[i+1]){
+      if(!anyUnitRx.test(l) && anyUnitRx.test(lines[i+1]))candidates.push(l+" "+lines[i+1]);
+      if(anyUnitRx.test(l) && /^[0-9]{1,7}(?:[.,][0-9]{1,4})?\b/.test(lines[i+1]))candidates.push(l+" "+lines[i+1]);
+      if(new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l) && !/[0-9]{1,7}(?:[.,][0-9]{1,4})/.test(l))candidates.push(l+" "+lines[i+1]);
+    }
+    if(lines[i+1]&&lines[i+2] && new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l))candidates.push(l+" "+lines[i+1]+" "+lines[i+2]);
   });
   var compact=cleanPdfValue(raw.replace(/\n/g," "));
-  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{2,}\\s+.{3,220}?\\s+[0-9][0-9.,]*\\s*(?:"+meterUnitPattern()+")\\b)","ig");
-  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,260));});
-  // QA V19: no se usa split compacto por CANTIDAD+UNIDAD+REFERENCIA porque puede tomar la cantidad de un producto anterior
-  // y asignarla falsamente al siguiente cable. Los formatos cantidad/unidad antes de referencia se siguen leyendo por línea individual.
+  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{1,}\\s+.{3,220}?\\s+(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+")|(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*)\\b)","ig");
+  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,300));});
   var items=[], seen={};
   candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
-  return items.slice(0,250);
+  return items.slice(0,300);
 }
 
 function createCase(fd){
@@ -1456,7 +1490,7 @@ function orderItemsPanel(c){
   var items=c.orderItems||[];
   var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':"");
-  return '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>Todo lo detectado en metros queda marcado automáticamente como corte.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.requiereCorte?"Corte automático":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  return '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
 }
 function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],APROBADO_PENDIENTE_CORTE:["Aprobado, pendiente corte","warning"],PENDIENTE_REGISTRO:["Pendiente registrar","warning"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente jefe logística","warning"],PENDIENTE_JEFE_LOGISTICA:["Pendiente jefe logística","warning"],REQUERIMIENTO:["Requerimiento a ventas","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
 function cutsPanel(c){
@@ -1509,22 +1543,33 @@ function assignPdfField(c, key, value, label, filled){
 function mergePdfItemsIntoCase(c, parsed){
   var incoming=(parsed && parsed.items) ? parsed.items : [];
   c.orderItems=c.orderItems||[];
-  var seen={};
-  c.orderItems.forEach(function(it){
+  var index={};
+  c.orderItems.forEach(function(it,idx){
     var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
-    seen[k]=1;
+    index[k]=idx;
   });
-  var added=0;
+  var added=0, updated=0;
   incoming.forEach(function(it){
     var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
-    if(seen[k])return;
-    seen[k]=1;
+    if(index[k]!==undefined){
+      var existing=c.orderItems[index[k]];
+      existing.requiereCorte=!!it.requiereCorte;
+      existing.posibleCorte=!!it.posibleCorte;
+      existing.esCable=!!it.esCable;
+      existing.decisionCorteRecepcion=it.decisionCorteRecepcion||existing.decisionCorteRecepcion||"NO_APLICA";
+      existing.noCutReason=it.noCutReason||"";
+      existing.estado=it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO";
+      existing.detectionReason=it.detectionReason||existing.detectionReason||"";
+      updated++;
+      return;
+    }
     c.orderItems.push(Object.assign({
       id: uid("LIN"),
       estado: it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO",
       origen: "PDF_RECEPCION",
       createdAt: now()
     }, it));
+    index[k]=c.orderItems.length-1;
     added++;
   });
   return added;
@@ -1605,9 +1650,31 @@ function receptionPdfIsComplete(c){
   return !!(df.receptionPdfLoadedAt && df.receptionPdfDriveUrl && df.initialCommitmentStatus==="SI" && c.reference && c.client && items.length>0);
 }
 
+function applyReceptionCutDecisions(parsed, fd){
+  if(!parsed||!parsed.items)return parsed;
+  parsed.items.forEach(function(it,idx){
+    if(!it.posibleCorte){it.requiereCorte=false;it.decisionCorteRecepcion="NO_APLICA";it.estado="PENDIENTE_ALISTAMIENTO";return;}
+    var decision=String(fd.get("cutDecision_"+idx)||"MANDAR_CORTE");
+    it.decisionCorteRecepcion=decision;
+    if(decision==="CARRETO_COMPLETO"){
+      it.requiereCorte=false;
+      it.estado="PENDIENTE_ALISTAMIENTO";
+      it.noCutReason="Recepción indicó que no requiere corte porque se entrega carreto completo.";
+      it.detectionReason=(it.detectionReason||"Cable en metros detectado")+" · Decisión recepción: no cortar, carreto completo.";
+    }else{
+      it.requiereCorte=true;
+      it.estado="PENDIENTE_CORTE";
+      it.noCutReason="";
+      it.detectionReason=(it.detectionReason||"Cable en metros detectado")+" · Decisión recepción: enviar a corte.";
+    }
+  });
+  parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
+  return parsed;
+}
+
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los cortes detectados por unidades en metros. En esta misma recepción se registra el compromiso de mercancía para pasar directo a alistamiento.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades y todos los cortes en metros.</div><div id="pdfExtractPreview"></div><section class="card" style="margin-top:12px"><h3>Compromiso de mercancía en recepción</h3><label class="check-card"><input type="checkbox" name="merchCommitted" required> Confirmo que la mercancía fue comprometida/bloqueada en SIESA/ERP</label><label class="field"><span>Observación del compromiso</span><textarea class="textarea" name="commitDetail" placeholder="Ej.: mercancía comprometida en SIESA, parcial con novedad, validación realizada contra el PDF."></textarea></label></section><button class="btn btn-primary" type="submit">Guardar PDF, compromiso, datos, líneas y cortes automáticos</button></form>'));
+  drawer(modal("Cargar y leer PDF en recepción",'<form class="form" id="recPdfForm"><div class="notice"><strong>Lectura automática obligatoria:</strong> el iframe solo muestra el documento. La extracción real se hace con PDF.js para llenar todos los campos vacíos y crear automáticamente los líneas detectadas en cualquier unidad del pedido. Si la línea es cable en metros, recepción decide si se envía a corte o si no se corta porque se entrega carreto completo. En esta misma recepción se registra el compromiso de mercancía para pasar directo a alistamiento.</div><label class="field"><span>PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf" required></label><div id="pdfPreviewBox" style="display:none"><iframe id="pdfPreviewFrame" title="Vista previa PDF" style="width:100%;height:420px;border:1px solid #dbe7f4;border-radius:16px;background:#fff"></iframe></div><div class="notice" id="receptionPdfStatus">Seleccione el PDF oficial del pedido. La app buscará pedido, cliente, NIT, asesor, pago, entrega, referencias, cantidades, unidades KG/UND/MTR/etc. y candidatos de corte.</div><div id="pdfExtractPreview"></div><section class="card" style="margin-top:12px"><h3>Compromiso de mercancía en recepción</h3><label class="check-card"><input type="checkbox" name="merchCommitted" required> Confirmo que la mercancía fue comprometida/bloqueada en SIESA/ERP</label><label class="field"><span>Observación del compromiso</span><textarea class="textarea" name="commitDetail" placeholder="Ej.: mercancía comprometida en SIESA, parcial con novedad, validación realizada contra el PDF."></textarea></label></section><button class="btn btn-primary" type="submit">Guardar PDF, compromiso, datos, líneas y cortes automáticos</button></form>'));
   var parsed=null,fileName="",selectedFile=null,previewUrl="";
   qs("#receptionPdfInput").onchange=function(e){
     var f=e.target.files&&e.target.files[0];if(!f)return;
@@ -1621,9 +1688,9 @@ function openReceptionPdf(id){
     readPdfFile(f).then(function(text){
       parsed=extractPedido(text);
       var auto=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
-      var rows=(parsed.items||[]).slice(0,30).map(function(it){return '<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.requiereCorte?'Corte automático':'Alistamiento')+'</td></tr>';}).join('');
-      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Cortes automáticos por metros: "+auto;
-      qs("#pdfExtractPreview").innerHTML='<section class="card" style="margin-top:12px"><h3>Vista de extracción</h3><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Asesor</small><strong>'+esc(parsed.salesAdvisor||"—")+'</strong></div></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Destino</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No se detectaron líneas. Si el PDF es escaneado como imagen, se requiere OCR o digitación manual.</td></tr>')+'</tbody></table></div></section>';
+      var rows=(parsed.items||[]).map(function(it,idx){var decision=it.posibleCorte?'<select class="select" name="cutDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.requiereCorte?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO">No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span>';return '<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+decision+'</td><td>'+esc(it.posibleCorte?'Candidato por cable en metros':'Línea normal')+'</td></tr>';}).join('');
+      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto;
+      qs("#pdfExtractPreview").innerHTML='<section class="card" style="margin-top:12px"><h3>Vista de extracción</h3><div class="notice"><strong>Recepción decide:</strong> si el PDF trae cable en metros, seleccione si se manda a corte o si no se corta porque se entrega el carreto completo. Alistamiento podrá ver esta decisión.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Asesor</small><strong>'+esc(parsed.salesAdvisor||"—")+'</strong></div></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Tipo</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No se detectaron líneas. Si el PDF es escaneado como imagen, se requiere OCR o digitación manual.</td></tr>')+'</tbody></table></div></section>';
     }).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e)+". Si es un PDF escaneado como imagen, el lector no puede extraer texto sin OCR.";});
   };
   qs("#recPdfForm").onsubmit=function(e){
@@ -1631,6 +1698,7 @@ function openReceptionPdf(id){
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
     var fd=new FormData(e.target);
     if(!fd.get("merchCommitted")){alert("Recepción debe confirmar que la mercancía fue comprometida/bloqueada antes de continuar a alistamiento.");return;}
+    parsed=applyReceptionCutDecisions(parsed,fd);
     var filledFields=mergePdfExtractionIntoCase(c,parsed);
     c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus="SI";c.documentFlow.initialCommitmentDetail=fd.get("commitDetail")||"Mercancía comprometida/bloqueada en SIESA/ERP desde recepción.";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
     var added=autoCreateCutsFromItems(c,state.user.name);
@@ -1644,6 +1712,13 @@ function openReceptionPdf(id){
 }
 function autoCreateCutsFromItems(c,createdByName){
   c.cutRequests=c.cutRequests||[];
+  var activeLineIds={};
+  (c.orderItems||[]).forEach(function(it){if(it.requiereCorte)activeLineIds[it.id]=true;});
+  c.cutRequests=c.cutRequests.filter(function(x){
+    if(!x.sourceLineId || activeLineIds[x.sourceLineId])return true;
+    if(x.generatedBy==="PDF_AUTO_CABLE_METROS" && ["PENDIENTE_CORTE","REVISAR"].indexOf(x.status||"")>=0)return false;
+    return true;
+  });
   var added=0;
   (c.orderItems||[]).forEach(function(it){
     if(!it.requiereCorte)return;
@@ -1682,11 +1757,12 @@ function autoCreateCutsFromItems(c,createdByName){
 }
 function openCutsPlanner(id){
   var c=caseById(id);if(!c)return;var items=c.orderItems||[];
-  var rows=items.length?items.map(function(it,i){var checked=it.requiereCorte?'checked':'';return'<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.cantidad||"")+'"></td><td><input class="input" name="available_'+i+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';}).join(""):'<tr><td colspan="5">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
-  drawer(modal("Definir / ajustar cortes del pedido",'<form class="form" id="cutsPlanForm"><div class="notice">Los cortes por unidades en metros se generan automáticamente desde el PDF. Este panel solo sirve para revisar, corregir disponibilidad o crear cortes manuales adicionales.</div><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Descripción</th><th>Metros</th><th>Disponible</th></tr></thead><tbody>'+rows+'</tbody></table></div><fieldset><legend>Corte manual opcional</legend><div class="grid grid-3"><label class="field"><span>Referencia</span><input class="input" name="manualRef"></label><label class="field"><span>Metros</span><input class="input" name="manualMeters"></label><label class="field"><span>Disponible</span><input class="input" name="manualAvailable"></label></div><label class="field"><span>Observación</span><textarea class="textarea" name="manualObs"></textarea></label></fieldset><button class="btn btn-primary" type="submit">Guardar solicitudes de corte</button></form>'));
-  qs("#cutsPlanForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);c.cutRequests=c.cutRequests||[];var added=0;items.forEach(function(it,i){if(!fd.get("cut_"+i))return;var meters=fd.get("meters_"+i)||it.cantidad||"";var ref=it.referencia||"";var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});if(exists){c.cutRequests.forEach(function(x){if(x.sourceLineId===it.id){x.metrosSolicitados=meters;x.disponibleAntes=fd.get("available_"+i)||x.disponibleAntes||"";}});return;}var idc=uid("CUT");c.cutRequests.push({id:idc,code:"CT-"+(c.cutRequests.length+1),sourceLineId:it.id,caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:ref,descripcion:it.descripcion||"",metrosSolicitados:meters,disponibleAntes:fd.get("available_"+i)||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"ALISTAMIENTO",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;});
-    if(fd.get("manualRef")||fd.get("manualMeters")){var idm=uid("CUT");c.cutRequests.push({id:idm,code:"CT-"+(c.cutRequests.length+1),caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:fd.get("manualRef")||"Corte manual",descripcion:fd.get("manualObs")||"",metrosSolicitados:fd.get("manualMeters")||"",disponibleAntes:fd.get("manualAvailable")||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"MANUAL",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;}
-    c.hasCuts=(c.cutRequests||[]).length>0;var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();c.checklist=c.checklist||{};if(c.checklist["Líneas que requieren corte definidas"]!==undefined)c.checklist["Líneas que requieren corte definidas"]="ok";if(c.checklist["Cortes enviados al módulo de corte si aplica"]!==undefined&&c.cutRequests.length)c.checklist["Cortes enviados al módulo de corte si aplica"]="ok";
+  var rows=items.length?items.map(function(it,i){var checked=it.requiereCorte?'checked':'';var decision=it.posibleCorte?(it.requiereCorte?'Recepción: enviar a corte':'Recepción: no cortar · carreto completo'):'No aplica';return'<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad||"")+'</td><td>'+esc(it.unidad||"")+'</td><td>'+esc(decision)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.cantidad||"")+'"></td><td><input class="input" name="available_'+i+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';}).join(""):'<tr><td colspan="8">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
+  drawer(modal("Definir / ajustar cortes del pedido",'<form class="form" id="cutsPlanForm"><div class="notice">Alistamiento visualiza todas las líneas leídas desde Recepción. Las líneas con decisión “no cortar · carreto completo” quedan para alistamiento normal; las marcadas se envían al módulo de corte.</div><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Decisión recepción</th><th>Metros a cortar</th><th>Disponible</th></tr></thead><tbody>'+rows+'</tbody></table></div><fieldset><legend>Corte manual opcional</legend><div class="grid grid-3"><label class="field"><span>Referencia</span><input class="input" name="manualRef"></label><label class="field"><span>Metros</span><input class="input" name="manualMeters"></label><label class="field"><span>Disponible</span><input class="input" name="manualAvailable"></label></div><label class="field"><span>Observación</span><textarea class="textarea" name="manualObs"></textarea></label></fieldset><button class="btn btn-primary" type="submit">Guardar solicitudes de corte</button></form>'));
+  qs("#cutsPlanForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);c.cutRequests=c.cutRequests||[];var added=0;items.forEach(function(it,i){it.requiereCorte=!!fd.get("cut_"+i);it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";if(!it.requiereCorte)return;var meters=fd.get("meters_"+i)||it.cantidad||"";var ref=it.referencia||"";var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});if(exists){c.cutRequests.forEach(function(x){if(x.sourceLineId===it.id){x.metrosSolicitados=meters;x.disponibleAntes=fd.get("available_"+i)||x.disponibleAntes||"";}});return;}var idc=uid("CUT");c.cutRequests.push({id:idc,code:"CT-"+(c.cutRequests.length+1),sourceLineId:it.id,caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:ref,descripcion:it.descripcion||"",metrosSolicitados:meters,unidad:it.unidad||"M",disponibleAntes:fd.get("available_"+i)||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"ALISTAMIENTO",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;});
+    c.cutRequests=c.cutRequests.filter(function(x){if(!x.sourceLineId)return true;var it=(c.orderItems||[]).filter(function(y){return y.id===x.sourceLineId;})[0];if(!it || it.requiereCorte)return true;return !((x.generatedBy==="PDF_AUTO_CABLE_METROS"||x.generatedBy==="ALISTAMIENTO") && ["PENDIENTE_CORTE","REVISAR"].indexOf(x.status||"")>=0);});
+    if(fd.get("manualRef")||fd.get("manualMeters")){var idm=uid("CUT");c.cutRequests.push({id:idm,code:"CT-"+(c.cutRequests.length+1),caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:fd.get("manualRef")||"Corte manual",descripcion:fd.get("manualObs")||"",metrosSolicitados:fd.get("manualMeters")||"",unidad:"M",disponibleAntes:fd.get("manualAvailable")||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"MANUAL",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;}
+    c.hasCuts=(c.cutRequests||[]).length>0;var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();c.checklist=c.checklist||{};if(c.checklist["Líneas que requieren corte definidas"]!==undefined)c.checklist["Líneas que requieren corte definidas"]="ok";if(c.checklist["Cortes enviados al módulo de corte si aplica"]!==undefined)c.checklist["Cortes enviados al módulo de corte si aplica"]=c.cutRequests.length?"ok":"na";
     persistCase(c,{type:"CUT_REQUESTS_CREATED",detail:"Solicitudes de corte creadas/ajustadas: "+added}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
 function cutPayload(c,cut){return {caseId:c.id,cutId:cut.id,pedido:c.reference||cut.pedido||"",tipoPedido:(String(c.orderKind||cut.tipoPedido||"VENTAS").toUpperCase()==="ALUMBRADO"?"ALUMBRADO":"VENTAS"),referencia:cut.referencia||"",descripcion:cut.descripcion||"",metrosSolicitados:cut.metrosSolicitados||"",disponibleAntes:cut.disponibleAntes||"",cliente:c.client||"",source:"firebase_principal"};}
@@ -1724,6 +1800,27 @@ function cutRule(tipo, rem){
   if(rem<50)return {requires:true,status:"PENDIENTE_GERENCIA",condition:"<50 m",css:"stop",approverRole:"gerencia",approverLabel:"Gerencia",message:"Requiere autorización de Gerencia por sobrante menor a 50 m.",route:"Ventas: no continuar hasta aprobación de Gerencia."};
   if(cutSame(rem,50))return {requires:true,status:"PENDIENTE_JEFE_LOGISTICA",condition:"=50 m",css:"warn",approverRole:"jefe_logistica",approverLabel:"Jefe logístico",message:"Requiere validación del Jefe Logístico por sobrante igual a 50 m.",route:"Ventas: no continuar hasta aprobación logística."};
   return {requires:false,status:"CONFORME",condition:">50 m",css:"ok",approverRole:"",approverLabel:"",message:"Corte habilitado.",route:"Ventas: no requiere aprobación."};
+}
+function cutApproverGroup(rule){
+  var ar=normalizeRole(rule && rule.approverRole || "");
+  var cond=String(rule && rule.condition || "");
+  if(ar==="jefe_logistica")return {primary:"jefe_logistica",backup:"super_admin",label:"Jefe logístico o Super Admin"};
+  if(ar==="gerencia")return {primary:"gerencia",backup:"super_admin",label:"Gerencia o Super Admin"};
+  if(cond==="=50 m")return {primary:"jefe_logistica",backup:"super_admin",label:"Jefe logístico o Super Admin"};
+  if(cond==="<50 m")return {primary:"gerencia",backup:"super_admin",label:"Gerencia o Super Admin"};
+  if(cond==="<15 m")return {primary:"jefe_logistica",backup:"super_admin",label:"Jefe logístico o Super Admin"};
+  if(cond==="<10 m")return {primary:"gerencia",backup:"super_admin",label:"Gerencia o Super Admin"};
+  return {primary:ar,backup:"super_admin",label:roleTitle(ar)||"Autorizador"};
+}
+function userCanApproveCut(rule, cut){
+  if(!state.user)return false;
+  var r=normalizeRole(state.user.role);
+  var group=cutApproverGroup(rule||cutRule(cut && cut.tipoPedido, cutParseDecimal(cut && cut.remanenteProyectado)));
+  return r===group.primary || r===group.backup;
+}
+function cutApprovalIsPending(cut){return cut && cut.approvalRequired===true && cut.approvalStatus==="PENDIENTE";}
+function cutApprovalTargetLabel(rule, cut){
+  return cutApproverGroup(rule||{}).label || roleTitle((rule&&rule.approverRole)||(cut&&cut.approverRole)||"");
 }
 function cutValuesFromForm(){
   var f=qs("#cutFullForm");
@@ -1801,16 +1898,16 @@ function openCutModule(id,cutId){
   var calc=cutCalc(cut), rule=calc.rule, finished=cutDone(cut.status), started=!!cut.startedAt || cut.status==="EN_CORTE", canMeasure=cutCanMeasure(cut);
   var approvalPending=rule.requires && cut.approvalStatus==="PENDIENTE";
   var waitingApproval=rule.requires && !cutIsApproved(cut);
-  var approverRole=cut.approverRole||rule.approverRole;
-  var canApproveNow=approvalPending && state.user && (normalizeRole(state.user.role)===normalizeRole(approverRole) || isAdminRoleValue(state.user.role));
-  var canEditOperation=state.user && state.user.role==="auxiliar_corte";
+  var approvalGroup=cutApproverGroup(rule);
+  var canApproveNow=approvalPending && userCanApproveCut(rule,cut);
+  var canEditOperation=state.user && normalizeRole(state.user.role)==="auxiliar_corte";
   var remText=calc.hasValues?cutNormalizeDecimal(calc.remanente):"";
   var timerText=fmt(cutElapsedMs(cut));
   var statusLabel=(finished?"Finalizado":(started?"En corte":(approvalPending?"Pendiente aprobación":(waitingApproval?"Bloqueado por aprobación":(canMeasure?"Habilitado":"Pendiente")))));
   var conditionHtml=calc.hasValues?'<div class="cut-calc-formula">'+esc(cutNormalizeDecimal(calc.disponible))+' m − '+esc(cutNormalizeDecimal(calc.solicitado))+' m = <span>'+esc(remText)+' m</span></div><div class="cut-calc-rule"><strong>'+esc((cut.tipoPedido==="ALUMBRADO"?"Alumbrado":"Ventas")+": "+rule.condition)+'</strong><br>'+esc(rule.route)+'</div>':'<div class="cut-calc-formula">Disponible − a cortar = <span>Sobrante</span></div><div class="cut-calc-rule">Ingrese disponibilidad y metros a cortar para calcular la restricción.</div>';
   var lockNote=!calc.hasValues?'Ingrese metros disponibles y metros a cortar para habilitar el corte.':(waitingApproval?('<strong>Corte bloqueado.</strong><br>'+esc(rule.message)):(finished?'<strong>Corte finalizado y registrado.</strong>':(started?'<strong>Cronómetro activo.</strong><br>Debe anexar foto final para finalizar.':'<strong>Corte habilitado.</strong><br>Anexe foto inicial para iniciar el cronómetro.')));
   var approvalActions='';
-  if(rule.requires && !cutIsApproved(cut) && canEditOperation){approvalActions='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Enviar aprobación a '+esc(rule.approverLabel)+'</button>';}
+  if(canEditOperation){approvalActions='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
   if(canApproveNow){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar corte</button><button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar y enviar a Ventas</button>';}
   var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+pdfDocumentCard(c,true);
   var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
@@ -1829,7 +1926,7 @@ function openCutModule(id,cutId){
     '<fieldset><legend>Verificación y requerimiento</legend><div class="cut-grid cut-grid-2">'+
       '<label class="field"><span>Responsable del corte</span><input class="input" value="'+esc(cut.takenByName||state.user.name||"")+'" readonly><small>Usuario activo: '+esc(roleTitle(state.user.role))+'</small></label>'+ 
       '<label class="field"><span>Requerimiento a Ventas</span><select class="select" name="motivoVentas"><option value="">Sin requerimiento</option><option '+(cut.motivoVentas==="Cable no disponible en su totalidad para el corte"?'selected':'')+'>Cable no disponible en su totalidad para el corte</option><option '+(cut.motivoVentas==="Chipa con cantidad mayor que se puede vender toda"?'selected':'')+'>Chipa con cantidad mayor que se puede vender toda</option><option '+(cut.motivoVentas==="Mal registro del pedido"?'selected':'')+'>Mal registro del pedido</option><option '+(cut.motivoVentas==="Otros"?'selected':'')+'>Otros</option></select></label>'+ 
-    '</div><label class="field"><span>Observación / razón</span><textarea class="textarea" name="observacion" placeholder="Describa aprobación requerida o requerimiento a Ventas.">'+esc(cut.observacion||cut.requirementDetail||"")+'</textarea></label><div class="top-actions"><button type="button" class="btn btn-gold" data-cut-action="sendSalesRequirement">Abrir requerimiento a Ventas</button>'+approvalActions+'</div><div class="notice cut-status"><strong>Estado calculado:</strong> '+esc(statusLabel)+'<br>'+esc(rule.message)+'</div></fieldset>'+ 
+    '</div><div class="notice"><strong>Autorización interna:</strong> si el sobrante es igual a 50 m autoriza Jefe logístico o Super Admin; si es menor a 50 m autoriza Gerencia o Super Admin. Esta autorización es diferente al requerimiento a Ventas.</div><label class="field"><span>Observación / razón</span><textarea class="textarea" name="observacion" placeholder="Describa aprobación requerida o requerimiento a Ventas.">'+esc(cut.observacion||cut.requirementDetail||"")+'</textarea></label><div class="top-actions"><button type="button" class="btn btn-gold" data-cut-action="sendSalesRequirement">Abrir requerimiento a Ventas</button>'+approvalActions+'</div><div class="notice cut-status"><strong>Estado calculado:</strong> '+esc(statusLabel)+'<br>'+esc(rule.message)+'</div></fieldset>'+ 
     '<fieldset class="cut-measure '+(!canMeasure?'disabled-section':'')+'"><legend>Medición del corte</legend><div class="notice"><span>🔒</span> '+lockNote+'</div><div class="cut-timer-card"><div id="cutTimerDisplay" class="cut-timer">'+esc(timerText)+'</div><div><strong>Tiempo real del corte</strong><span> Iniciar exige foto inicial. Finalizar exige foto final.</span></div></div><div class="cut-grid cut-grid-4">'+
       '<label class="field"><span>Fecha corte</span><input class="input" name="fechaCorte" value="'+esc(cut.fechaCorte||new Date().toISOString().slice(0,10))+'" readonly></label>'+ 
       '<label class="field"><span>Hora inicio</span><input class="input" value="'+esc(cut.horaInicio||"")+'" readonly></label>'+ 
@@ -1877,19 +1974,22 @@ function handleCutAction(c,cut,action){
   }
   if(action==="requestApproval"){
     if(!calc.hasValues){alert("Primero registre disponibilidad y metros a cortar.");return;}
-    if(!rule.requires){alert("Este corte no requiere aprobación.");return;}
-    cut.approvalRequired=true;cut.approvalStatus="PENDIENTE";cut.approverRole=rule.approverRole;cut.approverLabel=rule.approverLabel;cut.approvalReason=rule.message;cut.status=rule.status;cut.approvalRequestedAt=now();cut.approvalRequestedBy=state.user.uid;cut.approvalRequestedByName=state.user.name;
-    c.status=rule.approverRole==="gerencia"?"pendiente_gerencia":"en_espera";c.assignedRole=rule.approverRole;c.assignedName=roleTitle(rule.approverRole);c.waitStartedAt=c.waitStartedAt||now();
-    persistCase(c,{type:"CUT_APPROVAL_REQUESTED",detail:rule.message,targetRole:rule.approverRole}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    if(!rule.requires){alert("Este corte no requiere aprobación: el sobrante está dentro de política.");return;}
+    var group=cutApproverGroup(rule);
+    cut.approvalRequired=true;cut.approvalStatus="PENDIENTE";cut.approverRole=group.primary;cut.approverBackupRole=group.backup;cut.approverLabel=group.label;cut.approvalReason=rule.message;cut.status=rule.status;cut.approvalRequestedAt=now();cut.approvalRequestedBy=state.user.uid;cut.approvalRequestedByName=state.user.name;
+    c.status=group.primary==="gerencia"?"pendiente_gerencia":"en_espera";c.assignedRole=group.primary;c.assignedName=group.label;c.waitStartedAt=c.waitStartedAt||now();
+    persistCase(c,{type:"CUT_APPROVAL_REQUESTED",detail:rule.message+" Autoriza: "+group.label,targetRole:group.primary,visibleRoles:["auxiliar_corte",group.primary,"super_admin","jefe_logistica","gerencia"]}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="approveCut"){
+    if(!userCanApproveCut(rule,cut)){alert("No tiene permiso para aprobar este corte. "+cutApprovalTargetLabel(rule,cut));return;}
     cut.approvalStatus="APROBADO";cut.approvedBy=state.user.uid;cut.approvedByName=state.user.name;cut.approvedAt=now();cut.status="APROBADO_PENDIENTE_CORTE";
     stopWait(c);c.status="asignado";c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.deadStartedAt=now();
     persistCase(c,{type:"CUT_APPROVED",detail:"Corte aprobado por "+state.user.name}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="rejectCut"){
+    if(!userCanApproveCut(rule,cut)){alert("No tiene permiso para rechazar esta autorización. "+cutApprovalTargetLabel(rule,cut));return;}
     cut.approvalStatus="RECHAZADO";cut.rejectedBy=state.user.uid;cut.rejectedByName=state.user.name;cut.rejectedAt=now();cut.status="RECHAZADO";
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
     return;
@@ -1994,12 +2094,14 @@ function renderRequirements(){
 }
 function cutApprovalsForRole(){
   var role=state.user?state.user.role:"";
+  var nr=normalizeRole(role);
   var rows=[];
   state.cases.forEach(function(c){
     (c.cutRequests||[]).forEach(function(cut){
       var pending=cut.approvalStatus==="PENDIENTE" || cut.status==="PENDIENTE_GERENCIA" || cut.status==="PENDIENTE_JEFE_LOGISTICA" || cut.status==="PENDIENTE_LIDER";
       if(!pending)return;
-      if(canSeeAll() || cut.approverRole===role || c.assignedRole===role)rows.push({caseObj:c,cut:cut});
+      var rule=cutRule(cut.tipoPedido||"VENTAS",cutParseDecimal(cut.remanenteProyectado));
+      if(nr==="admin" || nr==="super_admin" || userCanApproveCut(rule,cut) || normalizeRole(cut.approverRole)===nr || normalizeRole(c.assignedRole)===nr)rows.push({caseObj:c,cut:cut});
     });
   });
   return rows;
