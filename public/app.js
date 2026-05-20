@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v22_flujo_sin_compromisos";
+var storageKey = "ei_trazabilidad_v23_legacy_migration";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -163,6 +163,46 @@ function isAdminRoleValue(r){var nr=normalizeRole(r);return nr==="admin"||nr==="
 function isPrivilegedKpiRole(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="gerencia"||nr==="jefe_logistica";}
 function isSuperAdminRoleValue(r){return normalizeRole(r)==="super_admin";}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
+function legacyProcessTarget(p){
+  if(p==="compromiso_mercancia"||p==="compromiso_inicial")return "alistamiento";
+  if(p==="ratificacion_compromiso"||p==="ratificar_compromiso")return "facturacion";
+  return "";
+}
+function isLegacyProcess(p){return !!legacyProcessTarget(p);}
+function migrateLegacyCaseInMemory(c, reason){
+  if(!c || !isLegacyProcess(c.currentProcess))return false;
+  var oldProcess=c.currentProcess, target=legacyProcessTarget(oldProcess);
+  c.legacyProcessMigratedFrom=oldProcess;
+  c.legacyProcessMigratedTo=target;
+  c.legacyProcessMigratedAt=c.legacyProcessMigratedAt||now();
+  c.legacyProcessMigrationReason=reason||"Flujo V22/V23: se eliminaron los módulos de compromiso; el compromiso queda dentro de Recepción y se ratifica al facturar.";
+  c.currentProcess=target;
+  if(!c.closedAt && c.status!=="cancelado" && c.status!=="cerrado_conforme"){
+    c.status="asignado";
+    c.assignedRole=primaryOwnerRole(target);
+    c.assignedName=processOwnerTitle(target);
+    c.assignedTo="";
+    c.deadStartedAt=c.deadStartedAt||now();
+    c.activeStartedAt=null;
+    c.waitStartedAt=null;
+  }
+  c.checklist={};
+  if(processes[target] && processes[target].checklist){
+    processes[target].checklist.forEach(function(x){c.checklist[x]="pending";});
+  }
+  c.documentFlow=c.documentFlow||{};
+  if(oldProcess==="compromiso_mercancia"||oldProcess==="compromiso_inicial"){
+    c.documentFlow.initialCommitmentStatus=c.documentFlow.initialCommitmentStatus||"SI";
+    c.documentFlow.initialCommitmentDetail=c.documentFlow.initialCommitmentDetail||"Migrado: el compromiso de mercancía queda registrado dentro de Recepción de pedidos.";
+  }
+  if(oldProcess==="ratificacion_compromiso"||oldProcess==="ratificar_compromiso"){
+    c.documentFlow.finalCommitmentStatus=c.documentFlow.finalCommitmentStatus||"RATIFICADO_POR_FACTURACION";
+    c.documentFlow.finalCommitmentDetail=c.documentFlow.finalCommitmentDetail||"Migrado: la ratificación del compromiso se registra dentro de Facturación.";
+  }
+  if(target==="alistamiento")applyAlistamientoAutoChecklist(c);
+  c.updatedAt=now();
+  return true;
+}
 function processOwnerRoles(p){return processes[p] ? processes[p].ownerRoles : [];}
 function activeProcessKeys(){return Object.keys(processes).filter(function(k){return !processes[k].hidden;});}
 function canAccessProcess(role,p){
@@ -325,7 +365,31 @@ function loadData(){
     state.cases=res[0]||[];
     state.events=res[1]||[];
     state.users=res[2]||[];
+    autoMigrateLegacyProcesses();
   });
+}
+
+function autoMigrateLegacyProcesses(){
+  if(!state.cases || !state.cases.length)return;
+  var migrated=[];
+  state.cases.forEach(function(c){
+    if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))migrated.push(c);
+  });
+  if(!migrated.length || !db || !state.user)return;
+  if(!(canSeeAll() || isAdminRoleValue(state.user.role)))return;
+  migrated.forEach(function(c){
+    db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo migrar proceso legacy",c.id,e);});
+  });
+}
+
+function migrateLegacyProcessesNow(){
+  if(!canUseAdminPanel()){alert("No tiene permiso para corregir procesos legacy.");return;}
+  var migrated=[];
+  state.cases.forEach(function(c){if(migrateLegacyCaseInMemory(c,"Corrección manual desde Admin"))migrated.push(c);});
+  if(!migrated.length){alert("No hay casos atrapados en procesos de compromiso legacy.");renderAdmin();return;}
+  Promise.all(migrated.map(function(c){return db.collection("cases").doc(c.id).set(c,{merge:true});}))
+    .then(function(){alert("Procesos corregidos: "+migrated.length+". Los casos de compromiso pasaron al flujo actual.");renderAdmin();})
+    .catch(function(e){showError((e&&e.message)||e||"No se pudieron corregir los procesos legacy.");});
 }
 
 function persistCase(c,event){
@@ -958,6 +1022,9 @@ function initialCheckFromPdf(item,x){if(!x)return"pending";if(item==="Contenido 
 
 function renderDetail(id){
   var c=caseById(id);if(!c){renderCases();return;}
+  if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle")){
+    if(db && (canSeeAll() || isAdminRoleValue(state.user.role))){db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo guardar migración legacy",e);});}
+  }
   if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)<0;})){renderCutsQueue();return;}
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="";
   if(!c.closedAt){
@@ -2109,7 +2176,7 @@ function renderAdmin(){
   var rows=state.cases.slice().sort(function(a,b){return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0);}).slice(0,150).map(function(c){
     return '<tr><td>'+esc(c.reference||c.id)+'</td><td>'+esc(c.client||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(c.excludeFromKpi?'Excluido':'Incluido')+'</td><td><button class="btn btn-small" data-action="toggleKpiCase" data-id="'+esc(c.id)+'">'+(c.excludeFromKpi?'Incluir VSM':'Excluir VSM')+'</button> '+(canDeleteAdminData()?'<button class="btn btn-small btn-danger" data-action="deleteCase" data-id="'+esc(c.id)+'">Eliminar</button>':'')+'</td></tr>';
   }).join('');
-  layout(header("Admin","Limpieza de pruebas, control de VSM y mantenimiento operativo.",'<button class="btn btn-gold" data-action="clearPwa">Limpiar caché PWA</button>')+
+  layout(header("Admin","Limpieza de pruebas, control de VSM y mantenimiento operativo.",'<button class="btn btn-gold" data-action="migrateLegacy">Corregir procesos legacy</button><button class="btn btn-gold" data-action="clearPwa">Limpiar caché PWA</button>')+
     '<section class="grid grid-4"><article class="card kpi"><span>Casos</span><strong>'+total+'</strong><small>Total en base</small></article><article class="card kpi"><span>Excluidos VSM</span><strong>'+excl+'</strong><small>No afectan indicadores</small></article><article class="card kpi"><span>Usuarios</span><strong>'+state.users.length+'</strong><small>Perfiles cargados</small></article><article class="card kpi"><span>Rol</span><strong>'+esc(roleTitle(state.user.role))+'</strong><small>Permisos activos</small></article></section>'+ 
     '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Casos y pruebas</h3><p>Use excluir para limpiar indicadores sin borrar evidencia. Eliminar borra caso, eventos y evidencias asociadas; úselo solo para pruebas.</p></div></div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Proceso</th><th>Estado</th><th>VSM</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay casos.</td></tr>')+'</tbody></table></div></section>');
 }
@@ -2138,6 +2205,7 @@ function deleteCaseHard(id){
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
     if(a==="logout"){sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
+    if(a==="migrateLegacy")migrateLegacyProcessesNow();
     if(a==="open")renderDetail(id);
     if(a==="accept")accept(id);
     if(a==="wait")openWait(id);
