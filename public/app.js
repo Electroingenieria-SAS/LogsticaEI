@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v24_entrega_certificado";
+var storageKey = "ei_trazabilidad_v25_live_updates";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -22,7 +22,8 @@ var state = {
   users: [],
   filters: { search:"", status:"", process:"" },
   kpiFilters: { from:"", to:"", process:"" },
-  pdfExtraction: null
+  pdfExtraction: null,
+  realtime: { caseUnsubs: [], eventUnsub: null, userUnsub: null, pollTimer: null, buckets: {}, initialCasesLoaded: false, lastHash: "", lastChangeAt: 0, startedAt: 0, pendingRender: false }
 };
 
 var roles = {
@@ -391,6 +392,174 @@ function loadData(){
   });
 }
 
+
+function caseLiveHash(list){
+  return (list||[]).map(function(c){
+    return [c.id,c.updatedAt||"",c.status||"",c.currentProcess||"",c.assignedRole||"",c.assignedTo||"",c.closedAt||""].join("|");
+  }).sort().join("~");
+}
+
+function caseSummary(c){
+  return (c && (c.reference || c.pedido || c.caseNumber || c.id)) || "Caso";
+}
+
+function caseRelevantToCurrentUser(c){
+  if(!state.user || !c)return false;
+  if(canSeeAll())return true;
+  var r=state.user.role;
+  if(c.assignedRole===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
+  if(r==="auxiliar_corte" && c.hasCuts===true)return true;
+  return canAccessProcess(r,c.currentProcess);
+}
+
+function shouldAutoRenderNow(){
+  var d=qs("#drawer");
+  if(d && d.classList.contains("open"))return false;
+  var a=document.activeElement;
+  if(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName||""))return false;
+  return true;
+}
+
+function renderAfterLiveChange(){
+  if(!state.user)return;
+  if(shouldAutoRenderNow()){
+    try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}
+  }else{
+    state.realtime.pendingRender=true;
+    showLiveToast("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.",true);
+  }
+}
+
+function showLiveToast(title,msg,withButton){
+  var box=document.getElementById("ei-live-toast");
+  if(!box){
+    box=document.createElement("div");
+    box.id="ei-live-toast";
+    box.style.cssText="position:fixed;right:18px;bottom:18px;z-index:9999;max-width:390px;background:#061b46;color:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(6,27,70,.32);padding:14px 14px 12px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:none";
+    document.body.appendChild(box);
+  }
+  box.innerHTML='<div style="font-weight:900;font-size:14px;margin-bottom:4px">'+esc(title||"Movimiento detectado")+'</div><div style="font-size:12px;line-height:1.35;opacity:.9">'+esc(msg||"")+'</div>'+(withButton?'<button id="ei-live-refresh-btn" style="margin-top:10px;border:0;background:#ffda37;color:#061b46;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer">Actualizar vista</button>':'');
+  box.style.display="block";
+  var btn=document.getElementById("ei-live-refresh-btn");
+  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";try{render();}catch(e){location.reload();}};}
+  clearTimeout(box.__hideTimer);
+  box.__hideTimer=setTimeout(function(){if(!withButton)box.style.display="none";},6500);
+}
+
+function notifyRealtimeChanges(newList, oldList){
+  var oldMap={};
+  (oldList||[]).forEach(function(c){if(c&&c.id)oldMap[c.id]=c;});
+  var changes=[];
+  (newList||[]).forEach(function(c){
+    if(!c || !c.id || !caseRelevantToCurrentUser(c))return;
+    var old=oldMap[c.id];
+    if(!old){changes.push({type:"nuevo",c:c,msg:"Nuevo caso visible: "+caseSummary(c)+"."});return;}
+    if((old.currentProcess||"") !== (c.currentProcess||"")){
+      changes.push({type:"proceso",c:c,msg:caseSummary(c)+" pasó de "+processTitle(old.currentProcess)+" a "+processTitle(c.currentProcess)+"."});return;
+    }
+    if((old.status||"") !== (c.status||"")){
+      changes.push({type:"estado",c:c,msg:caseSummary(c)+" cambió de estado a "+(c.status||"sin estado")+"."});return;
+    }
+    if((old.assignedRole||"") !== (c.assignedRole||"") || (old.assignedTo||"") !== (c.assignedTo||"")){
+      changes.push({type:"asignacion",c:c,msg:caseSummary(c)+" fue reasignado a "+roleTitle(c.assignedRole)+"."});return;
+    }
+  });
+  if(!changes.length)return;
+  var nowMs=Date.now();
+  if(state.realtime.startedAt && nowMs-state.realtime.startedAt<3000)return;
+  if(nowMs - (state.realtime.lastChangeAt||0) < 1200)return;
+  state.realtime.lastChangeAt=nowMs;
+  var title=changes.length===1?"Movimiento detectado":"Movimientos detectados";
+  var msg=changes.length===1?changes[0].msg:(changes.length+" casos tuvieron cambios. Actualizando la vista.");
+  showLiveToast(title,msg,false);
+  if(canNotify() && Notification.permission==="granted"){
+    try{new Notification(title,{body:msg,icon:"./assets/app-icon.svg",badge:"./assets/app-icon.svg"});}catch(e){}
+  }else{
+    playBeep();
+  }
+}
+
+function applyRealtimeCases(list){
+  list=sortByUpdated(uniqueById(list||[]));
+  var newHash=caseLiveHash(list);
+  if(!state.realtime.initialCasesLoaded){
+    state.cases=list;
+    state.realtime.lastHash=newHash;
+    state.realtime.initialCasesLoaded=true;
+    autoMigrateLegacyProcesses();
+    return;
+  }
+  if(newHash===state.realtime.lastHash)return;
+  var oldList=state.cases.slice();
+  state.cases=list;
+  state.realtime.lastHash=newHash;
+  autoMigrateLegacyProcesses();
+  notifyRealtimeChanges(list,oldList);
+  renderAfterLiveChange();
+}
+
+function rebuildRealtimeFromBuckets(){
+  var all=[];
+  Object.keys(state.realtime.buckets||{}).forEach(function(k){all=all.concat(state.realtime.buckets[k]||[]);});
+  applyRealtimeCases(all);
+}
+
+function addCaseRealtimeListener(key,query){
+  try{
+    var unsub=query.onSnapshot(function(snap){
+      state.realtime.buckets[key]=docsToList(snap);
+      rebuildRealtimeFromBuckets();
+    },function(err){
+      console.warn("Escucha en tiempo real falló",key,err);
+      showLiveToast("Conexión en tiempo real intermitente","La app seguirá actualizando automáticamente cada 25 segundos.",false);
+    });
+    state.realtime.caseUnsubs.push(unsub);
+  }catch(e){console.warn("No se pudo activar listener",key,e);}
+}
+
+function stopRealtimeSync(){
+  try{(state.realtime.caseUnsubs||[]).forEach(function(fn){try{fn();}catch(e){}});}catch(e){}
+  try{if(state.realtime.eventUnsub)state.realtime.eventUnsub();}catch(e){}
+  try{if(state.realtime.userUnsub)state.realtime.userUnsub();}catch(e){}
+  if(state.realtime.pollTimer)clearInterval(state.realtime.pollTimer);
+  state.realtime={caseUnsubs:[],eventUnsub:null,userUnsub:null,pollTimer:null,buckets:{},initialCasesLoaded:false,lastHash:"",lastChangeAt:0,startedAt:0,pendingRender:false};
+}
+
+function startRealtimeSync(){
+  if(!firebaseReady || !db || !state.user)return;
+  stopRealtimeSync();
+  state.realtime.startedAt=Date.now();
+  var r=state.user.role;
+  if(canSeeAll()){
+    addCaseRealtimeListener("all",db.collection("cases").orderBy("updatedAt","desc"));
+  }else if(r==="auxiliar_corte"){
+    addCaseRealtimeListener("cuts",db.collection("cases").where("hasCuts","==",true));
+  }else{
+    addCaseRealtimeListener("assigned",db.collection("cases").where("assignedRole","==",r));
+    addCaseRealtimeListener("created",db.collection("cases").where("createdBy","==",state.user.uid));
+  }
+  if(canSeeAll()){
+    try{
+      state.realtime.eventUnsub=db.collection("case_events").orderBy("timestamp","desc").limit(900).onSnapshot(function(snap){
+        state.events=docsToList(snap);
+      },function(e){console.warn("Eventos en vivo no disponibles",e);});
+    }catch(e){}
+    try{
+      state.realtime.userUnsub=db.collection("users").onSnapshot(function(snap){state.users=docsToList(snap);},function(e){console.warn("Usuarios en vivo no disponibles",e);});
+    }catch(e){}
+  }
+  state.realtime.pollTimer=setInterval(function(){
+    if(!state.user || !firebaseReady || !db)return;
+    loadData().then(function(){
+      var h=caseLiveHash(state.cases);
+      if(h!==state.realtime.lastHash){
+        state.realtime.lastHash=h;
+        renderAfterLiveChange();
+      }
+    }).catch(function(e){console.warn("Refresco silencioso falló",e);});
+  },25000);
+}
+
 function autoMigrateLegacyProcesses(){
   if(!state.cases || !state.cases.length)return;
   var migrated=[];
@@ -523,7 +692,10 @@ function loadProfileAndRender(fbUser){
   return db.collection("users").doc(fbUser.uid).get().then(function(doc){
     applyProfileFromDoc(fbUser,doc);
     return loadData();
-  }).then(render);
+  }).then(function(){
+    startRealtimeSync();
+    render();
+  });
 }
 
 function login(fd){
@@ -2283,7 +2455,7 @@ function deleteCaseHard(id){
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
-    if(a==="logout"){sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
+    if(a==="logout"){stopRealtimeSync();sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
     if(a==="migrateLegacy")migrateLegacyProcessesNow();
     if(a==="open")renderDetail(id);
     if(a==="accept")accept(id);
