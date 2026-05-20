@@ -318,17 +318,67 @@ function deadMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(
 function progress(c){var def=processes[c.currentProcess];var list=def?def.checklist:[];var total=list.length||1;var done=0;for(var k in c.checklist){if(c.checklist[k]==="ok"||c.checklist[k]==="na")done++;}return clamp(Math.round(done/total*100),0,100);}
 function showError(msg){appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo.</p><pre>'+esc(msg)+'</pre><button class="btn btn-primary" onclick="location.reload()">Recargar</button></section></main>';}
 
+function loadScriptOnce(src,id){
+  return new Promise(function(resolve,reject){
+    if(id && document.getElementById(id)){
+      var existing=document.getElementById(id);
+      if(existing.getAttribute("data-loaded")==="1")return resolve();
+      existing.addEventListener("load",function(){resolve();},{once:true});
+      existing.addEventListener("error",function(){reject(new Error("No se pudo cargar "+src));},{once:true});
+      return;
+    }
+    var sc=document.createElement("script");
+    if(id)sc.id=id;
+    sc.async=false;
+    sc.defer=false;
+    sc.src=src;
+    sc.onload=function(){sc.setAttribute("data-loaded","1");resolve();};
+    sc.onerror=function(){reject(new Error("No se pudo cargar "+src));};
+    document.head.appendChild(sc);
+  });
+}
+function ensureFirebaseConfigLoaded(){
+  if(window.firebaseConfig)return Promise.resolve();
+  return loadScriptOnce("./firebase-config.js?v="+Date.now(),"firebase-config-retry").then(function(){
+    if(!window.firebaseConfig)throw new Error("firebase-config.js cargó, pero no creó window.firebaseConfig. Revise que el archivo esté en la raíz y no esté vacío.");
+  });
+}
+function ensureFirebaseSdkLoaded(){
+  if(window.firebase && window.firebase.initializeApp && window.firebase.auth && window.firebase.firestore)return Promise.resolve();
+  return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js","firebase-app-compat-retry")
+    .then(function(){return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js","firebase-auth-compat-retry");})
+    .then(function(){return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js","firebase-firestore-compat-retry");})
+    .then(function(){
+      if(!window.firebase || !window.firebase.initializeApp)throw new Error("El SDK de Firebase no quedó disponible. Revise internet, bloqueo del navegador o ahorro de datos del celular.");
+    });
+}
 function initFirebase(){
   try{
     if(!window.firebase || !window.firebaseConfig){throw new Error("No cargó Firebase o firebase-config.js");}
     if(!firebase.apps.length){firebase.initializeApp(window.firebaseConfig);}
     auth=firebase.auth();
+    try{auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);}catch(persistenceError){}
     db=firebase.firestore();
+    try{db.enableNetwork();}catch(networkError){}
     firebaseReady=true;
+    firebaseInitError="";
   }catch(e){
     firebaseReady=false;
     firebaseInitError=e.message||String(e);
   }
+}
+function initFirebaseAsync(){
+  return ensureFirebaseConfigLoaded().then(ensureFirebaseSdkLoaded).then(function(){
+    initFirebase();
+    if(!firebaseReady)throw new Error(firebaseInitError||"Firebase no inicializó.");
+    return true;
+  });
+}
+function clearPwaCachesAndReload(){
+  var tasks=[];
+  try{if(window.caches)tasks.push(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));}catch(e){}
+  try{if(navigator.serviceWorker)tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){return Promise.all(regs.map(function(r){return r.unregister();}));}));}catch(e){}
+  Promise.all(tasks).then(function(){location.reload(true);}).catch(function(){location.reload(true);});
 }
 
 function docsToList(snap){
@@ -843,8 +893,12 @@ function layout(content){
 function header(t,sub,actions){return '<div class="topbar"><div class="page-title"><h2>'+esc(t)+'</h2><p>'+esc(sub||"")+'</p></div><div class="top-actions">'+(actions||"")+'</div></div>';}
 
 function renderLogin(){
-  appEl.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-panel"><div><div class="logo-box"><img src="'+logoPath+'" alt="Electroingeniería"></div><h1>Trazabilidad secuencial.</h1><p>Ventas inicia, logística valida, aux logística alista, líder o coordinador compromete y factura, y desde facturación se desbloquea la ruta de entrega.</p></div><div class="brand-metrics"><div class="metric"><strong>Secuencia</strong><span>Sin procesos sueltos</span></div><div class="metric"><strong>Tiempo</strong><span>Macroproceso y espera</span></div><div class="metric"><strong>VSM</strong><span>Indicadores por área</span></div></div></div><form class="login-panel" id="loginForm"><h2>Ingreso operativo</h2><p>'+(firebaseReady?'Conexión Firebase activa.':'Firebase no conectó: '+esc(firebaseInitError||"revisa conexión"))+'</p><div class="form"><label class="field"><span>Correo</span><input class="input" name="email" type="email" required placeholder="usuario@empresa.com"></label><label class="field"><span>Contraseña</span><input class="input" name="password" type="password" required placeholder="Contraseña"></label><button class="btn btn-primary" type="submit">Ingresar</button></div></form></section></main>';
+  var firebaseMsg=firebaseReady?'Conexión Firebase activa.':'Firebase no conectó: '+esc(firebaseInitError||"revisa conexión");
+  var helper=firebaseReady?'':'<div class="alert warning"><strong>Conexión pendiente.</strong><br>En celular normalmente se corrige limpiando caché/PWA o reintentando la carga del SDK. No borra datos de Firebase.</div>';
+  appEl.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-panel"><div><div class="logo-box"><img src="'+logoPath+'" alt="Electroingeniería"></div><h1>Trazabilidad secuencial.</h1><p>Ventas inicia, logística valida, aux logística alista, corte opera con evidencias y los estados se actualizan en tiempo real.</p></div><div class="brand-metrics"><div class="metric"><strong>Secuencia</strong><span>Sin procesos sueltos</span></div><div class="metric"><strong>Tiempo</strong><span>Macroproceso y espera</span></div><div class="metric"><strong>VSM</strong><span>Indicadores por área</span></div></div></div><form class="login-panel" id="loginForm"><h2>Ingreso operativo</h2><p>'+firebaseMsg+'</p>'+helper+'<div class="form"><label class="field"><span>Correo</span><input class="input" name="email" type="email" required placeholder="usuario@empresa.com"></label><label class="field"><span>Contraseña</span><input class="input" name="password" type="password" required placeholder="Contraseña"></label><button class="btn btn-primary" type="submit">Ingresar</button><button class="btn" type="button" id="retryFirebaseBtn">Reintentar conexión</button><button class="btn btn-gold" type="button" id="clearPwaBtn">Limpiar caché del celular</button></div></form></section></main>';
   qs("#loginForm").onsubmit=function(e){e.preventDefault();login(new FormData(e.target));};
+  var retry=qs("#retryFirebaseBtn");if(retry)retry.onclick=function(){showLoading("Reintentando conexión con Firebase...");initFirebaseAsync().then(function(){renderLogin();}).catch(function(e){firebaseReady=false;firebaseInitError=e.message||String(e);renderLogin();});};
+  var clear=qs("#clearPwaBtn");if(clear)clear.onclick=function(){showLoading("Limpiando caché local y recargando...");clearPwaCachesAndReload();};
 }
 
 function showLoading(msg){
@@ -1907,8 +1961,9 @@ function openCutModule(id,cutId){
   var conditionHtml=calc.hasValues?'<div class="cut-calc-formula">'+esc(cutNormalizeDecimal(calc.disponible))+' m − '+esc(cutNormalizeDecimal(calc.solicitado))+' m = <span>'+esc(remText)+' m</span></div><div class="cut-calc-rule"><strong>'+esc((cut.tipoPedido==="ALUMBRADO"?"Alumbrado":"Ventas")+": "+rule.condition)+'</strong><br>'+esc(rule.route)+'</div>':'<div class="cut-calc-formula">Disponible − a cortar = <span>Sobrante</span></div><div class="cut-calc-rule">Ingrese disponibilidad y metros a cortar para calcular la restricción.</div>';
   var lockNote=!calc.hasValues?'Ingrese metros disponibles y metros a cortar para habilitar el corte.':(waitingApproval?('<strong>Corte bloqueado.</strong><br>'+esc(rule.message)):(finished?'<strong>Corte finalizado y registrado.</strong>':(started?'<strong>Cronómetro activo.</strong><br>Debe anexar foto final para finalizar.':'<strong>Corte habilitado.</strong><br>Anexe foto inicial para iniciar el cronómetro.')));
   var approvalActions='';
-  if(canEditOperation){approvalActions='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
-  if(canApproveNow){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar corte</button><button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar y enviar a Ventas</button>';}
+  if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
+  if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar autorización de corte</button>';}
+  if(canApproveNow){approvalActions+='<button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar autorización y enviar a Ventas</button>';}
   var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+pdfDocumentCard(c,true);
   var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
     '<fieldset><legend>Datos del corte</legend><div class="cut-grid">'+
@@ -1926,7 +1981,7 @@ function openCutModule(id,cutId){
     '<fieldset><legend>Verificación y requerimiento</legend><div class="cut-grid cut-grid-2">'+
       '<label class="field"><span>Responsable del corte</span><input class="input" value="'+esc(cut.takenByName||state.user.name||"")+'" readonly><small>Usuario activo: '+esc(roleTitle(state.user.role))+'</small></label>'+ 
       '<label class="field"><span>Requerimiento a Ventas</span><select class="select" name="motivoVentas"><option value="">Sin requerimiento</option><option '+(cut.motivoVentas==="Cable no disponible en su totalidad para el corte"?'selected':'')+'>Cable no disponible en su totalidad para el corte</option><option '+(cut.motivoVentas==="Chipa con cantidad mayor que se puede vender toda"?'selected':'')+'>Chipa con cantidad mayor que se puede vender toda</option><option '+(cut.motivoVentas==="Mal registro del pedido"?'selected':'')+'>Mal registro del pedido</option><option '+(cut.motivoVentas==="Otros"?'selected':'')+'>Otros</option></select></label>'+ 
-    '</div><div class="notice"><strong>Autorización interna:</strong> si el sobrante es igual a 50 m autoriza Jefe logístico o Super Admin; si es menor a 50 m autoriza Gerencia o Super Admin. Esta autorización es diferente al requerimiento a Ventas.</div><label class="field"><span>Observación / razón</span><textarea class="textarea" name="observacion" placeholder="Describa aprobación requerida o requerimiento a Ventas.">'+esc(cut.observacion||cut.requirementDetail||"")+'</textarea></label><div class="top-actions"><button type="button" class="btn btn-gold" data-cut-action="sendSalesRequirement">Abrir requerimiento a Ventas</button>'+approvalActions+'</div><div class="notice cut-status"><strong>Estado calculado:</strong> '+esc(statusLabel)+'<br>'+esc(rule.message)+'</div></fieldset>'+ 
+    '</div><div class="notice"><strong>Autorización interna obligatoria:</strong> si el sobrante es igual a 50 m autoriza Jefe logístico o Super Admin; si es menor a 50 m autoriza Gerencia o Super Admin. Esta autorización desbloquea el corte. El requerimiento a Ventas es opcional y no debe bloquear el corte.</div><div class="top-actions">'+approvalActions+'</div><label class="field"><span>Observación / razón</span><textarea class="textarea" name="observacion" placeholder="Describa aprobación requerida o requerimiento a Ventas.">'+esc(cut.observacion||cut.requirementDetail||"")+'</textarea></label><div class="top-actions"><button type="button" class="btn" data-cut-action="sendSalesRequirement">Abrir requerimiento a Ventas opcional</button></div><div class="notice cut-status"><strong>Estado calculado:</strong> '+esc(statusLabel)+'<br>'+esc(rule.message)+'</div></fieldset>'+ 
     '<fieldset class="cut-measure '+(!canMeasure?'disabled-section':'')+'"><legend>Medición del corte</legend><div class="notice"><span>🔒</span> '+lockNote+'</div><div class="cut-timer-card"><div id="cutTimerDisplay" class="cut-timer">'+esc(timerText)+'</div><div><strong>Tiempo real del corte</strong><span> Iniciar exige foto inicial. Finalizar exige foto final.</span></div></div><div class="cut-grid cut-grid-4">'+
       '<label class="field"><span>Fecha corte</span><input class="input" name="fechaCorte" value="'+esc(cut.fechaCorte||new Date().toISOString().slice(0,10))+'" readonly></label>'+ 
       '<label class="field"><span>Hora inicio</span><input class="input" value="'+esc(cut.horaInicio||"")+'" readonly></label>'+ 
@@ -1968,7 +2023,8 @@ function handleCutAction(c,cut,action){
     return;
   }
   if(action==="sendSalesRequirement"){
-    var v=cutValuesFromForm(), reason=v.motivoVentas||"Otros", detail=v.observacion||"Requerimiento generado desde corte.";
+    var v=cutValuesFromForm(), reason=v.motivoVentas||"", detail=v.observacion||"Requerimiento generado desde corte.";
+    if(!reason){alert("El requerimiento a Ventas es opcional. Si necesita enviarlo, seleccione primero un motivo diferente a 'Sin requerimiento'.");return;}
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:reason,detail:detail,responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
     return;
   }
@@ -1982,10 +2038,14 @@ function handleCutAction(c,cut,action){
     return;
   }
   if(action==="approveCut"){
-    if(!userCanApproveCut(rule,cut)){alert("No tiene permiso para aprobar este corte. "+cutApprovalTargetLabel(rule,cut));return;}
+    if(!calc.hasValues){alert("Primero registre metros disponibles y metros a cortar para calcular el sobrante.");return;}
+    if(!rule.requires){alert("Este corte no requiere aprobación interna: el sobrante está dentro de política.");return;}
+    if(!userCanApproveCut(rule,cut)){alert("No tiene permiso para aprobar este corte. Autoriza: "+cutApprovalTargetLabel(rule,cut));return;}
+    var groupApprove=cutApproverGroup(rule);
+    cut.approvalRequired=true;cut.approverRole=groupApprove.primary;cut.approverBackupRole=groupApprove.backup;cut.approverLabel=groupApprove.label;cut.approvalReason=rule.message;
     cut.approvalStatus="APROBADO";cut.approvedBy=state.user.uid;cut.approvedByName=state.user.name;cut.approvedAt=now();cut.status="APROBADO_PENDIENTE_CORTE";
     stopWait(c);c.status="asignado";c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.deadStartedAt=now();
-    persistCase(c,{type:"CUT_APPROVED",detail:"Corte aprobado por "+state.user.name}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
+    persistCase(c,{type:"CUT_APPROVED",detail:"Autorización interna de corte aprobada por "+state.user.name+". "+rule.message,visibleRoles:["auxiliar_corte",groupApprove.primary,"super_admin","jefe_logistica","gerencia"]}).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="rejectCut"){
@@ -2798,22 +2858,28 @@ window.addEventListener("message",function(event){
 
 function boot(){
   try{
-    initFirebase();
-    if(!firebaseReady || !auth){renderLogin();return;}
-    showLoading("Verificando sesión de Firebase...");
-    auth.onAuthStateChanged(function(fbUser){
-      if(!fbUser){
-        sessionStorage.removeItem(storageKey+"_session");
-        state.user=null;
-        renderLogin();
-        return;
-      }
-      loadProfileAndRender(fbUser).catch(function(e){
-        sessionStorage.removeItem(storageKey+"_session");
-        state.user=null;
-        showError(e.message||e);
-      });
-    },function(e){showError(e.message||e);});
+    showLoading("Conectando Firebase y verificando sesión...");
+    initFirebaseAsync().then(function(){
+      if(!firebaseReady || !auth){renderLogin();return;}
+      showLoading("Verificando sesión de Firebase...");
+      auth.onAuthStateChanged(function(fbUser){
+        if(!fbUser){
+          sessionStorage.removeItem(storageKey+"_session");
+          state.user=null;
+          renderLogin();
+          return;
+        }
+        loadProfileAndRender(fbUser).catch(function(e){
+          sessionStorage.removeItem(storageKey+"_session");
+          state.user=null;
+          showError(e.message||e);
+        });
+      },function(e){showError(e.message||e);});
+    }).catch(function(e){
+      firebaseReady=false;
+      firebaseInitError=e.message||String(e);
+      renderLogin();
+    });
   }catch(e){showError(e.message||e);}
 }
 
