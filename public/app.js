@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v33_envio_parcial_alistamiento";
+var storageKey = "ei_trazabilidad_v34_pdf_linea_editable";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -989,13 +989,24 @@ function readPdfFile(file){
           tc.items.forEach(function(it){
             if(!it || !String(it.str||"").trim())return;
             var tr=it.transform||[0,0,0,0,0,0];
-            var x=Math.round(tr[4]||0), y=Math.round(tr[5]||0);
+            var x=Math.round(tr[4]||0), y=Math.round(tr[5]||0), w=Math.round(it.width||0);
             var key=String(y);
             rows[key]=rows[key]||[];
-            rows[key].push({x:x,text:String(it.str||"").trim()});
+            rows[key].push({x:x,w:w,text:String(it.str||"").trim()});
           });
           var lines=Object.keys(rows).sort(function(a,b){return Number(b)-Number(a);}).map(function(y){
-            return rows[y].sort(function(a,b){return a.x-b.x;}).map(function(it){return it.text;}).join(" ").replace(/\s+/g," ").trim();
+            var arr=rows[y].sort(function(a,b){return a.x-b.x;});
+            var out=[];
+            arr.forEach(function(it,idx){
+              if(idx>0){
+                var prev=arr[idx-1];
+                var gap=it.x-(prev.x+(prev.w||0));
+                // Separador fuerte para columnas de PDF. Esto permite leer REFER|DESCRIPCION|EXT1|EXT2|BODEGA|UBICACION|CANT.COMP|U.M|VALOR UNIT|VALOR PARCIAL sin mezclar filas.
+                if(gap>16)out.push("|");
+              }
+              out.push(it.text);
+            });
+            return out.join(" ").replace(/\s*\|\s*/g," | ").replace(/\s+/g," ").trim();
           }).filter(Boolean);
           pages.push("--- PAGINA "+pageNo+" ---\n"+lines.join("\n"));
         });})(i);}
@@ -1215,7 +1226,7 @@ function readPdf(file){
 
 function stripAccents(v){return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"");}
 function cleanPdfValue(v){
-  return String(v||"").replace(/\s+/g," ").replace(/^[:#\-\s]+|[:#\-\s]+$/g,"").trim();
+  return String(v||"").replace(/\s+/g," ").replace(/^[:#\-\s|]+|[:#\-\s|]+$/g,"").trim();
 }
 function pdfFlat(text){return cleanPdfValue(String(text||"").replace(/\r/g,"\n").replace(/--- PAGINA \d+ ---/g," "));}
 function pdfLines(text){
@@ -1358,7 +1369,8 @@ function shouldIgnorePdfItem(ref,desc,qty,unit,line){
   if(/\b(SUBTOTAL|TOTAL|IVA|APROBADO|ELABORADO|RECIBIDO|ORIGINAL|REIMPRESO|PAGINA)\b/.test(t))return true;
   return false;
 }
-function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
+function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason, extra){
+  extra=extra||{};
   ref=cleanPdfValue(ref||"");
   desc=cleanDesc(desc||"");
   qty=normalizePdfNumber(qty);
@@ -1392,75 +1404,165 @@ function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason){
     decisionCorteRecepcion:posibleCorte?"MANDAR_CORTE":"NO_APLICA",
     estado:posibleCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO",
     rawLine:String(rawLine||"").slice(0,350),
+    ext1:extra.ext1||"",
+    ext2:extra.ext2||"",
+    bodega:extra.bodega||"",
+    ubicacion:extra.ubicacion||"",
+    valorUnitario:extra.valorUnitario||"",
+    valorParcial:extra.valorParcial||"",
     detectionReason:reason||(posibleCorte?"Cable con unidad en metros detectado desde PDF":"Línea de pedido detectada desde PDF ("+unit+")")
   });
 }
+
+function splitPdfRowCells(line){
+  return String(line||"").split("|").map(function(x){return cleanPdfValue(x);}).filter(Boolean);
+}
+function isMoneyLike(v){return /^\$?\s*[0-9][0-9.,]*(?:\s*\$?\s*[0-9][0-9.,]*)?$/.test(String(v||"").trim()) || /\$/.test(String(v||""));}
+function looksLikeLocationCode(v){return /^[A-Z]{0,4}\d{2,}[A-Z0-9._\-/]*$/i.test(cleanPdfValue(v||""));}
+function isQtyLike(v){return /^[0-9]{1,7}(?:[.,][0-9]{1,4})?$/.test(cleanPdfValue(v||""));}
+function parseMiddleColumns(middle){
+  var out={ext1:"",ext2:"",bodega:"",ubicacion:""};
+  middle=(middle||[]).map(function(x){return cleanPdfValue(x);}).filter(Boolean);
+  if(!middle.length)return out;
+  if(middle.length>=4){out.ext1=middle[0];out.ext2=middle[1];out.bodega=middle[2];out.ubicacion=middle.slice(3).join(" ");return out;}
+  if(middle.length===3){
+    out.ext1=middle[0];
+    if(looksLikeLocationCode(middle[2])){out.bodega=middle[1];out.ubicacion=middle[2];}
+    else {out.ext2=middle[1];out.bodega=middle[2];}
+    return out;
+  }
+  if(middle.length===2){
+    if(looksLikeLocationCode(middle[1])){out.bodega=middle[0];out.ubicacion=middle[1];}
+    else {out.ext1=middle[0];out.bodega=middle[1];}
+    return out;
+  }
+  if(looksLikeLocationCode(middle[0]))out.ubicacion=middle[0]; else out.bodega=middle[0];
+  return out;
+}
+function parseStructuredPipeRow(line, seen, items){
+  if(String(line||"").indexOf("|")<0)return false;
+  var cells=splitPdfRowCells(line);
+  if(cells.length<4)return false;
+  var qtyIdx=-1, unitIdx=-1, qty="", unit="";
+  for(var i=cells.length-1;i>=0;i--){
+    var c=cells[i];
+    var m=c.match(/^([0-9]{1,7}(?:[.,][0-9]{1,4})?)\s+(.+)$/);
+    if(m && isOrderUnit(m[2])){qtyIdx=i;unitIdx=i;qty=m[1];unit=m[2];break;}
+    var m2=c.match(/^(.+?)\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)$/);
+    if(m2 && isOrderUnit(m2[1])){qtyIdx=i;unitIdx=i;qty=m2[2];unit=m2[1];break;}
+    if(isOrderUnit(c) && i>0 && isQtyLike(cells[i-1])){qtyIdx=i-1;unitIdx=i;qty=cells[i-1];unit=c;break;}
+    if(isQtyLike(c) && i+1<cells.length && isOrderUnit(cells[i+1])){qtyIdx=i;unitIdx=i+1;qty=c;unit=cells[i+1];break;}
+  }
+  if(qtyIdx<0 || unitIdx<0)return false;
+  var before=cells.slice(0,qtyIdx);
+  if(before.length<2)return false;
+  var after=cells.slice(unitIdx+1);
+  var money=after.filter(isMoneyLike);
+  var valorUnitario=money.length>=2?money[money.length-2]:(money.length===1?money[0]:"");
+  var valorParcial=money.length>=2?money[money.length-1]:"";
+  var ref=before[0];
+  var desc=before[1];
+  var mid=parseMiddleColumns(before.slice(2));
+  addPdfItem(items,seen,ref,desc,qty,unit,line,"Fila PDF estructurada por columnas: Refer|Descripción|Ext1|Ext2|Bodega|Ubicación|Cant.Comp.|U.M.|Valores",mid);
+  var added=items.length && items[items.length-1].rawLine===String(line||"").slice(0,350);
+  if(added){
+    var it=items[items.length-1];
+    it.ext1=mid.ext1;it.ext2=mid.ext2;it.bodega=mid.bodega;it.ubicacion=mid.ubicacion;it.valorUnitario=valorUnitario;it.valorParcial=valorParcial;
+  }
+  return true;
+}
+
 function parseItemCandidate(candidate, seen, items){
   var unit=orderUnitPattern();
   var line=cleanPdfValue(candidate);
   if(!line || lineLooksHeader(line))return;
+  if(parseStructuredPipeRow(line,seen,items))return;
   var match;
-  // REF + DESCRIPCIÓN + CANTIDAD + UNIDAD
+  var beforeCount=items.length;
+  // REF + DESCRIPCIÓN + CANTIDAD + UNIDAD. Estricto: una línea, una fila.
   var rx2=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190}?)\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\b","ig");
   while((match=rx2.exec(line))){
     if(isProbablyPriceContext(line, match.index))continue;
-    addPdfItem(items,seen,match[1],match[2],match[3],match[4],line,"Referencia + descripción + cantidad + unidad");
+    addPdfItem(items,seen,match[1],match[2],match[3],match[4],line,"Referencia + descripción + cantidad + unidad · lectura estricta por línea");
   }
+  if(items.length>beforeCount)return;
   // REF + DESCRIPCIÓN + UNIDAD + CANTIDAD, común cuando la tabla tiene columnas U.M. y Cantidad.
   var rx4=new RegExp("\\b([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190}?)\\s+("+unit+")\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\b","ig");
   while((match=rx4.exec(line))){
     if(isProbablyPriceContext(line, match.index))continue;
-    addPdfItem(items,seen,match[1],match[2],match[4],match[3],line,"Referencia + descripción + unidad + cantidad");
+    addPdfItem(items,seen,match[1],match[2],match[4],match[3],line,"Referencia + descripción + unidad + cantidad · lectura estricta por línea");
   }
+  if(items.length>beforeCount)return;
   // CANTIDAD + UNIDAD + REF + DESCRIPCIÓN
   var rx3=new RegExp("^(?:\\d{1,3}\\s+)?([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\s+([A-Z0-9][A-Z0-9._\\-/]{1,})\\s+(.{2,190})$","i");
   var m3=line.match(rx3);
-  if(m3)addPdfItem(items,seen,m3[3],m3[4],m3[1],m3[2],line,"Cantidad + unidad + referencia + descripción");
+  if(m3)addPdfItem(items,seen,m3[3],m3[4],m3[1],m3[2],line,"Cantidad + unidad + referencia + descripción · lectura estricta por línea");
+  if(items.length>beforeCount)return;
   // DESCRIPCIÓN + UNIDAD + CANTIDAD + CÓDIGO OPCIONAL
   var rx5=new RegExp("^(.{3,190}?)\\s+("+unit+")\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)(?:\\s*([A-Z0-9][A-Z0-9._\\-/]{2,}))?$","i");
   var m5=line.match(rx5);
   if(m5){
     var ref=m5[4]||fallbackRefFromDesc(m5[1]);
-    addPdfItem(items,seen,ref,m5[1],m5[3],m5[2],line,"Descripción + unidad + cantidad");
+    addPdfItem(items,seen,ref,m5[1],m5[3],m5[2],line,"Descripción + unidad + cantidad · lectura estricta por línea");
   }
-  // Búsqueda más flexible por cantidad/unidad en medio de la línea.
+  if(items.length>beforeCount)return;
+  // Caso SIESA frecuente: cantidad decimal pegada al código, ej. KLS 19,0900B10401.
+  var rx6=new RegExp("^(.{3,190}?)\\s+("+unit+")\\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)([A-Z][A-Z0-9._\\-/]{2,})$","i");
+  var m6=line.match(rx6);
+  if(m6){
+    addPdfItem(items,seen,m6[4],m6[1],m6[3],m6[2],line,"Descripción + unidad + cantidad + referencia pegada · lectura estricta por línea");
+  }
+  if(items.length>beforeCount)return;
+  // Búsqueda flexible limitada: solo si la línea tiene una única unidad/cantidad y no hay señales de totales.
+  var matches=[];
   var rx=new RegExp("\\b([0-9]{1,7}(?:[.,][0-9]{1,4})?)\\s*("+unit+")\\b","ig");
-  while((match=rx.exec(line))){
-    if(isProbablyPriceContext(line, match.index))continue;
-    var qty=match[1], u=match[2];
-    var before=line.slice(0,match.index);
-    var after=line.slice(rx.lastIndex);
-    var rd=refFromBefore(before);
-    if(rd.ref || rd.desc){
-      addPdfItem(items,seen,rd.ref,rd.desc,qty,u,line,"Cantidad/unidad asociada a descripción previa");
-      continue;
-    }
-    var afterClean=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/,"");
-    var parts=afterClean.split(/\s+/).filter(Boolean);
-    if(parts.length>=1){
-      var ref=parts[0];
-      var desc=parts.slice(1,16).join(" ")||ref;
-      addPdfItem(items,seen,ref,desc,qty,u,line,"Cantidad + unidad antes de referencia/descripción");
+  while((match=rx.exec(line))){matches.push({m:match,idx:match.index,end:rx.lastIndex});}
+  if(matches.length===1){
+    match=matches[0].m;
+    if(!isProbablyPriceContext(line, matches[0].idx)){
+      var qty=match[1], u=match[2];
+      var before=line.slice(0,matches[0].idx);
+      var after=line.slice(matches[0].end);
+      var rd=refFromBefore(before);
+      if(rd.ref || rd.desc){
+        addPdfItem(items,seen,rd.ref,rd.desc,qty,u,line,"Cantidad/unidad asociada a la misma línea");
+      }else{
+        var afterClean=cleanPdfValue(after).replace(/^\$?\s*[0-9][0-9.,]*(\s+\$?\s*[0-9][0-9.,]*)?.*$/," ");
+        var parts=afterClean.split(/\s+/).filter(Boolean);
+        if(parts.length>=1){
+          var ref=parts[0];
+          var desc=parts.slice(1,16).join(" ")||ref;
+          addPdfItem(items,seen,ref,desc,qty,u,line,"Cantidad + unidad antes de referencia/descripción en la misma línea");
+        }
+      }
     }
   }
 }
 function extractPedidoItems(text){
   var raw=String(text||"").replace(/\r/g,"\n");
-  var lines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
-  var candidates=[];
-  var anyUnitRx=new RegExp("\\b(?:(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+"))|(?:(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*))\\b","i");
-  lines.forEach(function(l,i){
-    candidates.push(l);
-    if(lines[i+1]){
-      if(!anyUnitRx.test(l) && anyUnitRx.test(lines[i+1]))candidates.push(l+" "+lines[i+1]);
-      if(anyUnitRx.test(l) && /^[0-9]{1,7}(?:[.,][0-9]{1,4})?\b/.test(lines[i+1]))candidates.push(l+" "+lines[i+1]);
-      if(new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l) && !/[0-9]{1,7}(?:[.,][0-9]{1,4})/.test(l))candidates.push(l+" "+lines[i+1]);
+  var allLines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
+  var tableLines=[];
+  var inTable=false;
+  allLines.forEach(function(l){
+    var clean=cleanPdfValue(l);
+    if(/descripci[oó]n\s+u\.?m\.?\s+cant|descripci[oó]n\s+um\s+cant|refer\.?\s+descripci[oó]n|cliente\s+descripci[oó]n\s+u\.?m/i.test(clean)){
+      inTable=true;
+      return;
     }
-    if(lines[i+1]&&lines[i+2] && new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l))candidates.push(l+" "+lines[i+1]+" "+lines[i+2]);
+    if(inTable && /\b(SubTotal|Subtotal|IVA|TOTAL|Notas Totales|Elaborado|Aprobado|Recibido|P[aá]gina)\b/i.test(clean)){
+      inTable=false;
+    }
+    if(inTable)tableLines.push(clean);
   });
-  var compact=cleanPdfValue(raw.replace(/\n/g," "));
-  var boundary=new RegExp("(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{1,}\\s+.{3,220}?\\s+(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+")|(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*)\\b)","ig");
-  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x)candidates.push(x.slice(0,300));});
+  var sourceLines=tableLines.length ? tableLines : allLines;
+  var unitRx=new RegExp("\\b(?:(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+"))|(?:(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*))\\b","i");
+  var candidates=[];
+  sourceLines.forEach(function(l){
+    l=cleanPdfValue(l);
+    if(!l || lineLooksHeader(l))return;
+    // Lectura estricta: no unir filas vecinas. Si PDF.js parte mal una línea, el usuario la corrige en la tabla editable.
+    if(unitRx.test(l) || new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l))candidates.push(l.slice(0,350));
+  });
   var items=[], seen={};
   candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
   return items.slice(0,300);
@@ -1545,7 +1647,7 @@ function orderItemsPanel(c){
   var items=c.orderItems||[];
   var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':"");
-  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Refer.</th><th>Descripción</th><th>Ext 1</th><th>Ext 2</th><th>Bodega</th><th>Ubicación</th><th>Cant. Comp.</th><th>U.M.</th><th>Valor Unit.</th><th>Valor Parcial</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.ext1||"")+'</td><td>'+esc(it.ext2||"")+'</td><td>'+esc(it.bodega||"")+'</td><td>'+esc(it.ubicacion||"")+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(it.valorUnitario||"")+'</td><td>'+esc(it.valorParcial||"")+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
   if(c.currentProcess==="alistamiento")html+=alistamientoLineChecklistPanel(c,false);
   return html;
 }
@@ -1562,10 +1664,10 @@ function alistamientoLineChecklistPanel(c, compact){
     var st=it.alistamientoStatus||'PENDIENTE';
     var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
     var actions=canMark?('<div class="row-actions"><button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+i+'">Encontrado</button><button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+i+'">No encontrado</button><button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+i+'">Novedad</button><button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+i+'">Pendiente</button></div>'):'—';
-    return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
+    return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.bodega||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
   }).join('');
   var total=items.length, found=items.filter(function(x){return x.alistamientoStatus==='ENCONTRADO';}).length, novelty=items.filter(function(x){return x.alistamientoStatus==='NOVEDAD'||x.alistamientoStatus==='NO_ENCONTRADO';}).length, pending=items.filter(function(x){return !x.alistamientoStatus||x.alistamientoStatus==='PENDIENTE';}).length;
-  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
+  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Bodega</th><th>Ubicación</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
 }
 function refreshAlistamientoChecklist(c){
   applyAlistamientoAutoChecklist(c);
@@ -1811,6 +1913,12 @@ function mergePdfItemsIntoCase(c, parsed){
       existing.posibleCorte=!!it.posibleCorte;
       existing.esCable=!!it.esCable;
       existing.decisionCorteRecepcion=it.decisionCorteRecepcion||existing.decisionCorteRecepcion||"NO_APLICA";
+      existing.ext1=it.ext1||existing.ext1||"";
+      existing.ext2=it.ext2||existing.ext2||"";
+      existing.bodega=it.bodega||existing.bodega||"";
+      existing.ubicacion=it.ubicacion||existing.ubicacion||"";
+      existing.valorUnitario=it.valorUnitario||existing.valorUnitario||"";
+      existing.valorParcial=it.valorParcial||existing.valorParcial||"";
       existing.noCutReason=it.noCutReason||"";
       existing.estado=it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO";
       existing.detectionReason=it.detectionReason||existing.detectionReason||"";
@@ -1913,11 +2021,84 @@ function receptionPdfIsComplete(c){
   return !!(df.receptionPdfLoadedAt && df.receptionPdfDriveUrl && df.initialCommitmentStatus==="SI" && c.reference && c.client && items.length>0);
 }
 
+function recalcReceptionItemFlags(it){
+  it=it||{};
+  it.referencia=cleanPdfValue(it.referencia||it.reference||"");
+  it.descripcion=cleanPdfValue(it.descripcion||it.description||"");
+  it.cantidad=normalizePdfNumber(it.cantidad||it.quantity||"");
+  it.unidad=normalizePdfUnit(it.unidad||it.unit||"");
+  it.esCable=isLikelyCable(it.referencia,it.descripcion);
+  it.posibleCorte=isMeterUnit(it.unidad) && it.esCable;
+  var decision=String(it.decisionCorteRecepcion||"");
+  if(it.posibleCorte){
+    if(decision!=="CARRETO_COMPLETO")decision="MANDAR_CORTE";
+    it.requiereCorte=decision==="MANDAR_CORTE";
+    it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";
+  }else{
+    decision="NO_APLICA";
+    it.requiereCorte=false;
+    it.estado="PENDIENTE_ALISTAMIENTO";
+  }
+  it.decisionCorteRecepcion=decision;
+  it.detectionReason=it.detectionReason || (it.manualEntry?"Línea agregada/corregida manualmente en recepción":"Línea detectada y validada en recepción");
+  return it;
+}
+function receptionItemRowHtml(it, idx){
+  it=recalcReceptionItemFlags(Object.assign({},it||{}));
+  var decision=it.posibleCorte?'<select class="select" name="itemDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.decisionCorteRecepcion!=="CARRETO_COMPLETO"?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO" '+(it.decisionCorteRecepcion==="CARRETO_COMPLETO"?'selected':'')+'>No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span><input type="hidden" name="itemDecision_'+idx+'" value="NO_APLICA">';
+  return '<tr data-reception-item-row="'+idx+'"><td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td><td><input class="input input-sm" name="itemRef_'+idx+'" value="'+esc(it.referencia||"")+'" placeholder="Refer."></td><td><input class="input input-sm" name="itemDesc_'+idx+'" value="'+esc(it.descripcion||"")+'" placeholder="Descripción"></td><td><input class="input input-sm" name="itemExt1_'+idx+'" value="'+esc(it.ext1||"")+'" placeholder="Ext 1"></td><td><input class="input input-sm" name="itemExt2_'+idx+'" value="'+esc(it.ext2||"")+'" placeholder="Ext 2"></td><td><input class="input input-sm" name="itemBodega_'+idx+'" value="'+esc(it.bodega||"")+'" placeholder="Bodega"></td><td><input class="input input-sm" name="itemUbicacion_'+idx+'" value="'+esc(it.ubicacion||"")+'" placeholder="Ubicación"></td><td><input class="input input-sm" name="itemQty_'+idx+'" value="'+esc(it.cantidad||"")+'" placeholder="Cant. Comp."></td><td><input class="input input-sm" name="itemUnit_'+idx+'" value="'+esc(it.unidad||"")+'" placeholder="U.M."></td><td><input class="input input-sm" name="itemValorUnitario_'+idx+'" value="'+esc(it.valorUnitario||"")+'" placeholder="Valor Unit."></td><td><input class="input input-sm" name="itemValorParcial_'+idx+'" value="'+esc(it.valorParcial||"")+'" placeholder="Valor Parcial"></td><td>'+decision+'</td><td><input class="input input-sm" name="itemObs_'+idx+'" value="'+esc(it.receptionObservation||"")+'" placeholder="Corrección / observación"></td></tr>';
+}
+function renderReceptionItemsEditor(parsed,c){
+  var items=(parsed.items||[]);
+  var auto=items.filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
+  var rows=items.map(function(it,idx){return receptionItemRowHtml(it,idx);}).join('');
+  return '<section class="card" style="margin-top:12px"><h3>Vista de extracción editable</h3><div class="notice"><strong>Lectura estricta por línea:</strong> la app ya no mezcla líneas vecinas. Revise lo detectado, corrija referencia/cantidad/unidad si el PDF salió mal, quite lo que no corresponda o agregue líneas manualmente. Lo que quede aquí será lo que verá Alistamiento.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Cortes candidatos</small><strong>'+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Usar</th><th>Refer.</th><th>Descripción</th><th>Ext 1</th><th>Ext 2</th><th>Bodega</th><th>Ubicación</th><th>Cant. Comp.</th><th>U.M.</th><th>Valor Unit.</th><th>Valor Parcial</th><th>Decisión corte</th><th>Observación</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="13">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
+}
+function bindReceptionItemsEditor(parsed,c){
+  var btn=qs('#addReceptionItemBtn');
+  if(!btn)return;
+  btn.onclick=function(){
+    var fd=new FormData(qs('#recPdfForm'));
+    parsed.items=collectReceptionItemsFromForm(fd,true);
+    parsed.items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',requiereCorte:false,posibleCorte:false,ext1:'',ext2:'',bodega:'',ubicacion:'',valorUnitario:'',valorParcial:'',decisionCorteRecepcion:'NO_APLICA',manualEntry:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});
+    qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);
+    bindReceptionItemsEditor(parsed,c);
+  };
+}
+function collectReceptionItemsFromForm(fd, keepBlank){
+  var count=Number(fd.get('itemCount')||0), out=[];
+  for(var i=0;i<count;i++){
+    if(!fd.get('itemUse_'+i))continue;
+    var it={
+      id:uid('LIN'),
+      referencia:fd.get('itemRef_'+i)||'',
+      descripcion:fd.get('itemDesc_'+i)||'',
+      ext1:fd.get('itemExt1_'+i)||'',
+      ext2:fd.get('itemExt2_'+i)||'',
+      bodega:fd.get('itemBodega_'+i)||'',
+      ubicacion:fd.get('itemUbicacion_'+i)||'',
+      cantidad:fd.get('itemQty_'+i)||'',
+      unidad:fd.get('itemUnit_'+i)||'',
+      valorUnitario:fd.get('itemValorUnitario_'+i)||'',
+      valorParcial:fd.get('itemValorParcial_'+i)||'',
+      decisionCorteRecepcion:fd.get('itemDecision_'+i)||'NO_APLICA',
+      receptionObservation:fd.get('itemObs_'+i)||'',
+      manualEntry:true,
+      origen:'PDF_RECEPCION_VALIDADO',
+      detectionReason:'Línea validada/editada manualmente desde recepción'
+    };
+    recalcReceptionItemFlags(it);
+    if(!keepBlank && (!it.referencia || !it.descripcion || !it.cantidad || !it.unidad))continue;
+    out.push(it);
+  }
+  return out;
+}
+
 function applyReceptionCutDecisions(parsed, fd){
   if(!parsed||!parsed.items)return parsed;
   parsed.items.forEach(function(it,idx){
     if(!it.posibleCorte){it.requiereCorte=false;it.decisionCorteRecepcion="NO_APLICA";it.estado="PENDIENTE_ALISTAMIENTO";return;}
-    var decision=String(fd.get("cutDecision_"+idx)||"MANDAR_CORTE");
+    var decision=String(fd.get("itemDecision_"+idx)||fd.get("cutDecision_"+idx)||it.decisionCorteRecepcion||"MANDAR_CORTE");
     it.decisionCorteRecepcion=decision;
     if(decision==="CARRETO_COMPLETO"){
       it.requiereCorte=false;
@@ -1950,10 +2131,10 @@ function openReceptionPdf(id){
     qs("#pdfExtractPreview").innerHTML="";
     readPdfFile(f).then(function(text){
       parsed=extractPedido(text);
-      var auto=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
-      var rows=(parsed.items||[]).map(function(it,idx){var decision=it.posibleCorte?'<select class="select" name="cutDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.requiereCorte?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO">No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span>';return '<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+decision+'</td><td>'+esc(it.posibleCorte?'Candidato por cable en metros':'Línea normal')+'</td></tr>';}).join('');
-      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto;
-      qs("#pdfExtractPreview").innerHTML='<section class="card" style="margin-top:12px"><h3>Vista de extracción</h3><div class="notice"><strong>Recepción decide:</strong> si el PDF trae cable en metros, seleccione si se manda a corte o si no se corta porque se entrega el carreto completo. Alistamiento podrá ver esta decisión.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Asesor</small><strong>'+esc(parsed.salesAdvisor||"—")+'</strong></div></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Tipo</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No se detectaron líneas. Si el PDF es escaneado como imagen, se requiere OCR o digitación manual.</td></tr>')+'</tbody></table></div></section>';
+      var auto=(parsed.items||[]).filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
+      qs("#receptionPdfStatus").innerHTML="<strong>PDF leído en modo estricto.</strong><br>Pedido: "+esc(parsed.orderNumber||c.reference||"No detectado")+"<br>Cliente: "+esc(parsed.client||c.client||"No detectado")+"<br>NIT/CC: "+esc(parsed.nit||"No detectado")+"<br>Forma de pago: "+esc(parsed.paymentCondition||"No detectada")+"<br>Líneas detectadas: "+(parsed.items||[]).length+"<br>Candidatos de corte por cable en metros: "+auto+"<br><strong>Revise y corrija la tabla antes de guardar.</strong>";
+      qs("#pdfExtractPreview").innerHTML=renderReceptionItemsEditor(parsed,c);
+      bindReceptionItemsEditor(parsed,c);
     }).catch(function(e){qs("#receptionPdfStatus").innerHTML="No fue posible leer el PDF. "+esc(e.message||e)+". Si es un PDF escaneado como imagen, el lector no puede extraer texto sin OCR.";});
   };
   qs("#recPdfForm").onsubmit=function(e){
@@ -1961,6 +2142,8 @@ function openReceptionPdf(id){
     if(!parsed){alert("Primero seleccione y lea el PDF.");return;}
     var fd=new FormData(e.target);
     if(!fd.get("merchCommitted")){alert("Recepción debe confirmar que la mercancía fue comprometida/bloqueada antes de continuar a alistamiento.");return;}
+    parsed.items=collectReceptionItemsFromForm(fd,false);
+    if(!parsed.items.length){alert("Debe quedar al menos una línea del pedido. Corrija la extracción o agregue una línea manual.");return;}
     parsed=applyReceptionCutDecisions(parsed,fd);
     var filledFields=mergePdfExtractionIntoCase(c,parsed);
     c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus="SI";c.documentFlow.initialCommitmentDetail=fd.get("commitDetail")||"Mercancía comprometida/bloqueada en SIESA/ERP desde recepción.";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
