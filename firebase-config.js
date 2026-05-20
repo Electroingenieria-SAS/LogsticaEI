@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v37-pdf-simple-ubicacion"
+  version: "flujo-unificado-v41-pdf-siesa-completo"
 };
