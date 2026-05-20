@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v34_pdf_linea_editable";
+var storageKey = "ei_trazabilidad_v35_pdf_filas_estrictas";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -974,6 +974,129 @@ function renderCreate(){
   qs("#caseForm").onsubmit=function(e){e.preventDefault();createCase(new FormData(e.target));};
 }
 
+
+function strictPdfTextItems(tcItems){
+  return (tcItems||[]).map(function(it){
+    var txt=String((it&&it.str)||"").trim();
+    if(!txt)return null;
+    var tr=(it&&it.transform)||[0,0,0,0,0,0];
+    return {text:txt,x:Number(tr[4]||0),y:Number(tr[5]||0),w:Number(it.width||0),h:Number(it.height||0)};
+  }).filter(Boolean);
+}
+function strictGroupByY(items,tol){
+  tol=tol||2.5;
+  var sorted=(items||[]).slice().sort(function(a,b){return b.y-a.y || a.x-b.x;});
+  var groups=[];
+  sorted.forEach(function(it){
+    var g=groups.find(function(row){return Math.abs(row.y-it.y)<=tol;});
+    if(!g){g={y:it.y,items:[]};groups.push(g);} 
+    g.items.push(it);
+    g.y=(g.y*(g.items.length-1)+it.y)/g.items.length;
+  });
+  groups.forEach(function(g){g.items.sort(function(a,b){return a.x-b.x;});g.text=g.items.map(function(x){return x.text;}).join(' ');});
+  return groups.sort(function(a,b){return b.y-a.y;});
+}
+function strictHeaderX(groups, pageMin, pageMax){
+  var header=null;
+  for(var i=0;i<groups.length;i++){
+    var t=stripAccents(String(groups[i].text||"").toUpperCase());
+    if((/REFER/.test(t)&&/DESCRIP/.test(t)) || (/DESCRIP/.test(t)&&/CANT/.test(t)&&/U\.?\s*M/.test(t))){header=groups[i];break;}
+  }
+  var width=Math.max(1,pageMax-pageMin);
+  var cols={
+    ref:pageMin+width*0.01,
+    desc:pageMin+width*0.07,
+    ext1:pageMin+width*0.36,
+    ext2:pageMin+width*0.45,
+    bodega:pageMin+width*0.55,
+    ubic:pageMin+width*0.65,
+    cant:pageMin+width*0.72,
+    um:pageMin+width*0.79,
+    valor:pageMin+width*0.84,
+    headerY:Infinity
+  };
+  function findBy(rx){
+    if(!header)return null;
+    var found=header.items.find(function(it){return rx.test(stripAccents(String(it.text||"").toUpperCase()));});
+    return found?found.x:null;
+  }
+  if(header){
+    cols.headerY=header.y;
+    cols.ref=findBy(/^REFER|^REF\.?/)||cols.ref;
+    cols.desc=findBy(/DESCRIP/)||cols.desc;
+    cols.ext1=findBy(/^EXT\s*1$/)||cols.ext1;
+    cols.ext2=findBy(/^EXT\s*2$/)||cols.ext2;
+    cols.bodega=findBy(/BODEGA/)||cols.bodega;
+    cols.ubic=findBy(/UBIC/)||cols.ubic;
+    cols.cant=findBy(/^CANT/)||cols.cant;
+    cols.um=findBy(/^U\.?\s*M\.?$/)||cols.um;
+    cols.valor=findBy(/VALOR/)||cols.valor;
+  }
+  return cols;
+}
+function strictJoin(items){
+  return cleanPdfValue((items||[]).slice().sort(function(a,b){return b.y-a.y || a.x-b.x;}).map(function(it){return it.text;}).join(' '));
+}
+function strictPick(items,rx){
+  var sorted=(items||[]).slice().sort(function(a,b){return a.x-b.x;});
+  for(var i=0;i<sorted.length;i++)if(rx.test(cleanPdfValue(sorted[i].text)))return cleanPdfValue(sorted[i].text);
+  return "";
+}
+function strictBuildSiesaRows(tcItems,pageNo){
+  var items=strictPdfTextItems(tcItems);
+  if(!items.length)return [];
+  var xs=items.map(function(i){return i.x;});
+  var pageMin=Math.min.apply(null,xs), pageMax=Math.max.apply(null,xs);
+  var groups=strictGroupByY(items,2.2);
+  var cols=strictHeaderX(groups,pageMin,pageMax);
+  var refLeft=cols.ref-8, refRight=cols.desc-4;
+  var descLeft=cols.desc-8, descRight=Math.min(cols.ext1||Infinity,cols.ext2||Infinity,cols.bodega||Infinity,cols.ubic||Infinity,cols.cant||Infinity)-6;
+  if(!isFinite(descRight) || descRight<=descLeft)descRight=cols.cant-8;
+  var qtyLeft=cols.cant-10, qtyRight=cols.um-4;
+  var unitLeft=cols.um-10, unitRight=(cols.valor||pageMax+50)-5;
+  var bodegaLeft=(cols.bodega||cols.ext2)-8, bodegaRight=(cols.ubic||cols.cant)-6;
+  var ubicLeft=(cols.ubic||cols.cant)-8, ubicRight=cols.cant-6;
+  function between(it,l,r){return it.x>=l && it.x<r;}
+  var anchors=[];
+  groups.forEach(function(g){
+    if(g.y>=cols.headerY-1)return;
+    var refText=strictJoin(g.items.filter(function(it){return between(it,refLeft,refRight);}));
+    var ref=cleanPdfValue(refText).replace(/\s+/g,'');
+    if(/^[A-Z0-9][A-Z0-9._\-/]{3,}$/i.test(ref) && !/^(REFER|DESCRIP|PARQUE|INDUSTRIAL|TOTAL|SUBTOTAL|IVA)$/i.test(ref)){
+      // Evitar tomar cantidades/precios como referencia si la columna refer no corresponde.
+      anchors.push({y:g.y,ref:ref});
+    }
+  });
+  // quitar anclas duplicadas por doble línea del mismo código si están demasiado cerca
+  anchors=anchors.sort(function(a,b){return b.y-a.y;}).filter(function(a,idx,arr){
+    if(idx>0 && Math.abs(arr[idx-1].y-a.y)<3 && arr[idx-1].ref===a.ref)return false;
+    return true;
+  });
+  var rows=[];
+  anchors.forEach(function(a,idx){
+    var prev=anchors[idx-1], next=anchors[idx+1];
+    var top=prev?((prev.y+a.y)/2):a.y+14;
+    var bottom=next?((a.y+next.y)/2):a.y-18;
+    var band=items.filter(function(it){return it.y<top && it.y>=bottom;});
+    var desc=strictJoin(band.filter(function(it){return between(it,descLeft,descRight);}));
+    var qty=strictPick(band.filter(function(it){return between(it,qtyLeft,qtyRight);}),/^[0-9]{1,7}(?:[.,][0-9]{1,4})?$/);
+    var unit=strictPick(band.filter(function(it){return between(it,unitLeft,unitRight);}),new RegExp('^(?:'+orderUnitPattern()+')$','i'));
+    if(!qty){
+      var qtyCandidates=band.filter(function(it){return it.x>cols.cant-18 && it.x<cols.um+18;});
+      qty=strictPick(qtyCandidates,/^[0-9]{1,7}(?:[.,][0-9]{1,4})?$/);
+    }
+    if(!unit){
+      var unitCandidates=band.filter(function(it){return it.x>cols.um-18 && it.x<(cols.valor||pageMax+50);});
+      unit=strictPick(unitCandidates,new RegExp('^(?:'+orderUnitPattern()+')$','i'));
+    }
+    if(desc && qty && unit){
+      var row={referencia:a.ref,descripcion:desc,cantidad:qty,unidad:unit,bodega:strictJoin(band.filter(function(it){return between(it,bodegaLeft,bodegaRight);})),ubicacion:strictJoin(band.filter(function(it){return between(it,ubicLeft,ubicRight);})),page:pageNo,rawLine:'Fila por coordenadas PDF'};
+      rows.push('__PDF_ROW__'+JSON.stringify(row));
+    }
+  });
+  return rows;
+}
+
 function readPdfFile(file){
   if(!file)return Promise.reject(new Error("No se seleccionó PDF."));
   if(!window.pdfjsLib)return Promise.reject(new Error("No cargó el lector PDF."));
@@ -994,6 +1117,7 @@ function readPdfFile(file){
             rows[key]=rows[key]||[];
             rows[key].push({x:x,w:w,text:String(it.str||"").trim()});
           });
+          var strictRows=strictBuildSiesaRows(tc.items,pageNo);
           var lines=Object.keys(rows).sort(function(a,b){return Number(b)-Number(a);}).map(function(y){
             var arr=rows[y].sort(function(a,b){return a.x-b.x;});
             var out=[];
@@ -1008,7 +1132,7 @@ function readPdfFile(file){
             });
             return out.join(" ").replace(/\s*\|\s*/g," | ").replace(/\s+/g," ").trim();
           }).filter(Boolean);
-          pages.push("--- PAGINA "+pageNo+" ---\n"+lines.join("\n"));
+          pages.push("--- PAGINA "+pageNo+" ---\n"+strictRows.join("\n")+(strictRows.length?"\n":"")+lines.join("\n"));
         });})(i);}
         return chain.then(function(){resolve(pages.join("\n"));});
       }).catch(reject);
@@ -1472,6 +1596,16 @@ function parseStructuredPipeRow(line, seen, items){
   return true;
 }
 
+
+function parseStrictCoordinateRow(line, seen, items){
+  if(String(line||"").indexOf('__PDF_ROW__')!==0)return false;
+  try{
+    var row=JSON.parse(String(line).slice('__PDF_ROW__'.length));
+    addPdfItem(items,seen,row.referencia,row.descripcion,row.cantidad,row.unidad,line,'Fila leída por coordenadas: Referencia, Descripción, Cantidad y U.M. sin mezclar bodega/ubicación',{bodega:row.bodega||'',ubicacion:row.ubicacion||''});
+    return true;
+  }catch(e){return false;}
+}
+
 function parseItemCandidate(candidate, seen, items){
   var unit=orderUnitPattern();
   var line=cleanPdfValue(candidate);
@@ -1541,6 +1675,13 @@ function parseItemCandidate(candidate, seen, items){
 function extractPedidoItems(text){
   var raw=String(text||"").replace(/\r/g,"\n");
   var allLines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
+  var items=[], seen={};
+  var strictLines=allLines.filter(function(l){return String(l||"").indexOf('__PDF_ROW__')===0;});
+  if(strictLines.length){
+    strictLines.forEach(function(l){parseStrictCoordinateRow(l,seen,items);});
+    // Si el PDF trae filas por coordenadas, esa es la fuente confiable: no se mezclan bodegas ni ubicaciones con descripción.
+    if(items.length)return items.slice(0,300);
+  }
   var tableLines=[];
   var inTable=false;
   allLines.forEach(function(l){
@@ -1560,10 +1701,10 @@ function extractPedidoItems(text){
   sourceLines.forEach(function(l){
     l=cleanPdfValue(l);
     if(!l || lineLooksHeader(l))return;
-    // Lectura estricta: no unir filas vecinas. Si PDF.js parte mal una línea, el usuario la corrige en la tabla editable.
+    // Plan B: lectura por texto lineal. La fuente principal es coordenada/fila; esto solo aplica si PDF.js no expone tabla confiable.
     if(unitRx.test(l) || new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l))candidates.push(l.slice(0,350));
   });
-  var items=[], seen={};
+  items=[]; seen={};
   candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
   return items.slice(0,300);
 }
@@ -1956,7 +2097,7 @@ function mergePdfExtractionIntoCase(c, parsed){
     filled.push("observaciones");
   }
   c.documentFlow=c.documentFlow||{};
-  c.documentFlow.extractionMode="PDFJS_TEXT_EXHAUSTIVO";
+  c.documentFlow.extractionMode="PDFJS_FILAS_ESTRICTAS";
   c.documentFlow.lastPdfExtractionAt=now();
   c.documentFlow.lastPdfExtractionBy=state.user ? state.user.name : "";
   c.documentFlow.fieldsFilled=filled.slice();

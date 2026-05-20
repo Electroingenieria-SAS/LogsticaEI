@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v34-pdf-linea-editable"
+  version: "flujo-unificado-v35-pdf-filas-estrictas"
 };
