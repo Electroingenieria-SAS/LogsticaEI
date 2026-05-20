@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v23_legacy_migration";
+var storageKey = "ei_trazabilidad_v24_entrega_certificado";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -130,6 +130,28 @@ var processes = {
     next:["cierre_caso"]
   }
 };
+
+
+
+function deliveryProcessKeys(){return ["cliente_punto","cliente_recoge","despacho_local","despacho_nacional","cierre_despacho_nacional"];} 
+function isDeliveryProcess(p){return deliveryProcessKeys().indexOf(p)>=0;}
+function deliveryEvidenceDefinitions(processKey){
+  var finalLabel = (processKey==="cliente_punto"||processKey==="cliente_recoge") ? "Foto carro cerrado o persona retirando mercancía" : "Foto carro correctamente cerrado";
+  var finalHint = (processKey==="cliente_punto"||processKey==="cliente_recoge") ? "Debe verse la persona autorizada retirando la mercancía o el vehículo cerrado cuando aplique." : "Debe verse claramente el vehículo cerrado, seguro y listo para salir.";
+  return [
+    {key:"beforeLoad", type:"FOTO_ANTES_SUBIR_MERCANCIA", title:"Foto antes de subir mercancía", checklist:"Foto antes de subir mercancía", hint:"Debe verse la mercancía antes del cargue, preferiblemente con sticker/rotulación visible."},
+    {key:"loaded", type:"FOTO_MERCANCIA_SUBIDA", title:"Foto de mercancía subida", checklist:"Foto de mercancía subida", hint:"Debe verse la mercancía acomodada, segura y protegida dentro del carro o zona de entrega."},
+    {key:"closedVehicle", type:"FOTO_CARRO_CERRADO", title:finalLabel, checklist:"Foto carro cerrado / entrega final", hint:finalHint}
+  ];
+}
+function ensureDeliveryChecklistDefinitions(){
+  deliveryProcessKeys().forEach(function(k){
+    if(!processes[k])return;
+    var checks=processes[k].checklist=processes[k].checklist||[];
+    deliveryEvidenceDefinitions(k).forEach(function(d){if(checks.indexOf(d.checklist)<0)checks.push(d.checklist);});
+  });
+}
+ensureDeliveryChecklistDefinitions();
 
 var routeInfo = {
   dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], requirements:["Requerimientos","RQ"],
@@ -459,7 +481,7 @@ function mobileFullMenuHtml(){
     groups[item.group]=groups[item.group]||[];
     groups[item.group].push(item);
   });
-  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú completo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div>'+
+  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú completo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado</button><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div>'+
     Object.keys(groups).map(function(group){
       return '<div class="mobile-menu-group"><h3>'+esc(group)+'</h3><div class="mobile-menu-grid">'+groups[group].map(function(item){
         return '<button class="'+(state.route===item.route?'active':'')+'" data-route="'+item.route+'"><b>'+esc(item.icon)+'</b><span>'+esc(item.label)+'</span></button>';
@@ -470,7 +492,7 @@ function mobileFullMenuHtml(){
 
 function layout(content){
   var rs=routes();
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
   bindActions();
 }
@@ -1045,7 +1067,7 @@ function renderDetail(id){
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
   var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
-  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+orderItemsPanel(c)+cutsPanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
+  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
 }
 
 function nextActionButtons(c){
@@ -1095,6 +1117,32 @@ function cutsPanel(c){
   var cuts=c.cutRequests||[];if(!cuts.length)return "";
   return '<section class="card" style="margin-top:16px"><h3>Cortes vinculados al pedido</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Disponible</th><th>Estado</th><th>Tiempo</th><th>Acción</th></tr></thead><tbody>'+cuts.map(function(cut){var canLaunch=state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role));return'<tr><td>'+esc(cut.code||cut.id)+'</td><td>'+esc(cut.referencia)+'</td><td>'+esc(cut.metrosSolicitados||"")+'</td><td>'+esc(cut.disponibleAntes||"")+'</td><td>'+cutStatusChip(cut.status)+'</td><td>'+esc(cut.durationText||"—")+'</td><td>'+(canLaunch?'<button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(c.id)+'" data-cut="'+esc(cut.id)+'">Abrir corte</button>':"—")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
 }
+function deliveryEvidenceForCase(c){
+  c.deliveryEvidence=c.deliveryEvidence||{};
+  return c.deliveryEvidence;
+}
+function deliveryEvidenceComplete(c){
+  if(!isDeliveryProcess(c.currentProcess))return true;
+  var ev=deliveryEvidenceForCase(c);
+  return deliveryEvidenceDefinitions(c.currentProcess).every(function(d){return !!(ev[d.key]&&ev[d.key].driveUrl);});
+}
+function deliveryEvidenceMissingText(c){
+  var ev=deliveryEvidenceForCase(c);
+  return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return !(ev[d.key]&&ev[d.key].driveUrl);}).map(function(d){return d.title;}).join(", ");
+}
+function deliveryEvidencePanel(c){
+  if(!isDeliveryProcess(c.currentProcess))return "";
+  var ev=deliveryEvidenceForCase(c);
+  var canUpload=canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica();
+  var cards=deliveryEvidenceDefinitions(c.currentProcess).map(function(d){
+    var item=ev[d.key]||{};
+    var done=!!item.driveUrl;
+    return '<article class="evidence-required-card '+(done?'done':'pending')+'"><div><strong>'+esc(d.title)+'</strong><p>'+esc(d.hint)+'</p>'+(done?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>':'<small>Pendiente obligatorio para cerrar la entrega.</small>')+'</div><div class="evidence-required-actions">'+(done?'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver foto</a>':'')+(canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(d.key)+'">'+(done?'Reemplazar':'Subir')+'</button>':'')+'</div></article>';
+  }).join('');
+  var status=deliveryEvidenceComplete(c)?'<span class="chip success">Evidencias completas</span>':'<span class="chip warning">Faltan evidencias obligatorias</span>';
+  return '<section class="card delivery-evidence-panel" style="margin-top:16px"><div class="section-title"><div><h3>Evidencias obligatorias de entrega</h3><p>Después del chequeo, antes de cerrar, debe quedar trazabilidad fotográfica completa del cargue y salida/entrega.</p></div>'+status+'</div><div class="notice"><strong>Guía:</strong> en la foto inicial debe verse la mercancía antes de subir; en la segunda, la mercancía asegurada; en la final, el carro correctamente cerrado o la persona autorizada retirándola.</div><div class="delivery-evidence-grid">'+cards+'</div></section>';
+}
+
 function evidencePanel(c){
   var list=c.evidence||[];
   if(!list.length)return "";
@@ -2013,6 +2061,30 @@ function openRatificationCommitment(id){
     assignToProcess(c,"facturacion",detail||"Compromiso ratificado; pedido pasa a facturación").then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
+function openDeliveryEvidence(id,key){
+  var c=caseById(id);if(!c)return;
+  if(!isDeliveryProcess(c.currentProcess)){alert("Las evidencias obligatorias de entrega solo aplican en módulos de entrega/despacho.");return;}
+  if(!(canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica())){alert("No tiene permiso para anexar evidencias en este proceso.");return;}
+  var defs=deliveryEvidenceDefinitions(c.currentProcess);
+  var def=defs.filter(function(x){return x.key===key;})[0]||defs[0];
+  drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice"><strong>Obligatorio para cierre:</strong> '+esc(def.hint)+' La foto quedará en Drive con fecha, hora, usuario, pedido y proceso.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="image/*" required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail" placeholder="Ej.: se visualiza sticker, mercancía asegurada, carro cerrado correctamente o persona autorizada retirando."></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione la foto y guarde. No se marca conforme hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar foto obligatoria</button></form>'));
+  qs("#deliveryEvidenceForm").onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target), file=e.target.photo.files&&e.target.photo.files[0];
+    if(!file){alert("Seleccione la foto obligatoria.");return;}
+    var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Subiendo foto a Drive...";
+    var safeName=(c.reference||"pedido")+"_"+def.type+"_"+file.name;
+    uploadFileToDrive(file,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:safeName,evidenceType:def.type}).then(function(up){
+      c.deliveryEvidence=c.deliveryEvidence||{};
+      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint};
+      c.checklist=c.checklist||{};
+      c.checklist[def.checklist]="ok";
+      appendEvidence(c,up,fd.get("detail")||def.title);
+      return persistCase(c,{type:"DELIVERY_EVIDENCE_UPLOADED",process:c.currentProcess,detail:def.title+" · "+(fd.get("detail")||"")}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||def.title);});
+    }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la foto: "+(err.message||err);showError(err.message||err);});
+  };
+}
+
 function openDelivery(id){
   var c=caseById(id);
   var isCaja = c.currentProcess === "caja";
@@ -2037,6 +2109,7 @@ function openDelivery(id){
 }
 function openClose(id){
   var c=caseById(id);
+  if(isDeliveryProcess(c.currentProcess) && !deliveryEvidenceComplete(c)){alert("No puede cerrar la entrega. Faltan evidencias obligatorias: "+deliveryEvidenceMissingText(c));return;}
   drawer(modal("Cerrar caso",'<form class="form" id="closeForm"><label class="field"><span>Resultado</span><select class="select" name="status"><option value="cerrado_conforme">Cerrado conforme</option><option value="cerrado_con_novedad">Cerrado con novedad</option><option value="cancelado">Cancelado</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-success" type="submit">Cerrar</button></form>'));
   qs("#closeForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);stopActive(c);stopWait(c);if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}procStats(c,c.currentProcess).completedAt=now();c.status=fd.get("status");c.closedAt=now();addStateHistory(c,c.status==="cancelado"?"cancelacion":"cierre",fd.get("detail")||c.status,{tipo_estado:c.status==="cancelado"?"cancelacion":"cierre",fecha_hora_fin_estado:c.closedAt});persistCase(c,{type:"CASE_CLOSED",detail:fd.get("detail")}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
@@ -2050,6 +2123,11 @@ function openSupervisorNote(id){
     c.supervisionNotes.push({type:fd.get("type"),detail:fd.get("detail"),by:state.user.uid,byName:state.user.name,at:now()});
     persistCase(c,{type:"LOGISTICS_CHIEF_"+fd.get("type"),detail:fd.get("detail")}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
+}
+
+function openCertificateModal(){
+  var version=(window.appSettings&&window.appSettings.version)||"Sistema de trazabilidad logística";
+  drawer(modal("Certificado de creación",'<section class="certificate-card"><div class="certificate-inner"><div class="certificate-ribbon">Certificado profesional de creación funcional</div><img class="certificate-logo" src="'+esc(logoPath)+'" alt="Electroingeniería"><h2>Sistema de Trazabilidad Logística y Control Operativo</h2><p class="certificate-lead">Se certifica que el presente aplicativo fue concebido, estructurado y promovido por:</p><h1>Juan Esteban Pérez</h1><p>Como autor funcional del sistema, incluyendo su enfoque operativo, flujo de procesos, trazabilidad documental, control de evidencias, módulos de corte, indicadores VSM/KPIs y estructura de seguimiento gerencial.</p><div class="certificate-meta"><span><b>Aplicativo:</b> Trazabilidad Logística EI</span><span><b>Versión:</b> '+esc(version)+'</span><span><b>Fecha:</b> '+esc(new Date().toLocaleDateString("es-CO"))+'</span><span><b>Uso:</b> Interno / operativo / gerencial</span></div><img class="certificate-gif" src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMzk2bDF5cW0yNm5xeDQwa2pzNW40bzFqMnIxYnh3ZjJ3aXYwMWdnZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YaP3iYxN3T8nIEN5rD/giphy.gif" alt="GIF de autoría"><div class="certificate-seal">Creación funcional · Juan Esteban Pérez</div><div class="certificate-actions"><button class="btn btn-primary" data-action="printCertificate">Imprimir / guardar PDF</button><button class="btn" data-action="closeDrawer">Cerrar</button></div></div></section>'));
 }
 
 function openUserModal(){
@@ -2084,6 +2162,7 @@ function updateCheck(el){
   var seg=el.parentNode,id=seg.getAttribute("data-id"),item=seg.getAttribute("data-check"),val=el.getAttribute("data-value"),c=caseById(id);
   if(c.currentProcess==="recepcion_pedidos"){alert("En Recepción el checklist se llena automáticamente con la lectura del PDF. Cargue/relea el PDF para actualizarlo.");return;}
   if(c.currentProcess==="alistamiento" && /pedido recibido|referencia|descripci|cantidad|unidad|corte/i.test(item)){alert("Ese checklist se calcula desde las líneas detectadas del PDF y los cortes. Use el PDF/cortes para actualizarlo.");return;}
+  if(isDeliveryProcess(c.currentProcess) && /foto antes|mercancía subida|mercancia subida|carro cerrado|entrega final/i.test(item)){alert("Este punto se actualiza automáticamente al subir la foto obligatoria de entrega a Drive.");return;}
   c.checklist[item]=val;persistCase(c,{type:"CHECK_UPDATED",detail:item+": "+val}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function clearPwaCache(){if("serviceWorker" in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){if(r.active)r.active.postMessage({type:"CLEAR_CACHE"});r.update();});setTimeout(function(){location.reload();},700);}).catch(function(){location.reload();});}else location.reload();}
@@ -2212,6 +2291,9 @@ function bindActions(){
     if(a==="evidence")openEvidence(id);
     if(a==="answer")openAnswer(id);
     if(a==="delivery")openDelivery(id);
+    if(a==="deliveryEvidence")openDeliveryEvidence(id,b.getAttribute("data-delivery-evidence"));
+    if(a==="certificate")openCertificateModal();
+    if(a==="printCertificate")window.print();
     if(a==="initialCommit")openInitialCommitment(id);
     if(a==="ratifyCommit")openRatificationCommitment(id);
     if(a==="transfer")transfer(id,b.getAttribute("data-next"));
