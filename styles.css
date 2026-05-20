@@ -242,7 +242,7 @@ button,input,select,textarea{font:inherit} button{border:0;cursor:pointer} texta
 @media(max-width:850px){.delivery-evidence-grid{grid-template-columns:1fr}.certificate-meta{grid-template-columns:1fr}.certificate-inner h1{font-size:1.75rem}}
 @media print{body *{visibility:hidden}.drawer,.drawer *{visibility:visible}.drawer{position:absolute!important;inset:0!important;background:white!important}.certificate-actions{display:none!important}.certificate-inner{box-shadow:none}}
 
-/* V38: tabla de recepción en modo lectura */
+/* V39: tabla de recepción en modo lectura */
 .clean-lines-table .read-cell{white-space:normal;line-height:1.35;min-width:80px;color:#0f172a;font-weight:700;}
 .clean-lines-table .desc-cell{min-width:280px;max-width:560px;font-weight:800;}
 .clean-lines-table .ref-cell{min-width:90px;}

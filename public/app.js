@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v38_pdf_descripcion_completa";
+var storageKey = "ei_trazabilidad_v39_pdf_parser_inicial_editable";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1501,10 +1501,43 @@ function shouldIgnorePdfItem(ref,desc,qty,unit,line){
   if(/\b(SUBTOTAL|TOTAL|IVA|APROBADO|ELABORADO|RECIBIDO|ORIGINAL|REIMPRESO|PAGINA)\b/.test(t))return true;
   return false;
 }
+
+function humanizePackedDescription(value){
+  var s=stripAccents(String(value||'').toUpperCase());
+  s=s.replace(/[_|]+/g,' ');
+  var words=['FUSIBLE','HILO','CONTACTOR','CINTA','EMPALME','DERIVACION','COBRE','ESMALTADO','TIPO','NEGRO','BLANCO','ROJO','AZUL','VERDE','AMARILLO','CONDUCTOR','CABLE','ALAMBRE','FLEX','THHN','AWG','KLS','MTR','METROS','UND','PVC','ACERO','CAJA','TUBO','ROLLO','INTERRUPTOR','BREAKER','BORNERA','TERMINAL','CURVA','CONECTOR','TENSOR','AISLADOR','TORNILLO','ARANDELA','TUERCA'];
+  words.forEach(function(w){s=s.replace(new RegExp('('+w+')','g'),' $1 ');});
+  s=s.replace(/([A-Z])([0-9])/g,'$1 $2').replace(/([0-9])([A-Z])/g,'$1 $2');
+  s=s.replace(/\b(\d+)\s+([A-Z])\b/g,'$1$2');
+  s=s.replace(/\s+/g,' ').trim();
+  return cleanPdfValue(s);
+}
+function splitPackedReferenceDescription(ref, desc){
+  ref=cleanPdfValue(ref||'');
+  desc=cleanPdfValue(desc||'');
+  var out={ref:ref,desc:desc};
+  var r=ref;
+  var m=r.match(/^(\d{5,})([A-ZÁÉÍÓÚÑ].*)$/i);
+  if(m){
+    out.ref=m[1];
+    out.desc=cleanDesc(humanizePackedDescription(m[2]+' '+desc));
+    return out;
+  }
+  m=r.match(/^(\d{4,}|[A-Z]{1,3}\d{3,}|[A-Z0-9._\-/]{5,})\s+(.+)$/i);
+  if(m && /[A-ZÁÉÍÓÚÑ]/i.test(m[2]) && !/^PARQUE(?:\s+INDUSTRIAL)?$/i.test(m[2]) && !looksLikeLocationCode(m[2])){
+    out.ref=m[1];
+    out.desc=cleanDesc(m[2]+' '+desc);
+    return out;
+  }
+  return out;
+}
 function addPdfItem(items, seen, ref, desc, qty, unit, rawLine, reason, extra){
   extra=extra||{};
   ref=cleanPdfValue(ref||"");
   desc=cleanDesc(desc||"");
+  var packed=splitPackedReferenceDescription(ref, desc);
+  ref=packed.ref;
+  desc=packed.desc;
   qty=normalizePdfNumber(qty);
   unit=normalizePdfUnit(unit);
   if(!ref && desc){var rd=refFromBefore(desc);ref=rd.ref;desc=rd.desc||desc;}
@@ -1675,38 +1708,28 @@ function parseItemCandidate(candidate, seen, items){
   }
 }
 function extractPedidoItems(text){
-  var raw=String(text||"").replace(/\r/g,"\n");
-  var allLines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l);});
-  var items=[], seen={};
-  var strictLines=allLines.filter(function(l){return String(l||"").indexOf('__PDF_ROW__')===0;});
-  if(strictLines.length){
-    strictLines.forEach(function(l){parseStrictCoordinateRow(l,seen,items);});
-    // Si el PDF trae filas por coordenadas, esa es la fuente confiable: no se mezclan bodegas ni ubicaciones con descripción.
-    if(items.length)return items.slice(0,300);
-  }
-  var tableLines=[];
-  var inTable=false;
-  allLines.forEach(function(l){
-    var clean=cleanPdfValue(l);
-    if(/descripci[oó]n\s+u\.?m\.?\s+cant|descripci[oó]n\s+um\s+cant|refer\.?\s+descripci[oó]n|cliente\s+descripci[oó]n\s+u\.?m/i.test(clean)){
-      inTable=true;
-      return;
-    }
-    if(inTable && /\b(SubTotal|Subtotal|IVA|TOTAL|Notas Totales|Elaborado|Aprobado|Recibido|P[aá]gina)\b/i.test(clean)){
-      inTable=false;
-    }
-    if(inTable)tableLines.push(clean);
-  });
-  var sourceLines=tableLines.length ? tableLines : allLines;
-  var unitRx=new RegExp("\\b(?:(?:[0-9][0-9.,]*\\s*(?:"+orderUnitPattern()+"))|(?:(?:"+orderUnitPattern()+")\\s*[0-9][0-9.,]*))\\b","i");
+  var raw=String(text||'').replace(/\r/g,'\n');
+  var lines=pdfLines(raw).filter(function(l){return !/^--- PAGINA/i.test(l) && String(l||'').indexOf('__PDF_ROW__')!==0;});
   var candidates=[];
-  sourceLines.forEach(function(l){
+  var anyUnitRx=new RegExp('\\b(?:(?:[0-9][0-9.,]*\\s*(?:'+orderUnitPattern()+'))|(?:(?:'+orderUnitPattern()+')\\s*[0-9][0-9.,]*))\\b','i');
+  lines.forEach(function(l,i){
     l=cleanPdfValue(l);
     if(!l || lineLooksHeader(l))return;
-    // Plan B: lectura por texto lineal. La fuente principal es coordenada/fila; esto solo aplica si PDF.js no expone tabla confiable.
-    if(unitRx.test(l) || new RegExp("\\b(?:"+orderUnitPattern()+")\\b","i").test(l))candidates.push(l.slice(0,350));
+    candidates.push(l);
+    if(lines[i+1]){
+      var n1=cleanPdfValue(lines[i+1]);
+      if(!anyUnitRx.test(l) && anyUnitRx.test(n1))candidates.push(l+' '+n1);
+      if(anyUnitRx.test(l) && /^[0-9]{1,7}(?:[.,][0-9]{1,4})?\b/.test(n1))candidates.push(l+' '+n1);
+      if(new RegExp('\\b(?:'+orderUnitPattern()+')\\b','i').test(l) && !/[0-9]{1,7}(?:[.,][0-9]{1,4})/.test(l))candidates.push(l+' '+n1);
+    }
+    if(lines[i+1]&&lines[i+2] && new RegExp('\\b(?:'+orderUnitPattern()+')\\b','i').test(l)){
+      candidates.push(l+' '+cleanPdfValue(lines[i+1])+' '+cleanPdfValue(lines[i+2]));
+    }
   });
-  items=[]; seen={};
+  var compact=cleanPdfValue(raw.replace(/__PDF_ROW__[^\n]+/g,' ').replace(/\n/g,' '));
+  var boundary=new RegExp('(?=\\b(?:\\d{1,3}\\s+)?[A-Z0-9][A-Z0-9._\\-\\/]{1,}\\s+.{3,220}?\\s+(?:[0-9][0-9.,]*\\s*(?:'+orderUnitPattern()+')|(?:'+orderUnitPattern()+')\\s*[0-9][0-9.,]*)\\b)','ig');
+  compact.split(boundary).forEach(function(x){x=cleanPdfValue(x);if(x && !lineLooksHeader(x))candidates.push(x.slice(0,300));});
+  var items=[], seen={};
   candidates.forEach(function(c){parseItemCandidate(c,seen,items);});
   return items.slice(0,300);
 }
