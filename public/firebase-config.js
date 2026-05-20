@@ -23,5 +23,5 @@ window.appSettings = {
     cutBatchSize: 20
   },
   maxGerenciaUsers: 2,
-  version: "flujo-unificado-v31-despachos-roles-unificados"
+  version: "flujo-unificado-v32-alistamiento-marcable"
 };

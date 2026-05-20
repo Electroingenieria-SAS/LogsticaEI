@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v31_despachos_roles_unificados";
+var storageKey = "ei_trazabilidad_v32_alistamiento_marcable";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1490,7 +1490,7 @@ function renderDetail(id){
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar / releer PDF recepción</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
     if(c.status==="pendiente_gerencia"&&normalizeRole(state.user.role)==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)){
       if(c.currentProcess==="facturacion")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
@@ -1543,7 +1543,85 @@ function orderItemsPanel(c){
   var items=c.orderItems||[];
   var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':"");
-  return '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas detectadas del pedido</h3><p>La recepción lee todas las unidades del PDF: metros, KG/KLS, UND y demás. Los cables en metros quedan como candidatos y Recepción decide si van a corte o si se entrega el carreto completo.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Unidad</th><th>Decisión recepción</th><th>Destino</th><th>Detección</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad)+'</td><td>'+esc(it.unidad)+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td><td>'+esc(it.detectionReason||"")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
+  if(c.currentProcess==="alistamiento")html+=alistamientoLineChecklistPanel(c,false);
+  return html;
+}
+function alistamientoStatusChip(st){
+  var map={ENCONTRADO:['Encontrado','success'],NOVEDAD:['Novedad','danger'],NO_ENCONTRADO:['No encontrado','warning'],PENDIENTE:['Pendiente','info']};
+  var m=map[st||'PENDIENTE']||map.PENDIENTE;
+  return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';
+}
+function alistamientoLineChecklistPanel(c, compact){
+  var items=c.orderItems||[];
+  if(!items.length)return '<section class="card" style="margin-top:16px"><h3>Lista marcable de alistamiento</h3><div class="empty">No hay líneas leídas del PDF. Recepción debe cargar y leer el PDF antes de alistar.</div></section>';
+  var canMark=c.status==="en_proceso" && c.currentProcess==="alistamiento" && canAccessProcess(state.user.role,c.currentProcess);
+  var rows=items.map(function(it,i){
+    var st=it.alistamientoStatus||'PENDIENTE';
+    var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
+    var actions=canMark?('<div class="row-actions"><button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+i+'">Encontrado</button><button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+i+'">No encontrado</button><button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+i+'">Novedad</button><button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+i+'">Pendiente</button></div>'):'—';
+    return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
+  }).join('');
+  var total=items.length, found=items.filter(function(x){return x.alistamientoStatus==='ENCONTRADO';}).length, novelty=items.filter(function(x){return x.alistamientoStatus==='NOVEDAD'||x.alistamientoStatus==='NO_ENCONTRADO';}).length, pending=items.filter(function(x){return !x.alistamientoStatus||x.alistamientoStatus==='PENDIENTE';}).length;
+  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada línea leída desde el PDF a medida que se encuentre físicamente. Si hay novedad o no se encuentra, se genera solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Los cortes siguen su control independiente en el módulo de corte.</div></section>';
+}
+function refreshAlistamientoChecklist(c){
+  applyAlistamientoAutoChecklist(c);
+}
+function markAlistamientoItem(id,idx,status,detail,reason){
+  var c=caseById(id);if(!c)return;
+  var items=c.orderItems||[];idx=Number(idx);
+  if(idx<0||idx>=items.length)return;
+  var it=items[idx];
+  it.alistamientoStatus=status;
+  it.alistamientoNote=detail||'';
+  it.alistamientoUpdatedAt=now();
+  it.alistamientoUpdatedBy=state.user?state.user.name:'';
+  if(status==='ENCONTRADO'){
+    it.estado=it.requiereCorte?'PENDIENTE_CORTE':'ALISTADO';
+    it.alistamientoNoveltyReason='';
+    it.alistamientoNoveltyDetail='';
+  }else if(status==='PENDIENTE'){
+    it.estado=it.requiereCorte?'PENDIENTE_CORTE':'PENDIENTE_ALISTAMIENTO';
+    it.alistamientoNoveltyReason='';
+    it.alistamientoNoveltyDetail='';
+  }else{
+    it.estado='NOVEDAD_ALISTAMIENTO';
+    it.alistamientoNoveltyReason=reason||status;
+    it.alistamientoNoveltyDetail=detail||'';
+  }
+  refreshAlistamientoChecklist(c);
+  var eventType=(status==='ENCONTRADO')?'ALISTAMIENTO_ITEM_FOUND':(status==='PENDIENTE'?'ALISTAMIENTO_ITEM_PENDING':'ALISTAMIENTO_ITEM_NOVELTY');
+  return persistCase(c,{type:eventType,detail:(it.referencia||'')+' · '+(it.descripcion||'')+' · '+(detail||status),targetRole:(status==='ENCONTRADO'||status==='PENDIENTE')?'aux_logistica':'coordinador_logistico'}).then(function(){renderDetail(id);});
+}
+function openAlistamientoNovelty(id,idx,missing){
+  var c=caseById(id);if(!c)return;var items=c.orderItems||[];idx=Number(idx);var it=items[idx];if(!it)return;
+  var title=missing?'Marcar línea no encontrada':'Reportar novedad de alistamiento';
+  drawer(modal(title,'<form class="form" id="alistNoveltyForm"><div class="notice">La solicitud se enviará al líder/coordinador logístico unificado para revisión. El caso quedará en espera hasta que se resuelva.</div><section class="card"><strong>'+esc(it.referencia||'')+'</strong><p>'+esc(it.descripcion||'')+' · '+esc(it.cantidad||'')+' '+esc(it.unidad||'')+'</p></section><label class="field"><span>Motivo</span><select class="select" name="reason"><option value="No se encuentra mercancía" '+(missing?'selected':'')+'>No se encuentra mercancía</option><option value="Cantidad insuficiente">Cantidad insuficiente</option><option value="Referencia diferente">Referencia diferente</option><option value="Unidad de medida diferente">Unidad de medida diferente</option><option value="Ubicación errada">Ubicación errada</option><option value="Mercancía averiada">Mercancía averiada</option><option value="Requiere ajuste de ventas">Requiere ajuste de ventas</option><option value="Otros">Otros</option></select></label><label class="field"><span>Detalle obligatorio</span><textarea class="textarea" name="detail" required placeholder="Explique la diferencia encontrada, cantidad física, ubicación, referencia real o soporte necesario."></textarea></label><button class="btn btn-primary" type="submit">Enviar solicitud al líder/coordinador</button></form>'));
+  qs('#alistNoveltyForm').onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target), reason=String(fd.get('reason')||''), detail=String(fd.get('detail')||'');
+    it.alistamientoStatus=missing?'NO_ENCONTRADO':'NOVEDAD';
+    it.alistamientoNote=reason+' · '+detail;
+    it.alistamientoUpdatedAt=now();
+    it.alistamientoUpdatedBy=state.user?state.user.name:'';
+    it.alistamientoNoveltyReason=reason;
+    it.alistamientoNoveltyDetail=detail;
+    it.estado='NOVEDAD_ALISTAMIENTO';
+    stopActive(c);
+    c.status='en_espera';
+    c.waitStartedAt=now();
+    c.assignedRole='coordinador_logistico';
+    c.assignedName=roleTitle('coordinador_logistico');
+    c.openRequirement={reason:reason,detail:'Alistamiento · '+(it.referencia||'')+' · '+(it.descripcion||'')+' · '+detail,targetRole:'coordinador_logistico',sentAt:now(),sentBy:state.user.uid,returnProcess:'alistamiento',sourceLineId:it.id};
+    c.totalRequirements=Number(c.totalRequirements||0)+1;
+    refreshAlistamientoChecklist(c);
+    persistCase(c,{type:'ALISTAMIENTO_NOVEDAD_ENVIADA',reason:reason,detail:c.openRequirement.detail,targetRole:'coordinador_logistico',visibleRoles:['coordinador_logistico','lider_logistico','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  };
+}
+function openAlistamientoChecklist(id){
+  var c=caseById(id);if(!c)return;
+  drawer(modal('Lista marcable de alistamiento',alistamientoLineChecklistPanel(c,true)+'<div style="margin-top:14px"><button class="btn" data-action="closeDrawer">Cerrar</button></div>'));
 }
 function cutStatusChip(st){var map={PENDIENTE_CORTE:["Pendiente corte","warning"],EN_CORTE:["En corte","primary"],CONFORME:["Conforme","success"],AUTORIZADO:["Autorizado","success"],FINALIZADO:["Finalizado","success"],APROBADO_PENDIENTE_CORTE:["Aprobado, pendiente corte","warning"],PENDIENTE_REGISTRO:["Pendiente registrar","warning"],PENDIENTE_GERENCIA:["Pendiente gerencia","warning"],PENDIENTE_LIDER:["Pendiente jefe logística","warning"],PENDIENTE_JEFE_LOGISTICA:["Pendiente jefe logística","warning"],REQUERIMIENTO:["Requerimiento a ventas","warning"],RECHAZADO:["Rechazado","danger"],NO_CONFORME:["No conforme","danger"],REVISAR:["Revisar","warning"]};var m=map[st]||[st||"Pendiente","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';}
 function cutsPanel(c){
@@ -1681,19 +1759,28 @@ function applyReceptionChecklistFromPdf(c, parsed){
 function applyAlistamientoAutoChecklist(c){
   c.checklist=c.checklist||{};
   var items=c.orderItems||[], cuts=c.cutRequests||[], cd=cutDoneCount(c);
+  var hasItems=items.length>0;
+  var found=items.filter(function(it){return it.alistamientoStatus==='ENCONTRADO';}).length;
+  var bad=items.filter(function(it){return it.alistamientoStatus==='NOVEDAD'||it.alistamientoStatus==='NO_ENCONTRADO';}).length;
+  var pending=items.filter(function(it){return !it.alistamientoStatus||it.alistamientoStatus==='PENDIENTE';}).length;
+  var allResolved=hasItems && pending===0;
+  var allFound=hasItems && found===items.length;
+  var noNovelty=bad===0;
+  var cutsOk=cuts.length? (cd.done===cd.total) : true;
+  var baseStatus=function(){if(!hasItems)return 'pending';if(bad>0)return 'bad';if(allFound)return 'ok';return 'pending';};
   var vals={
     "Pedido recibido desde recepción":"ok",
-    "Productos y cantidades ubicadas":items.length?"ok":"pending",
-    "Referencia coincide":items.length?"ok":"pending",
-    "Descripción coincide":items.length?"ok":"pending",
-    "Cantidad coincide":items.length?"ok":"pending",
-    "Unidad de medida coincide":items.length?"ok":"pending",
-    "Ubicación correcta":"pending",
-    "Estado físico conforme":"pending",
+    "Productos y cantidades ubicadas":baseStatus(),
+    "Referencia coincide":baseStatus(),
+    "Descripción coincide":baseStatus(),
+    "Cantidad coincide":baseStatus(),
+    "Unidad de medida coincide":baseStatus(),
+    "Ubicación correcta":baseStatus(),
+    "Estado físico conforme":baseStatus(),
     "Líneas que requieren corte definidas":cuts.length || items.every(function(it){return !it.requiereCorte;})?"ok":"pending",
     "Cortes enviados al módulo de corte si aplica":cuts.length || items.every(function(it){return !it.requiereCorte;})?"ok":"pending",
-    "Cortes terminados o en seguimiento":cuts.length? (cd.done===cd.total?"ok":"pending") : "ok",
-    "Pedido listo para facturación":cuts.length? (cd.done===cd.total?"ok":"pending") : "ok"
+    "Cortes terminados o en seguimiento":cutsOk?"ok":"pending",
+    "Pedido listo para facturación":(allResolved && noNovelty && cutsOk)?"ok":"pending"
   };
   Object.keys(vals).forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]=vals[k];});
 }
@@ -2696,7 +2783,14 @@ function transfer(id,next){
   if(c.currentProcess==="recepcion_pedidos" && next!=="alistamiento"){alert("El flujo obligatorio es: Recepción de pedidos → Alistamiento. El compromiso de mercancía se registra dentro de Recepción.");return;}
   if(next==="alistamiento" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: debe cargar el PDF oficial, leerlo correctamente, guardarlo en Drive, detectar las líneas del pedido y confirmar que la mercancía fue comprometida.");return;}
   if(c.currentProcess==="alistamiento" && next!=="facturacion"){alert("Después de alistamiento el flujo continúa directamente a Facturación. Si hay cortes, primero deben quedar registrados.");return;}
-  if(c.currentProcess==="alistamiento" && next==="facturacion"){var cd=cutDoneCount(c);if(cd.total>0 && cd.done<cd.total){alert("No puede enviar a facturación: hay cortes pendientes por finalizar y registrar.");return;}}
+  if(c.currentProcess==="alistamiento" && next==="facturacion"){
+    var items=c.orderItems||[];
+    var pendingItems=items.filter(function(it){return !it.alistamientoStatus||it.alistamientoStatus==="PENDIENTE";}).length;
+    var noveltyItems=items.filter(function(it){return it.alistamientoStatus==="NOVEDAD"||it.alistamientoStatus==="NO_ENCONTRADO";}).length;
+    if(items.length && pendingItems>0){alert("No puede enviar a facturación: todavía hay líneas del PDF pendientes por marcar en alistamiento.");return;}
+    if(noveltyItems>0){alert("No puede enviar a facturación: hay novedades de alistamiento pendientes de resolver por líder/coordinador.");return;}
+    var cd=cutDoneCount(c);if(cd.total>0 && cd.done<cd.total){alert("No puede enviar a facturación: hay cortes pendientes por finalizar y registrar.");return;}
+  }
   assignToProcess(c,next,"Relevo a "+processTitle(next)).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function updateCheck(el){
@@ -2850,6 +2944,11 @@ function bindActions(){
     if(a==="closeDrawer")closeDrawer();
     if(a==="supervise")openSupervisorNote(id);
     if(a==="receptionPdf")openReceptionPdf(id);
+    if(a==="alistChecklist")openAlistamientoChecklist(id);
+    if(a==="alistFound")markAlistamientoItem(id,b.getAttribute("data-line"),"ENCONTRADO","Mercancía encontrada y validada físicamente.","").catch(function(e){showError(e.message||e);});
+    if(a==="alistPending")markAlistamientoItem(id,b.getAttribute("data-line"),"PENDIENTE","Pendiente por validar físicamente.","").catch(function(e){showError(e.message||e);});
+    if(a==="alistMissing")openAlistamientoNovelty(id,b.getAttribute("data-line"),true);
+    if(a==="alistNovelty")openAlistamientoNovelty(id,b.getAttribute("data-line"),false);
     if(a==="planCuts")openCutsPlanner(id);
     if(a==="launchCut")launchCut(id,b.getAttribute("data-cut"));
     if(a==="syncCuts")syncCutBridge(id);
