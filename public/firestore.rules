@@ -47,6 +47,14 @@ service cloud.firestore {
       return activeUser() && role() == 'jefe_logistica';
     }
 
+    function isUnifiedLogisticsRole(value) {
+      return value in ['lider_logistico', 'coordinador_logistico'];
+    }
+
+    function sameOperationalRole(a, b) {
+      return a == b || (isUnifiedLogisticsRole(a) && isUnifiedLogisticsRole(b));
+    }
+
     function canSeeAll() {
       return isAdminOrSuper() || isManager() || isChiefLogistics();
     }
@@ -117,7 +125,7 @@ service cloud.firestore {
     }
 
     function isAssignedRoleCase() {
-      return resource.data.assignedRole == role();
+      return sameOperationalRole(resource.data.assignedRole, role());
     }
 
     function isAssignedUidCase() {
@@ -182,10 +190,10 @@ service cloud.firestore {
         resource.data.createdBy == request.auth.uid ||
         resource.data.assignedTo == request.auth.uid ||
         resource.data.assignedUid == request.auth.uid ||
-        resource.data.targetRole == role() ||
-        resource.data.assignedRole == role() ||
-        resource.data.sourceRole == role() ||
-        resource.data.role == role() ||
+        sameOperationalRole(resource.data.targetRole, role()) ||
+        sameOperationalRole(resource.data.assignedRole, role()) ||
+        sameOperationalRole(resource.data.sourceRole, role()) ||
+        sameOperationalRole(resource.data.role, role()) ||
         (resource.data.visibleRoles is list && role() in resource.data.visibleRoles)
       );
 
@@ -197,8 +205,8 @@ service cloud.firestore {
     match /requirements/{requirementId} {
       allow read: if activeUser() && (
         canSeeAll() ||
-        resource.data.targetRole == role() ||
-        resource.data.sourceRole == role() ||
+        sameOperationalRole(resource.data.targetRole, role()) ||
+        sameOperationalRole(resource.data.sourceRole, role()) ||
         resource.data.createdBy == request.auth.uid
       );
 
@@ -212,7 +220,7 @@ service cloud.firestore {
 
       allow update: if activeUser() && (
         canSeeAll() ||
-        resource.data.targetRole == role()
+        sameOperationalRole(resource.data.targetRole, role())
       );
 
       allow delete: if isAdminOrSuper();
@@ -222,7 +230,7 @@ service cloud.firestore {
       allow read: if activeUser() && (
         canSeeAll() ||
         resource.data.createdBy == request.auth.uid ||
-        resource.data.responsibleRole == role()
+        sameOperationalRole(resource.data.responsibleRole, role())
       );
 
       allow create: if activeUser();

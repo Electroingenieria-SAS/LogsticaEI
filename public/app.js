@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v27_pdf_unidades_decision_corte";
+var storageKey = "ei_trazabilidad_v31_despachos_roles_unificados";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -34,8 +34,8 @@ var roles = {
   gerencia:"Gerencia",
   ventas:"Ventas",
   jefe_logistica:"Jefe de logística",
-  lider_logistico:"Líder logístico",
-  coordinador_logistico:"Coordinador logístico",
+  lider_logistico:"Logística / despacho (unificado)",
+  coordinador_logistico:"Logística / despacho (unificado)",
   aux_logistica:"Auxiliar logística",
   auxiliar_corte:"Auxiliar de corte",
   caja:"Caja",
@@ -58,7 +58,7 @@ var FLOW = [
 
 var processes = {
   recepcion_pedidos:{
-    code:"S-PR-2", title:"Recepción de pedidos", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RP",
+    code:"S-PR-2", title:"Recepción de pedidos", ownerRoles:["coordinador_logistico"], icon:"RP",
     checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Cortes automáticos detectados si aplica","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Mercancía comprometida en SIESA/ERP","Observaciones revisadas","Pedido listo para alistamiento"],
     waits:["Falta PDF del pedido","PDF ilegible","Falta referencia","Falta cantidad","Falta unidad de medida","Falta tipo de entrega","Falta forma de pago","Mercancía sin comprometer","Falta autorización comercial","Falta aclaración del asesor","Pedido no coincide con lo registrado por ventas"],
     next:["alistamiento"]
@@ -77,20 +77,20 @@ var processes = {
   },
   compromiso_mercancia:{
     hidden:true, legacy:true,
-    code:"S-PR-4", title:"Compromiso inicial de mercancía (legacy)", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"CM",
+    code:"S-PR-4", title:"Compromiso inicial de mercancía (legacy)", ownerRoles:["coordinador_logistico"], icon:"CM",
     checklist:["Pedido recibido desde recepción","PDF revisado contra pedido","Pedido correcto para comprometer","Referencias principales identificadas","Cantidades revisadas","Cortes automáticos identificados si aplica","Mercancía comprometida/bloqueada en SIESA/ERP","Novedades de devolución o cancelación descartadas","Pedido liberado para alistamiento"],
     waits:["No se logró comprometer mercancía","Producto ya fue vendido o reservado","Cantidad insuficiente para comprometer","Devolución reportada","Pedido cancelado por ventas o cliente","Error al comprometer en SIESA/ERP","Requiere autorización logística","Requiere corrección de Ventas"],
     next:["alistamiento"]
   },
   ratificacion_compromiso:{
     hidden:true, legacy:true,
-    code:"S-PR-4", title:"Ratificación compromiso (legacy)", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"RC",
+    code:"S-PR-4", title:"Ratificación compromiso (legacy)", ownerRoles:["coordinador_logistico"], icon:"RC",
     checklist:["Alistamiento validado","Cortes finalizados si aplica","Producto correcto contra PDF","Referencia correcta","Cantidad correcta","Unidad de medida correcta","Sin devolución pendiente","Sin cancelación pendiente","Compromiso inicial revisado","Compromiso ratificado en SIESA/ERP","Pedido listo para facturación"],
     waits:["Diferencia entre pedido y compromiso","Hubo devolución","Pedido cancelado","Producto liberado por error","Error al ratificar compromiso en SIESA/ERP","Requiere ajuste de ventas","Requiere autorización logística","Corte pendiente por finalizar"],
     next:["facturacion"]
   },
   facturacion:{
-    code:"S-PR-5", title:"Facturación del pedido", ownerRoles:["lider_logistico","coordinador_logistico"], icon:"FC",
+    code:"S-PR-5", title:"Facturación del pedido", ownerRoles:["coordinador_logistico"], icon:"FC",
     checklist:["Pedido recibido para facturar","Compromiso ratificado por facturación","Tipo de pedido validado","Si es PVC, continúa facturación logística","Si no es PVC, relevar a caja","Factura generada correctamente","Documento validado","Tipo de entrega seleccionado","Factura entregada a despacho"],
     waits:["Pago pendiente","Soporte incompleto","Error en Siesa","Error de factura electrónica","Documento rechazado","Falta autorización de cartera","Cliente con datos incompletos"],
     next:["caja","cliente_punto","cliente_recoge","despacho_local","despacho_nacional"]
@@ -103,31 +103,31 @@ var processes = {
   },
   cliente_punto:{
     code:"S-PR-6", title:"Entrega cliente en punto", ownerRoles:["coordinador_logistico"], icon:"CP",
-    checklist:["Factura coincide con pedido","Producto coincide con factura","Cliente identificado","Referencias correctas","Cantidades correctas","Estado físico conforme","Chequeo con el cliente realizado","Cliente recibe conforme","Soporte de entrega registrado","Fotos anexadas si aplica"],
+    checklist:["Factura coincide con pedido","Producto coincide con factura","Cliente identificado","Referencias correctas","Cantidades correctas","Estado físico conforme","Chequeo con el cliente realizado","Foto de mercancía rotulada cargada","Guía de transportadora / soporte final cargado","Cliente recibe conforme"],
     waits:["Cliente no acepta mercancía","Cliente solicita cambio","Cliente no está autorizado","Cliente no confirma retiro","Documento no coincide","Producto equivocado","Cantidad diferente"],
     next:["cierre_caso"]
   },
   cliente_recoge:{
     code:"S-PR-6", title:"Cliente recoge", ownerRoles:["coordinador_logistico"], icon:"CR",
-    checklist:["Factura coincide con pedido","Producto coincide con factura","Autorización de recogida validada","Persona autorizada identificada","Referencias correctas","Cantidades correctas","Estado físico conforme","Empaque conforme","Entrega realizada","Soporte de entrega registrado"],
+    checklist:["Factura coincide con pedido","Producto coincide con factura","Autorización de recogida validada","Persona autorizada identificada","Referencias correctas","Cantidades correctas","Estado físico conforme","Foto de mercancía rotulada cargada","Guía de transportadora / soporte final cargado","Entrega realizada"],
     waits:["Persona no autorizada","Falta autorización del cliente","Documento no coincide","Producto incompleto","Producto equivocado","Cantidad diferente","Cliente no confirma retiro"],
     next:["cierre_caso"]
   },
   despacho_local:{
     code:"S-PR-6", title:"Despacho local", ownerRoles:["coordinador_logistico"], icon:"DL",
-    checklist:["Factura coincide con pedido","Producto coincide con factura","Dirección completa","Documento de salida validado","Empaque conforme","Rotulación conforme","Fotos del material alistado anexadas","Cargue supervisado","Entrega realizada","Confirmación de recibido registrada"],
+    checklist:["Factura coincide con pedido","Producto coincide con factura","Dirección completa","Documento de salida validado","Empaque conforme","Rotulación conforme","Foto de mercancía rotulada cargada","Logística finalizada, espera transportadora/entrega","Guía de transportadora / soporte final cargado","Cierre de despacho registrado"],
     waits:["Falta empaque","Falta etiqueta","Mercancía incompleta","Dirección incompleta","Falta documento","Pedido no liberado","Novedad de cargue","Cliente no recibe"],
     next:["cierre_caso"]
   },
   despacho_nacional:{
-    code:"S-PR-6", title:"Despacho nacional", ownerRoles:["lider_logistico"], icon:"DN",
-    checklist:["Factura coincide con pedido","Producto coincide con factura","Número de unidades definido","Dimensiones registradas","Destino validado","Condiciones de envío definidas","Transportadora coordinada","Guía o flete validado","Fotos del material alistado anexadas","Cargue supervisado","Apoyo de auxiliar logística registrado en cargue"],
+    code:"S-PR-6", title:"Despacho nacional", ownerRoles:["coordinador_logistico"], icon:"DN",
+    checklist:["Factura coincide con pedido","Producto coincide con factura","Número de unidades definido","Dimensiones registradas","Destino validado","Condiciones de envío definidas","Transportadora coordinada","Foto de mercancía rotulada cargada","Logística finalizada, espera transportadora","Guía de transportadora / soporte final cargado","Cierre de despacho registrado"],
     waits:["Falta guía","Falta flete","Transportadora no recoge","Plataforma no disponible","Falta datos de destino","Falta confirmación de recogida","Pedido no liberado"],
     next:["cierre_despacho_nacional"]
   },
   cierre_despacho_nacional:{
     code:"S-PR-6", title:"Cierre despacho nacional", ownerRoles:["coordinador_logistico"], icon:"CD",
-    checklist:["Soporte de transporte recibido","Guía validada","Confirmación de entrega validada","Reporte diario a asesores enviado","Novedades registradas si aplica","Proceso cerrado"],
+    checklist:["Foto de mercancía rotulada cargada","Logística finalizada, espera transportadora","Guía de transportadora / soporte final cargado","Confirmación de entrega validada","Proceso cerrado"],
     waits:["Transportadora no confirma entrega","Falta guía","Falta soporte","Pendiente reporte","Novedad sin cierre"],
     next:["cierre_caso"]
   }
@@ -138,19 +138,17 @@ var processes = {
 function deliveryProcessKeys(){return ["cliente_punto","cliente_recoge","despacho_local","despacho_nacional","cierre_despacho_nacional"];} 
 function isDeliveryProcess(p){return deliveryProcessKeys().indexOf(p)>=0;}
 function deliveryEvidenceDefinitions(processKey){
-  var finalLabel = (processKey==="cliente_punto"||processKey==="cliente_recoge") ? "Foto carro cerrado o persona retirando mercancía" : "Foto carro correctamente cerrado";
-  var finalHint = (processKey==="cliente_punto"||processKey==="cliente_recoge") ? "Debe verse la persona autorizada retirando la mercancía o el vehículo cerrado cuando aplique." : "Debe verse claramente el vehículo cerrado, seguro y listo para salir.";
   return [
-    {key:"beforeLoad", type:"FOTO_ANTES_SUBIR_MERCANCIA", title:"Foto antes de subir mercancía", checklist:"Foto antes de subir mercancía", hint:"Debe verse la mercancía antes del cargue, preferiblemente con sticker/rotulación visible."},
-    {key:"loaded", type:"FOTO_MERCANCIA_SUBIDA", title:"Foto de mercancía subida", checklist:"Foto de mercancía subida", hint:"Debe verse la mercancía acomodada, segura y protegida dentro del carro o zona de entrega."},
-    {key:"closedVehicle", type:"FOTO_CARRO_CERRADO", title:finalLabel, checklist:"Foto carro cerrado / entrega final", hint:finalHint}
+    {key:"supportPdf", type:"PDF_SOPORTE_DESPACHO", title:"PDF / soporte de despacho", checklist:"PDF/soporte de despacho recibido si aplica", hint:"Opcional: puede anexar PDF de factura, remisión, soporte de despacho o documento de transporte.", accept:"application/pdf,image/*,.doc,.docx,.xls,.xlsx", required:false},
+    {key:"mercanciaRotulada", type:"FOTO_MERCANCIA_ROTULADA", title:"Foto de mercancía rotulada", checklist:"Foto de mercancía rotulada cargada", hint:"Debe verse la mercancía lista, rotulada/sticker visible y preparada para entrega o transportadora. Al subir esta foto termina el tiempo operativo de logística y el caso queda en espera de transportadora/entrega.", accept:"image/*", required:true},
+    {key:"guiaTransportadora", type:"GUIA_TRANSPORTADORA", title:"Guía de transportadora / soporte final", checklist:"Guía de transportadora / soporte final cargado", hint:"Obligatoria para cierre: suba la guía de despacho, guía de transportadora o soporte final de entrega. Al guardar este soporte se cierra el despacho.", accept:"application/pdf,image/*", required:true}
   ];
 }
 function ensureDeliveryChecklistDefinitions(){
   deliveryProcessKeys().forEach(function(k){
     if(!processes[k])return;
     var checks=processes[k].checklist=processes[k].checklist||[];
-    deliveryEvidenceDefinitions(k).forEach(function(d){if(checks.indexOf(d.checklist)<0)checks.push(d.checklist);});
+    deliveryEvidenceDefinitions(k).filter(function(d){return d.required!==false;}).forEach(function(d){if(checks.indexOf(d.checklist)<0)checks.push(d.checklist);});
   });
 }
 ensureDeliveryChecklistDefinitions();
@@ -179,7 +177,7 @@ function normalizeRole(r){
   if(x==="administrador")return "admin";
   if(x==="jefe_logistico")return "jefe_logistica";
   if(x==="auxiliar_de_corte"||x==="operario_corte"||x==="operario_de_corte")return "auxiliar_corte";
-  if(x==="coordinador_logistica")return "coordinador_logistico";
+  if(x==="lider_logistica"||x==="lider_logistico"||x==="lider_de_logistica"||x==="lider_despacho"||x==="coordinador_logistica")return "coordinador_logistico";
   return x;
 }
 function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Sin rol";}
@@ -227,7 +225,7 @@ function migrateLegacyCaseInMemory(c, reason){
   c.updatedAt=now();
   return true;
 }
-function processOwnerRoles(p){return processes[p] ? processes[p].ownerRoles : [];}
+function processOwnerRoles(p){return processes[p] ? uniqueArray(processes[p].ownerRoles||[]) : [];}
 function activeProcessKeys(){return Object.keys(processes).filter(function(k){return !processes[k].hidden;});}
 function canAccessProcess(role,p){
   if(isAdminRoleValue(role))return true;
@@ -236,7 +234,7 @@ function canAccessProcess(role,p){
 }
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
-function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="lider_logistico");}
+function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="coordinador_logistico");}
 function isCutOperator(){return state.user && normalizeRole(state.user.role)==="auxiliar_corte";}
 function isJefeLogistica(){return state.user && normalizeRole(state.user.role)==="jefe_logistica";}
 function isExecutive(){return state.user && normalizeRole(state.user.role)==="gerencia";}
@@ -248,10 +246,10 @@ function canSeeKpis(){return state.user && isPrivilegedKpiRole(state.user.role);
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
   if(canSeeAll())return true;
-  if(c.assignedRole===state.user.role)return true;
+  if(normalizeRole(c.assignedRole)===normalizeRole(state.user.role))return true;
   if(c.assignedUid===state.user.uid || c.assignedTo===state.user.uid)return true;
   if(c.createdBy===state.user.uid)return true;
-  if(state.user.role==="auxiliar_corte" && c.hasCuts===true)return true;
+  if(normalizeRole(state.user.role)==="auxiliar_corte" && c.hasCuts===true)return true;
   return canAccessProcess(state.user.role,c.currentProcess);
 }
 function evidenceProcessOptions(current){
@@ -458,8 +456,8 @@ function caseSummary(c){
 function caseRelevantToCurrentUser(c){
   if(!state.user || !c)return false;
   if(canSeeAll())return true;
-  var r=state.user.role;
-  if(c.assignedRole===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
+  var r=normalizeRole(state.user.role);
+  if(normalizeRole(c.assignedRole)===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
   if(r==="auxiliar_corte" && c.hasCuts===true)return true;
   return canAccessProcess(r,c.currentProcess);
 }
@@ -561,7 +559,8 @@ function eventKindLabel(type){
     REQUIREMENT_SENT:"Requerimiento generado",
     REQUIREMENT_ANSWERED:"Requerimiento respondido",
     EVIDENCE_UPLOADED:"Evidencia cargada",
-    DELIVERY_EVIDENCE_UPLOADED:"Foto de entrega cargada",
+    DELIVERY_EVIDENCE_UPLOADED:"Evidencia de entrega cargada",
+    LOGISTICS_READY_FOR_CARRIER:"Logística finalizada · espera transportadora",
     CUT_REGISTERED:"Corte registrado",
     CUT_STARTED:"Corte iniciado",
     CUT_FINISHED:"Corte finalizado",
@@ -823,7 +822,7 @@ function createEvent(e){
 
 function caseById(id){for(var i=0;i<state.cases.length;i++){if(state.cases[i].id===id)return state.cases[i];}return null;}
 function statusChip(st){
-  var map={creado_ventas:["Creado por ventas","info"],asignado:["Asignado","primary"],en_proceso:["En proceso","success"],en_espera:["En espera","warning"],espera_ventas:["Ventas pendiente","warning"],pendiente_gerencia:["Gerencia pendiente","warning"],cerrado_conforme:["Cerrado conforme","success"],cerrado_con_novedad:["Cerrado con novedad","danger"],cancelado:["Cancelado","danger"]};
+  var map={creado_ventas:["Creado por ventas","info"],asignado:["Asignado","primary"],en_proceso:["En proceso","success"],en_espera:["En espera","warning"],espera_transportadora:["Espera transportadora","warning"],espera_ventas:["Ventas pendiente","warning"],pendiente_gerencia:["Gerencia pendiente","warning"],cerrado_conforme:["Cerrado conforme","success"],cerrado_con_novedad:["Cerrado con novedad","danger"],cancelado:["Cancelado","danger"]};
   var m=map[st]||[st||"Sin estado","info"];return '<span class="chip '+m[1]+'">'+esc(m[0])+'</span>';
 }
 
@@ -935,7 +934,7 @@ function login(fd){
 
 function visibleCases(){
   var list=canSeeAll()?state.cases:state.cases.filter(function(c){
-    return c.assignedRole===state.user.role || c.createdBy===state.user.uid || c.assignedTo===state.user.uid || canAccessProcess(state.user.role,c.currentProcess);
+    return normalizeRole(c.assignedRole)===normalizeRole(state.user.role) || c.createdBy===state.user.uid || c.assignedTo===state.user.uid || canAccessProcess(state.user.role,c.currentProcess);
   });
   var f=state.filters;
   if(f.search){var q=f.search.toLowerCase();list=list.filter(function(c){return [c.reference,c.client,c.assignedName,c.createdByName,c.deliveryType].join(" ").toLowerCase().indexOf(q)>=0;});}
@@ -961,7 +960,7 @@ function caseList(list){
 }
 
 function renderCases(){
-  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+activeProcessKeys().map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+caseList(visibleCases());
+  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_transportadora">Espera transportadora</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+activeProcessKeys().map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+caseList(visibleCases());
   layout(content);
   qs("#fSearch").value=state.filters.search;qs("#fStatus").value=state.filters.status;qs("#fProcess").value=state.filters.process;
   ["fSearch","fStatus","fProcess"].forEach(function(id){qs("#"+id).oninput=function(){state.filters.search=qs("#fSearch").value;state.filters.status=qs("#fStatus").value;state.filters.process=qs("#fProcess").value;renderCases();};});
@@ -1467,7 +1466,7 @@ function extractPedidoItems(text){
 
 function createCase(fd){
   var created=now(), p="recepcion_pedidos", def=processes[p], priority=fd.get("priorityMode")==="gerencia";
-  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Coordinador logístico / Líder logístico",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE_RECEPCION",initialCommitmentDetail:""},processStats:{}};
+  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:priority?"pendiente_gerencia":"asignado",priority:priority?"Pendiente gerencia":"Normal",reference:fd.get("reference"),orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:"",salesAdvisor:state.user.name,assignedRole:priority?"gerencia":"coordinador_logistico",assignedName:priority?"Gerencia":"Logística / despacho",assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE_RECEPCION",initialCommitmentDetail:""},processStats:{}};
   procStats(c,p).startedAt=created;
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   def.checklist.forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"?"ok":"pending";});
@@ -1558,11 +1557,11 @@ function deliveryEvidenceForCase(c){
 function deliveryEvidenceComplete(c){
   if(!isDeliveryProcess(c.currentProcess))return true;
   var ev=deliveryEvidenceForCase(c);
-  return deliveryEvidenceDefinitions(c.currentProcess).every(function(d){return !!(ev[d.key]&&ev[d.key].driveUrl);});
+  return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return d.required!==false;}).every(function(d){return !!(ev[d.key]&&ev[d.key].driveUrl);});
 }
 function deliveryEvidenceMissingText(c){
   var ev=deliveryEvidenceForCase(c);
-  return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return !(ev[d.key]&&ev[d.key].driveUrl);}).map(function(d){return d.title;}).join(", ");
+  return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return d.required!==false && !(ev[d.key]&&ev[d.key].driveUrl);}).map(function(d){return d.title;}).join(", ");
 }
 function deliveryEvidencePanel(c){
   if(!isDeliveryProcess(c.currentProcess))return "";
@@ -1571,10 +1570,10 @@ function deliveryEvidencePanel(c){
   var cards=deliveryEvidenceDefinitions(c.currentProcess).map(function(d){
     var item=ev[d.key]||{};
     var done=!!item.driveUrl;
-    return '<article class="evidence-required-card '+(done?'done':'pending')+'"><div><strong>'+esc(d.title)+'</strong><p>'+esc(d.hint)+'</p>'+(done?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>':'<small>Pendiente obligatorio para cerrar la entrega.</small>')+'</div><div class="evidence-required-actions">'+(done?'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver foto</a>':'')+(canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(d.key)+'">'+(done?'Reemplazar':'Subir')+'</button>':'')+'</div></article>';
+    return '<article class="evidence-required-card '+(done?'done':'pending')+'"><div><strong>'+esc(d.title)+'</strong><p>'+esc(d.hint)+'</p>'+(done?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>':(d.required===false?'<small>Opcional para trazabilidad documental.</small>':'<small>Pendiente obligatorio para cerrar el despacho.</small>'))+'</div><div class="evidence-required-actions">'+(done?'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver archivo</a>':'')+(canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(d.key)+'">'+(done?'Reemplazar':'Subir')+'</button>':'')+'</div></article>';
   }).join('');
   var status=deliveryEvidenceComplete(c)?'<span class="chip success">Evidencias completas</span>':'<span class="chip warning">Faltan evidencias obligatorias</span>';
-  return '<section class="card delivery-evidence-panel" style="margin-top:16px"><div class="section-title"><div><h3>Evidencias obligatorias de entrega</h3><p>Después del chequeo, antes de cerrar, debe quedar trazabilidad fotográfica completa del cargue y salida/entrega.</p></div>'+status+'</div><div class="notice"><strong>Guía:</strong> en la foto inicial debe verse la mercancía antes de subir; en la segunda, la mercancía asegurada; en la final, el carro correctamente cerrado o la persona autorizada retirándola.</div><div class="delivery-evidence-grid">'+cards+'</div></section>';
+  return '<section class="card delivery-evidence-panel" style="margin-top:16px"><div class="section-title"><div><h3>Evidencias obligatorias de entrega</h3><p>Después del chequeo, debe quedar trazabilidad documental y fotográfica: PDF/soporte opcional, foto de mercancía rotulada y guía/soporte final obligatorio.</p></div>'+status+'</div><div class="notice"><strong>Guía:</strong> la foto de mercancía rotulada marca el fin operativo de logística y deja el caso en espera de transportadora/entrega; la guía de transportadora o soporte final es obligatoria para cerrar.</div><div class="delivery-evidence-grid">'+cards+'</div></section>';
 }
 
 function evidencePanel(c){
@@ -2490,7 +2489,7 @@ function openEvidence(id){
 
 function openWait(id){
   var c=caseById(id), def=processes[c.currentProcess];
-  drawer(modal("Requerimiento / espera",'<form class="form" id="waitForm"><label class="field"><span>Motivo</span><select class="select" name="reason">'+def.waits.map(function(w){return'<option>'+esc(w)+'</option>';}).join("")+'</select></label><label class="field"><span>Área responsable</span><select class="select" name="role"><option value="ventas">Ventas</option><option value="coordinador_logistico">Coordinador logístico</option><option value="lider_logistico">Líder logístico</option><option value="jefe_logistica">Jefe de logística</option><option value="aux_logistica">Auxiliar logística</option><option value="gerencia">Gerencia</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Enviar requerimiento</button></form>'));
+  drawer(modal("Requerimiento / espera",'<form class="form" id="waitForm"><label class="field"><span>Motivo</span><select class="select" name="reason">'+def.waits.map(function(w){return'<option>'+esc(w)+'</option>';}).join("")+'</select></label><label class="field"><span>Área responsable</span><select class="select" name="role"><option value="ventas">Ventas</option><option value="coordinador_logistico">Logística / despacho</option><option value="jefe_logistica">Jefe de logística</option><option value="aux_logistica">Auxiliar logística</option><option value="gerencia">Gerencia</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Enviar requerimiento</button></form>'));
   qs("#waitForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);stopActive(c);c.status=fd.get("role")==="ventas"?"espera_ventas":"en_espera";c.waitStartedAt=now();addStateHistory(c,"espera",fd.get("reason")+" · "+(fd.get("detail")||""),{tipo_estado:"espera",motivo_novedad:fd.get("reason"),fecha_hora_inicio_estado:c.waitStartedAt});c.assignedRole=fd.get("role");c.assignedName=roleTitle(fd.get("role"));c.openRequirement={reason:fd.get("reason"),detail:fd.get("detail"),targetRole:fd.get("role"),sentAt:now(),sentBy:state.user.uid,returnProcess:c.currentProcess};c.totalRequirements=Number(c.totalRequirements||0)+1;persistCase(c,{type:"REQUIREMENT_SENT",reason:fd.get("reason"),detail:fd.get("detail"),targetRole:fd.get("role")}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
 function openAnswer(id){
@@ -2575,21 +2574,53 @@ function openDeliveryEvidence(id,key){
   if(!(canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica())){alert("No tiene permiso para anexar evidencias en este proceso.");return;}
   var defs=deliveryEvidenceDefinitions(c.currentProcess);
   var def=defs.filter(function(x){return x.key===key;})[0]||defs[0];
-  drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice"><strong>Obligatorio para cierre:</strong> '+esc(def.hint)+' La foto quedará en Drive con fecha, hora, usuario, pedido y proceso.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="image/*" required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail" placeholder="Ej.: se visualiza sticker, mercancía asegurada, carro cerrado correctamente o persona autorizada retirando."></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione la foto y guarde. No se marca conforme hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar foto obligatoria</button></form>'));
+  drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice"><strong>'+(def.required===false?'Opcional:':'Control obligatorio:')+'</strong> '+esc(def.hint)+' El archivo quedará en Drive con fecha, hora, usuario, pedido y proceso.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="'+esc(def.accept||'image/*,application/pdf')+'" required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail" placeholder="Ej.: mercancía rotulada con sticker visible, guía de transportadora, soporte PDF o entrega final."></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione el archivo y guarde. No se marca conforme hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia</button></form>'));
   qs("#deliveryEvidenceForm").onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target), file=e.target.photo.files&&e.target.photo.files[0];
-    if(!file){alert("Seleccione la foto obligatoria.");return;}
-    var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Subiendo foto a Drive...";
+    if(!file){alert("Seleccione el archivo o evidencia requerida.");return;}
+    c.deliveryEvidence=c.deliveryEvidence||{};
+    if(def.key==="guiaTransportadora" && !(c.deliveryEvidence.mercanciaRotulada&&c.deliveryEvidence.mercanciaRotulada.driveUrl)){alert("Primero debe subir la foto de mercancía rotulada. Esa evidencia marca el cierre operativo de logística y la espera de transportadora/entrega.");return;}
+    var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Subiendo evidencia a Drive...";
     var safeName=(c.reference||"pedido")+"_"+def.type+"_"+file.name;
     uploadFileToDrive(file,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:safeName,evidenceType:def.type}).then(function(up){
       c.deliveryEvidence=c.deliveryEvidence||{};
       c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint};
       c.checklist=c.checklist||{};
       c.checklist[def.checklist]="ok";
+      c.deliveryFlow=c.deliveryFlow||{};
+      var eventType="DELIVERY_EVIDENCE_UPLOADED";
+      var eventDetail=def.title+" · "+(fd.get("detail")||"");
+      if(def.key==="mercanciaRotulada"){
+        stopActive(c);
+        if(!c.waitStartedAt)c.waitStartedAt=now();
+        c.status="espera_transportadora";
+        c.deliveryFlow.logisticsCompletedAt=c.deliveryFlow.logisticsCompletedAt||c.deliveryEvidence[def.key].uploadedAt;
+        c.deliveryFlow.logisticsCompletedBy=state.user.name;
+        c.deliveryFlow.waitingCarrierSince=c.deliveryFlow.waitingCarrierSince||now();
+        if(c.checklist["Logística finalizada, espera transportadora"]!==undefined)c.checklist["Logística finalizada, espera transportadora"]="ok";
+        if(c.checklist["Logística finalizada, espera transportadora/entrega"]!==undefined)c.checklist["Logística finalizada, espera transportadora/entrega"]="ok";
+        eventType="LOGISTICS_READY_FOR_CARRIER";
+        eventDetail="Mercancía rotulada cargada. Termina el tiempo operativo de logística y queda en espera de transportadora/entrega.";
+      }
+      if(def.key==="guiaTransportadora"){
+        stopActive(c);stopWait(c);
+        if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}
+        procStats(c,c.currentProcess).completedAt=now();
+        c.status="cerrado_conforme";
+        c.closedAt=now();
+        c.deliveryFlow.guideUploadedAt=c.deliveryEvidence[def.key].uploadedAt;
+        c.deliveryFlow.guideUploadedBy=state.user.name;
+        c.deliveryFlow.closedByGuide=true;
+        if(c.checklist["Cierre de despacho registrado"]!==undefined)c.checklist["Cierre de despacho registrado"]="ok";
+        if(c.checklist["Proceso cerrado"]!==undefined)c.checklist["Proceso cerrado"]="ok";
+        addStateHistory(c,"cierre","Cierre de despacho por guía/soporte final cargado",{tipo_estado:"cierre",fecha_hora_fin_estado:c.closedAt});
+        eventType="CASE_CLOSED";
+        eventDetail="Despacho cerrado con guía/soporte final obligatorio.";
+      }
       appendEvidence(c,up,fd.get("detail")||def.title);
-      return persistCase(c,{type:"DELIVERY_EVIDENCE_UPLOADED",process:c.currentProcess,detail:def.title+" · "+(fd.get("detail")||"")}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||def.title);});
-    }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la foto: "+(err.message||err);showError(err.message||err);});
+      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||def.title);});
+    }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
 
@@ -2598,7 +2629,7 @@ function openDelivery(id){
   var isCaja = c.currentProcess === "caja";
   var title = isCaja ? "Confirmar caja y enviar a despacho" : "Definir facturación y ruta de entrega";
   var typeField = isCaja ? "" : '<label class="field"><span>Tipo de pedido</span><select class="select" name="billingType" required><option value="PVC">PVC · continúa facturación logística</option><option value="NO_PVC">No es PVC · relevar a caja</option></select></label>';
-  drawer(modal(title,'<form class="form" id="delForm">'+typeField+'<label class="field"><span>Tipo de entrega</span><select class="select" name="next" required><option value="cliente_punto">Cliente en punto · Coordinador</option><option value="cliente_recoge">Cliente recoge · Coordinador</option><option value="despacho_local">Despacho local · Coordinador</option><option value="despacho_nacional">Despacho nacional · Líder logístico</option></select></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Continuar flujo</button></form>'));
+  drawer(modal(title,'<form class="form" id="delForm">'+typeField+'<label class="field"><span>Tipo de entrega</span><select class="select" name="next" required><option value="cliente_punto">Cliente en punto · Coordinador</option><option value="cliente_recoge">Cliente recoge · Coordinador</option><option value="despacho_local">Despacho local · Coordinador</option><option value="despacho_nacional">Despacho nacional · Logística / despacho</option></select></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Continuar flujo</button></form>'));
   qs("#delForm").onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target), next=fd.get("next"), billingType=fd.get("billingType")||"CAJA_OK";
@@ -2617,7 +2648,7 @@ function openDelivery(id){
 }
 function openClose(id){
   var c=caseById(id);
-  if(isDeliveryProcess(c.currentProcess) && !deliveryEvidenceComplete(c)){alert("No puede cerrar la entrega. Faltan evidencias obligatorias: "+deliveryEvidenceMissingText(c));return;}
+  if(isDeliveryProcess(c.currentProcess) && !deliveryEvidenceComplete(c)){alert("No puede cerrar el despacho/entrega. Faltan evidencias obligatorias: "+deliveryEvidenceMissingText(c));return;}
   drawer(modal("Cerrar caso",'<form class="form" id="closeForm"><label class="field"><span>Resultado</span><select class="select" name="status"><option value="cerrado_conforme">Cerrado conforme</option><option value="cerrado_con_novedad">Cerrado con novedad</option><option value="cancelado">Cancelado</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-success" type="submit">Cerrar</button></form>'));
   qs("#closeForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);stopActive(c);stopWait(c);if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}procStats(c,c.currentProcess).completedAt=now();c.status=fd.get("status");c.closedAt=now();addStateHistory(c,c.status==="cancelado"?"cancelacion":"cierre",fd.get("detail")||c.status,{tipo_estado:c.status==="cancelado"?"cancelacion":"cierre",fecha_hora_fin_estado:c.closedAt});persistCase(c,{type:"CASE_CLOSED",detail:fd.get("detail")}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
@@ -2640,7 +2671,7 @@ function openCertificateModal(){
 
 function openUserModal(){
   var ger=state.users.filter(function(u){return u.role==="gerencia";}).length;
-  drawer(modal("Crear usuario",'<form class="form" id="uForm"><label class="field"><span>Nombre</span><input class="input" name="name" required></label><label class="field"><span>Correo</span><input class="input" name="email" type="email" required></label><label class="field"><span>Contraseña temporal</span><input class="input" name="password" type="password" required minlength="6"></label><label class="field"><span>Rol</span><select class="select" name="role">'+Object.keys(roles).map(function(r){return'<option value="'+r+'" '+(r==="gerencia"&&ger>=2?"disabled":"")+'>'+esc(roles[r])+(r==="gerencia"?" · "+ger+"/2":"")+'</option>';}).join("")+'</select></label><button class="btn btn-primary" type="submit">Crear</button></form>'));
+  drawer(modal("Crear usuario",'<form class="form" id="uForm"><label class="field"><span>Nombre</span><input class="input" name="name" required></label><label class="field"><span>Correo</span><input class="input" name="email" type="email" required></label><label class="field"><span>Contraseña temporal</span><input class="input" name="password" type="password" required minlength="6"></label><label class="field"><span>Rol</span><select class="select" name="role">'+Object.keys(roles).filter(function(r){return r!=="lider_logistico";}).map(function(r){return'<option value="'+r+'" '+(r==="gerencia"&&ger>=2?"disabled":"")+'>'+esc(roles[r])+(r==="gerencia"?" · "+ger+"/2":"")+'</option>';}).join("")+'</select></label><button class="btn btn-primary" type="submit">Crear</button></form>'));
   qs("#uForm").onsubmit=function(e){e.preventDefault();createUser(new FormData(e.target));};
 }
 function createUser(fd){
@@ -2654,7 +2685,7 @@ function createUser(fd){
   }).then(function(){return second.auth().signOut();}).then(function(){return second.delete();}).then(function(){return loadData();}).then(function(){closeDrawer();renderUsers();}).catch(function(e){showError(e.message||e);});
 }
 function approve(id){
-  var c=caseById(id);stopWait(c);c.status="asignado";c.assignedRole="coordinador_logistico";c.assignedName="Coordinador logístico / Líder logístico";c.deadStartedAt=now();c.priority="Alta";c.managerApproved=true;if(c.priorityApproval)c.priorityApproval.status="aprobado";persistCase(c,{type:"MANAGER_APPROVED",detail:"Gerencia aprobó prioridad. Pasa a logística primero."}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
+  var c=caseById(id);stopWait(c);c.status="asignado";c.assignedRole="coordinador_logistico";c.assignedName="Logística / despacho";c.deadStartedAt=now();c.priority="Alta";c.managerApproved=true;if(c.priorityApproval)c.priorityApproval.status="aprobado";persistCase(c,{type:"MANAGER_APPROVED",detail:"Gerencia aprobó prioridad. Pasa a logística primero."}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
 }
 function reject(id){
   var c=caseById(id);stopWait(c);c.status="cancelado";c.closedAt=now();if(c.priorityApproval)c.priorityApproval.status="rechazado";persistCase(c,{type:"MANAGER_REJECTED",detail:"Gerencia rechazó prioridad"}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
