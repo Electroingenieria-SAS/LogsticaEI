@@ -5016,34 +5016,34 @@ extractPedido = function(text){
 
 
 /* ============================================================
-   V50 - Lector PDF SIESA universal por columnas + fallback
+   V51 - Lector PDF SIESA universal por columnas + fallback
    Objetivo: leer todos los PDF de pedido y extraer SOLO:
    Referencia, Descripción, Cantidad, U.M. y Ubicación.
    Además: todo material con U.M. en metros queda candidato para corte.
 ============================================================ */
-var eiV50LegacyReadPdfFile = readPdfFile;
-var eiV50LegacyExtractPedido = extractPedido;
-var eiV50LegacyExtractPedidoItems = extractPedidoItems;
-var eiV50LegacyRecalcReceptionItemFlags = recalcReceptionItemFlags;
+var eiV51LegacyReadPdfFile = readPdfFile;
+var eiV51LegacyExtractPedido = extractPedido;
+var eiV51LegacyExtractPedidoItems = extractPedidoItems;
+var eiV51LegacyRecalcReceptionItemFlags = recalcReceptionItemFlags;
 
-function eiV50Clean(text){
+function eiV51Clean(text){
   return String(text||'').normalize('NFKC').replace(/\s+/g,' ').trim();
 }
-function eiV50Strip(text){
-  return stripAccents ? stripAccents(eiV50Clean(text)).toUpperCase() : eiV50Clean(text).toUpperCase();
+function eiV51Strip(text){
+  return stripAccents ? stripAccents(eiV51Clean(text)).toUpperCase() : eiV51Clean(text).toUpperCase();
 }
-function eiV50WordWidthFallback(text){
+function eiV51WordWidthFallback(text){
   return Math.max(String(text||'').length*4,1);
 }
-function eiV50ItemsToWords(items,pageHeight){
+function eiV51ItemsToWords(items,pageHeight){
   var out=[];
   (items||[]).forEach(function(item){
-    var text=eiV50Clean(item && item.str);
+    var text=eiV51Clean(item && item.str);
     if(!text)return;
     var tr=item.transform||[0,0,0,0,0,0];
     var x0=Number(tr[4]||0);
     var y=Number(tr[5]||0);
-    var width=Math.abs(Number(item.width||eiV50WordWidthFallback(text)));
+    var width=Math.abs(Number(item.width||eiV51WordWidthFallback(text)));
     var height=Math.abs(Number(item.height||8));
     var top=pageHeight-y-height;
     var bottom=pageHeight-y;
@@ -5062,7 +5062,7 @@ function eiV50ItemsToWords(items,pageHeight){
   });
   return out.sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
 }
-function eiV50GroupLines(words,tol){
+function eiV51GroupLines(words,tol){
   tol=tol||4;
   var lines=[];
   words.slice().sort(function(a,b){return a.top-b.top || a.x0-b.x0;}).forEach(function(w){
@@ -5077,27 +5077,27 @@ function eiV50GroupLines(words,tol){
   });
   return lines.map(function(l){
     l.words.sort(function(a,b){return a.x0-b.x0;});
-    l.text=eiV50Clean(l.words.map(function(w){return w.text;}).join(' '));
+    l.text=eiV51Clean(l.words.map(function(w){return w.text;}).join(' '));
     return l;
   }).sort(function(a,b){return a.top-b.top;});
 }
-function eiV50FindHeader(words){
+function eiV51FindHeader(words){
   var candidates=words.filter(function(w){
-    var t=eiV50Strip(w.text);
+    var t=eiV51Strip(w.text);
     return /^(REFER\.?|REF\.?)$/.test(t) || /^DESCRIP/.test(t) || /^UBIC/.test(t) || /^CANT/.test(t) || /^U\.?M\.?$/.test(t);
   });
   if(!candidates.length)return null;
-  var lines=eiV50GroupLines(candidates,7);
+  var lines=eiV51GroupLines(candidates,7);
   var best=null, score=0;
   lines.forEach(function(l){
-    var txt=eiV50Strip(l.text);
+    var txt=eiV51Strip(l.text);
     var s=(/REFER|REF/.test(txt)?1:0)+(/DESCRIP/.test(txt)?1:0)+(/UBIC/.test(txt)?1:0)+(/CANT/.test(txt)?1:0)+(/U\.?M/.test(txt)?1:0);
     if(s>score){score=s;best=l;}
   });
   if(!best || score<3)return null;
   var headerBand=words.filter(function(w){return Math.abs(w.top-best.top)<=10;});
   function firstX(regex){
-    var arr=headerBand.filter(function(w){return regex.test(eiV50Strip(w.text));}).sort(function(a,b){return a.x0-b.x0;});
+    var arr=headerBand.filter(function(w){return regex.test(eiV51Strip(w.text));}).sort(function(a,b){return a.x0-b.x0;});
     return arr.length?arr[0]:null;
   }
   var colRefer=firstX(/^(REFER\.?|REF\.?)$/);
@@ -5106,17 +5106,17 @@ function eiV50FindHeader(words){
   var colUbic=firstX(/^UBIC/);
   var colCant=firstX(/^CANT/);
   var colUM=firstX(/^U\.?M\.?$/);
-  var valors=headerBand.filter(function(w){return /^VALOR$/.test(eiV50Strip(w.text)) && (!colUM || w.x0>colUM.x0);}).sort(function(a,b){return a.x0-b.x0;});
+  var valors=headerBand.filter(function(w){return /^VALOR$/.test(eiV51Strip(w.text)) && (!colUM || w.x0>colUM.x0);}).sort(function(a,b){return a.x0-b.x0;});
   var colValor=valors.length?valors[0]:null;
   if(!colRefer || !colDesc || !colCant || !colUM)return null;
   return {top:best.top,refer:colRefer,desc:colDesc,bodega:colBodega,ubic:colUbic,cant:colCant,um:colUM,valor:colValor};
 }
-function eiV50IsFooterWord(w){
-  var t=eiV50Strip(w.text).replace(/[:.]+$/,'');
+function eiV51IsFooterWord(w){
+  var t=eiV51Strip(w.text).replace(/[:.]+$/,'');
   return /^(NOTAS|TOTALES|SUBTOTAL|TOTAL|ELABORADO|APROBADO|RECIBIDO|PAGINA|ORIGINAL|REIMPRESO)$/.test(t);
 }
-function eiV50IsReferenceCandidate(text){
-  var t=eiV50Clean(text);
+function eiV51IsReferenceCandidate(text){
+  var t=eiV51Clean(text);
   if(!t)return false;
   if(/^(REFER|REF|DESCRIP|BODEGA|UBICACION|CANT|COMP|U\.?M|VALOR|PARCIAL|PARQUE|INDUSTRIAL)$/i.test(t))return false;
   if(/^\$/.test(t))return false;
@@ -5125,56 +5125,56 @@ function eiV50IsReferenceCandidate(text){
   if(/^[A-Z][A-Z0-9._\-/]{3,}$/i.test(t) && !/^\d+[,.]?\d*$/.test(t))return true;
   return false;
 }
-function eiV50TextInRange(words,xMin,xMax){
+function eiV51TextInRange(words,xMin,xMax){
   var selected=words.filter(function(w){
     var mid=(w.x0+w.x1)/2;
     return mid>=xMin && mid<xMax;
   }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
-  var lines=eiV50GroupLines(selected,4);
-  return eiV50Clean(lines.map(function(l){return l.words.map(function(w){return w.text;}).join(' ');}).join(' '));
+  var lines=eiV51GroupLines(selected,4);
+  return eiV51Clean(lines.map(function(l){return l.words.map(function(w){return w.text;}).join(' ');}).join(' '));
 }
-function eiV50FirstTokenInRange(words,xMin,xMax,regex){
+function eiV51FirstTokenInRange(words,xMin,xMax,regex){
   var selected=words.filter(function(w){
     var mid=(w.x0+w.x1)/2;
-    return mid>=xMin && mid<xMax && (!regex || regex.test(eiV50Clean(w.text)));
+    return mid>=xMin && mid<xMax && (!regex || regex.test(eiV51Clean(w.text)));
   }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
-  return selected.length?eiV50Clean(selected[0].text):'';
+  return selected.length?eiV51Clean(selected[0].text):'';
 }
-function eiV50NormalizeUnit(u){
+function eiV51NormalizeUnit(u){
   return normalizePdfUnit ? normalizePdfUnit(u) : String(u||'').toUpperCase().replace(/\./g,'').trim();
 }
-function eiV50NormalizeQty(q){
-  return normalizePdfNumber ? normalizePdfNumber(q) : eiV50Clean(q).replace(',','.');
+function eiV51NormalizeQty(q){
+  return normalizePdfNumber ? normalizePdfNumber(q) : eiV51Clean(q).replace(',','.');
 }
-function eiV50CleanDesc(desc){
-  desc=eiV50Clean(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\bPARQUE\b/ig,' ').replace(/\bINDUSTRIAL\b/ig,' ');
-  return cleanDesc ? cleanDesc(desc) : eiV50Clean(desc);
+function eiV51CleanDesc(desc){
+  desc=eiV51Clean(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\bPARQUE\b/ig,' ').replace(/\bINDUSTRIAL\b/ig,' ');
+  return cleanDesc ? cleanDesc(desc) : eiV51Clean(desc);
 }
-function eiV50MaterialToApp(m,index,mode){
-  var unit=eiV50NormalizeUnit(m.unidad_medida||m.unidad);
+function eiV51MaterialToApp(m,index,mode){
+  var unit=eiV51NormalizeUnit(m.unidad_medida||m.unidad);
   var item={
     id:uid('LIN'),
-    referencia:eiV50Clean(m.referencia),
-    descripcion:eiV50Clean(m.descripcion),
-    cantidad:eiV50NormalizeQty(m.cantidad),
+    referencia:eiV51Clean(m.referencia),
+    descripcion:eiV51Clean(m.descripcion),
+    cantidad:eiV51NormalizeQty(m.cantidad),
     unidad:unit,
-    ubicacion:eiV50Clean(m.ubicacion),
+    ubicacion:eiV51Clean(m.ubicacion),
     pagina:m.pagina||1,
     requiereCorte:false,
     posibleCorte:false,
     esCable:false,
     decisionCorteRecepcion:'NO_APLICA',
     estado:'PENDIENTE_ALISTAMIENTO',
-    rawLine:'PDFJS_V50_'+(index+1),
-    detectionReason:'Lectura PDF.js V50 por columnas: Referencia, Descripción, Cantidad, U.M. y Ubicación. Modo: '+(mode||'COLUMNAS')
+    rawLine:'PDFJS_V51_'+(index+1),
+    detectionReason:'Lectura PDF.js V51 por columnas: Referencia, Descripción, Cantidad, U.M. y Ubicación. Modo: '+(mode||'COLUMNAS')
   };
   return recalcReceptionItemFlags ? recalcReceptionItemFlags(item) : item;
 }
-function eiV50ExtractByColumns(words,pageNum,pageHeight){
-  var header=eiV50FindHeader(words);
+function eiV51ExtractByColumns(words,pageNum,pageHeight){
+  var header=eiV51FindHeader(words);
   if(!header)return {materiales:[],refs:0,mode:'SIN_HEADER'};
   var bodyStart=header.top+8;
-  var footerWords=words.filter(function(w){return w.top>bodyStart+12 && eiV50IsFooterWord(w);}).sort(function(a,b){return a.top-b.top;});
+  var footerWords=words.filter(function(w){return w.top>bodyStart+12 && eiV51IsFooterWord(w);}).sort(function(a,b){return a.top-b.top;});
   var bodyEnd=footerWords.length?footerWords[0].top-2:pageHeight-30;
   var body=words.filter(function(w){return w.top>bodyStart && w.top<bodyEnd;});
   var descLeft=header.refer.x1+6;
@@ -5189,13 +5189,13 @@ function eiV50ExtractByColumns(words,pageNum,pageHeight){
   var unitRight=header.valor?header.valor.x0-8:header.um.x1+55;
   var refLeft=header.refer.x0-12;
   var refRight=descLeft-2;
-  var lineas=eiV50GroupLines(body,4);
+  var lineas=eiV51GroupLines(body,4);
   var anchors=[];
   lineas.forEach(function(line){
-    var ref=eiV50FirstTokenInRange(line.words,refLeft,refRight,null);
-    if(!eiV50IsReferenceCandidate(ref))return;
-    var qty=eiV50FirstTokenInRange(line.words,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/);
-    var unit=eiV50FirstTokenInRange(line.words,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i'));
+    var ref=eiV51FirstTokenInRange(line.words,refLeft,refRight,null);
+    if(!eiV51IsReferenceCandidate(ref))return;
+    var qty=eiV51FirstTokenInRange(line.words,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/);
+    var unit=eiV51FirstTokenInRange(line.words,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i'));
     if(!qty || !unit)return;
     anchors.push({top:line.top,referencia:ref});
   });
@@ -5207,21 +5207,21 @@ function eiV50ExtractByColumns(words,pageNum,pageHeight){
     var rowTop=a.top-2;
     var rowBottom=anchors[idx+1]?anchors[idx+1].top-2:bodyEnd;
     var rowWords=body.filter(function(w){return w.top>=rowTop && w.top<rowBottom;});
-    var desc=eiV50CleanDesc(eiV50TextInRange(rowWords,descLeft,descRight));
-    var ubic=eiV50TextInRange(rowWords,ubicLeft,ubicRight);
-    var qty=eiV50NormalizeQty(eiV50FirstTokenInRange(rowWords,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/));
-    var unit=eiV50NormalizeUnit(eiV50FirstTokenInRange(rowWords,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i')));
+    var desc=eiV51CleanDesc(eiV51TextInRange(rowWords,descLeft,descRight));
+    var ubic=eiV51TextInRange(rowWords,ubicLeft,ubicRight);
+    var qty=eiV51NormalizeQty(eiV51FirstTokenInRange(rowWords,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/));
+    var unit=eiV51NormalizeUnit(eiV51FirstTokenInRange(rowWords,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i')));
     if(!desc || !qty || !unit)return;
     materiales.push({referencia:a.referencia,descripcion:desc,cantidad:qty,unidad_medida:unit,ubicacion:ubic,pagina:pageNum});
   });
   return {materiales:materiales,refs:anchors.length,mode:'COLUMNAS'};
 }
-function eiV50PlainText(items,pageHeight){
-  return eiV50GroupLines(eiV50ItemsToWords(items,pageHeight),4).map(function(l){return l.text;}).join('\n');
+function eiV51PlainText(items,pageHeight){
+  return eiV51GroupLines(eiV51ItemsToWords(items,pageHeight),4).map(function(l){return l.text;}).join('\n');
 }
-function eiV50ParseFallbackText(plain,pageNum){
+function eiV51ParseFallbackText(plain,pageNum){
   var materiales=[];
-  var lines=String(plain||'').split(/\n+/).map(eiV50Clean).filter(Boolean);
+  var lines=String(plain||'').split(/\n+/).map(eiV51Clean).filter(Boolean);
   var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
   for(var i=0;i<lines.length;i++){
     var line=lines[i];
@@ -5234,26 +5234,47 @@ function eiV50ParseFallbackText(plain,pageNum){
     var qtyIndex=unitIndex-1;
     if(!/^\d+(?:[.,]\d+)?$/.test(tokens[qtyIndex]||''))continue;
     var ref=tokens[0];
-    if(!eiV50IsReferenceCandidate(ref))continue;
+    if(!eiV51IsReferenceCandidate(ref))continue;
     var before=tokens.slice(1,qtyIndex);
     var ubic='';
     if(before.length && /^[A-Z]{0,4}\d{2,}[A-Z0-9._\-/]*$/i.test(before[before.length-1]))ubic=before.pop();
     before=before.filter(function(t){return !/^(PARQUE|INDUSTRIAL)$/i.test(t);});
-    var desc=eiV50CleanDesc(before.join(' '));
-    if(desc){materiales.push({referencia:ref,descripcion:desc,cantidad:eiV50NormalizeQty(tokens[qtyIndex]),unidad_medida:eiV50NormalizeUnit(tokens[unitIndex]),ubicacion:ubic,pagina:pageNum});}
+    var desc=eiV51CleanDesc(before.join(' '));
+    if(desc){materiales.push({referencia:ref,descripcion:desc,cantidad:eiV51NormalizeQty(tokens[qtyIndex]),unidad_medida:eiV51NormalizeUnit(tokens[unitIndex]),ubicacion:ubic,pagina:pageNum});}
   }
   return materiales;
 }
-function eiV50MergeMaterials(primary,fallback){
+function eiV51MergeMaterials(primary,fallback){
   var out=[], seen={};
   function add(m){
     if(!m || !m.referencia || !m.descripcion || !m.cantidad || !m.unidad_medida)return;
-    var key=[eiV50Clean(m.referencia),eiV50Clean(m.descripcion),eiV50Clean(m.cantidad),eiV50NormalizeUnit(m.unidad_medida),eiV50Clean(m.ubicacion),m.pagina||1].join('|').toUpperCase();
+    var key=[eiV51Clean(m.referencia),eiV51Clean(m.descripcion),eiV51Clean(m.cantidad),eiV51NormalizeUnit(m.unidad_medida),eiV51Clean(m.ubicacion),m.pagina||1].join('|').toUpperCase();
     if(seen[key])return;
     seen[key]=1; out.push(m);
   }
   (primary||[]).forEach(add);
   (fallback||[]).forEach(add);
+  return out;
+}
+function eiV51ExactMaterialKey(m){
+  m=m||{};
+  return [
+    eiV51Clean(m.referencia||m.reference||''),
+    eiV51Clean(m.descripcion||m.description||''),
+    eiV51NormalizeQty(m.cantidad||m.quantity||''),
+    eiV51NormalizeUnit(m.unidad_medida||m.unidad||m.unit||''),
+    eiV51Clean(m.ubicacion||m.location||'')
+  ].join('|').replace(/\s+/g,' ').trim().toUpperCase();
+}
+function eiV51DedupeExactMaterials(materiales){
+  var out=[], seen={};
+  (materiales||[]).forEach(function(m){
+    if(!m)return;
+    var key=eiV51ExactMaterialKey(m);
+    if(!key || seen[key])return;
+    seen[key]=1;
+    out.push(m);
+  });
   return out;
 }
 readPdfFile = function(file){
@@ -5270,12 +5291,12 @@ readPdfFile = function(file){
           chain=chain.then(function(){return pdf.getPage(pageNo);}).then(function(page){
             var viewport=page.getViewport({scale:1});
             return page.getTextContent({includeMarkedContent:false,disableNormalization:false}).then(function(content){
-              var words=eiV50ItemsToWords(content.items,viewport.height);
-              var plain=eiV50PlainText(content.items,viewport.height);
-              var byCols=eiV50ExtractByColumns(words,pageNo,viewport.height);
-              var fallback=eiV50ParseFallbackText(plain,pageNo);
-              var merged=eiV50MergeMaterials(byCols.materiales,fallback);
-              all=all.concat(merged);
+              var words=eiV51ItemsToWords(content.items,viewport.height);
+              var plain=eiV51PlainText(content.items,viewport.height);
+              var byCols=eiV51ExtractByColumns(words,pageNo,viewport.height);
+              var fallback=eiV51ParseFallbackText(plain,pageNo);
+              var merged=eiV51MergeMaterials(byCols.materiales,fallback);
+              all=eiV51DedupeExactMaterials(all.concat(merged));
               audit.push({pagina:pageNo,modo:byCols.mode,referenciasDetectadas:Math.max(byCols.refs||0,merged.length),materialesExtraidos:merged.length});
               plainPages.push('--- PAGINA '+pageNo+' ---\n'+plain);
             });
@@ -5284,16 +5305,16 @@ readPdfFile = function(file){
         return chain.then(function(){
           if(!all.length){
             // Respaldo: si la plantilla cambia radicalmente, usa lector anterior antes de bloquear operación.
-            return eiV50LegacyReadPdfFile(file).then(resolve).catch(function(){
+            return eiV51LegacyReadPdfFile(file).then(resolve).catch(function(){
               reject(new Error('No se detectaron líneas de pedido. El PDF puede ser escaneado, tener otra plantilla o requerir edición manual.'));
             });
           }
-          var markers=all.map(function(m,idx){return '__EI_V50_ROW__'+JSON.stringify(eiV50MaterialToApp(m,idx,'COLUMNAS_FALLBACK'));}).join('\n');
-          var auditLine='__EI_V50_AUDIT__'+JSON.stringify({version:'V50',materialesExtraidos:all.length,paginas:audit});
+          var markers=all.map(function(m,idx){return '__EI_V51_ROW__'+JSON.stringify(eiV51MaterialToApp(m,idx,'COLUMNAS_FALLBACK'));}).join('\n');
+          var auditLine='__EI_V51_AUDIT__'+JSON.stringify({version:'V51',materialesExtraidos:all.length,paginas:audit});
           resolve(markers+'\n'+auditLine+'\n'+plainPages.join('\n'));
         });
       }).catch(function(err){
-        eiV50LegacyReadPdfFile(file).then(resolve).catch(function(){reject(err);});
+        eiV51LegacyReadPdfFile(file).then(resolve).catch(function(){reject(err);});
       });
     };
     reader.onerror=function(){reject(new Error('No fue posible leer el archivo PDF.'));};
@@ -5301,24 +5322,27 @@ readPdfFile = function(file){
   });
 };
 extractPedidoItems = function(text){
-  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV50Clean(x);}).filter(Boolean);
+  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV51Clean(x);}).filter(Boolean);
   var items=[];
   lines.forEach(function(line){
-    if(line.indexOf('__EI_V50_ROW__')===0){
+    if(line.indexOf('__EI_V51_ROW__')===0 || line.indexOf('__EI_V51_ROW__')===0){
       try{
-        var it=JSON.parse(line.slice('__EI_V50_ROW__'.length));
+        var marker=line.indexOf('__EI_V51_ROW__')===0?'__EI_V51_ROW__':'__EI_V51_ROW__';
+        var it=JSON.parse(line.slice(marker.length));
         if(it && it.referencia && it.descripcion && it.cantidad && it.unidad){items.push(recalcReceptionItemFlags(it));}
-      }catch(e){console.warn('No se pudo interpretar fila V50',e,line);}
+      }catch(e){console.warn('No se pudo interpretar fila PDF',e,line);}
     }
   });
-  if(items.length)return items;
-  try{return eiV50LegacyExtractPedidoItems(text)||[];}catch(e){return [];}
+  if(items.length)return eiV51DedupeExactMaterials(items).map(function(it){return recalcReceptionItemFlags(it);});
+  try{return eiV51DedupeExactMaterials(eiV51LegacyExtractPedidoItems(text)||[]).map(function(it){return recalcReceptionItemFlags(it);});}catch(e){return [];}
 };
 extractPedido = function(text){
   var raw=String(text||'');
   var cleanText=raw
-    .replace(/^__EI_V50_ROW__.*$/gm,'')
-    .replace(/^__EI_V50_AUDIT__.*$/gm,'')
+    .replace(/^__EI_V51_ROW__.*$/gm,'')
+    .replace(/^__EI_V51_AUDIT__.*$/gm,'')
+    .replace(/^__EI_V51_ROW__.*$/gm,'')
+    .replace(/^__EI_V51_AUDIT__.*$/gm,'')
     .replace(/^__EI_V49_ROW__.*$/gm,'')
     .replace(/^__EI_V49_AUDIT__.*$/gm,'')
     .replace(/^__EI_V48_ROW__.*$/gm,'')
@@ -5329,16 +5353,16 @@ extractPedido = function(text){
     .replace(/^__EI_V40_ROW__.*$/gm,'')
     .replace(/^__PDF_ROW__.*$/gm,'');
   var parsed={};
-  try{parsed=eiV50LegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
+  try{parsed=eiV51LegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
   parsed.items=extractPedidoItems(raw);
   parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
   parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || 1;
-  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V50_AUDIT__')===0;});
-  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V50_AUDIT__'.length));}catch(e){}}
-  parsed.extractionMode='PDFJS_V50_COLUMNAS_FALLBACK_UNIVERSAL';
+  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V51_AUDIT__')===0;});
+  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V51_AUDIT__'.length));}catch(e){}}
+  parsed.extractionMode='PDFJS_V51_COLUMNAS_FALLBACK_UNIVERSAL';
   return parsed;
 };
-// Desde V50, todo producto con U.M. en metros debe pedir decisión en recepción:
+// Desde V51, todo producto con U.M. en metros debe pedir decisión en recepción:
 // enviar a corte o no cortar por carreto completo. No se limita solo a descripciones de cable.
 recalcReceptionItemFlags = function(it){
   it=it||{};
