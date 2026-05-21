@@ -5013,6 +5013,358 @@ extractPedido = function(text){
   return parsed;
 };
 
+
+
+/* ============================================================
+   V50 - Lector PDF SIESA universal por columnas + fallback
+   Objetivo: leer todos los PDF de pedido y extraer SOLO:
+   Referencia, Descripción, Cantidad, U.M. y Ubicación.
+   Además: todo material con U.M. en metros queda candidato para corte.
+============================================================ */
+var eiV50LegacyReadPdfFile = readPdfFile;
+var eiV50LegacyExtractPedido = extractPedido;
+var eiV50LegacyExtractPedidoItems = extractPedidoItems;
+var eiV50LegacyRecalcReceptionItemFlags = recalcReceptionItemFlags;
+
+function eiV50Clean(text){
+  return String(text||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+}
+function eiV50Strip(text){
+  return stripAccents ? stripAccents(eiV50Clean(text)).toUpperCase() : eiV50Clean(text).toUpperCase();
+}
+function eiV50WordWidthFallback(text){
+  return Math.max(String(text||'').length*4,1);
+}
+function eiV50ItemsToWords(items,pageHeight){
+  var out=[];
+  (items||[]).forEach(function(item){
+    var text=eiV50Clean(item && item.str);
+    if(!text)return;
+    var tr=item.transform||[0,0,0,0,0,0];
+    var x0=Number(tr[4]||0);
+    var y=Number(tr[5]||0);
+    var width=Math.abs(Number(item.width||eiV50WordWidthFallback(text)));
+    var height=Math.abs(Number(item.height||8));
+    var top=pageHeight-y-height;
+    var bottom=pageHeight-y;
+    var parts=text.split(/\s+/).filter(Boolean);
+    if(parts.length<=1){
+      out.push({text:text,x0:x0,x1:x0+width,top:top,bottom:bottom});
+      return;
+    }
+    var cursor=x0;
+    var charW=width/Math.max(text.length,1);
+    parts.forEach(function(part){
+      var w=Math.max(part.length*charW,1);
+      out.push({text:part,x0:cursor,x1:cursor+w,top:top,bottom:bottom});
+      cursor += w + charW;
+    });
+  });
+  return out.sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+}
+function eiV50GroupLines(words,tol){
+  tol=tol||4;
+  var lines=[];
+  words.slice().sort(function(a,b){return a.top-b.top || a.x0-b.x0;}).forEach(function(w){
+    var found=null;
+    for(var i=lines.length-1;i>=0;i--){
+      if(Math.abs(lines[i].top-w.top)<=tol){found=lines[i];break;}
+      if(lines[i].top < w.top-tol)break;
+    }
+    if(!found){found={top:w.top,words:[]};lines.push(found);}
+    found.words.push(w);
+    found.top=found.words.reduce(function(s,x){return s+x.top;},0)/found.words.length;
+  });
+  return lines.map(function(l){
+    l.words.sort(function(a,b){return a.x0-b.x0;});
+    l.text=eiV50Clean(l.words.map(function(w){return w.text;}).join(' '));
+    return l;
+  }).sort(function(a,b){return a.top-b.top;});
+}
+function eiV50FindHeader(words){
+  var candidates=words.filter(function(w){
+    var t=eiV50Strip(w.text);
+    return /^(REFER\.?|REF\.?)$/.test(t) || /^DESCRIP/.test(t) || /^UBIC/.test(t) || /^CANT/.test(t) || /^U\.?M\.?$/.test(t);
+  });
+  if(!candidates.length)return null;
+  var lines=eiV50GroupLines(candidates,7);
+  var best=null, score=0;
+  lines.forEach(function(l){
+    var txt=eiV50Strip(l.text);
+    var s=(/REFER|REF/.test(txt)?1:0)+(/DESCRIP/.test(txt)?1:0)+(/UBIC/.test(txt)?1:0)+(/CANT/.test(txt)?1:0)+(/U\.?M/.test(txt)?1:0);
+    if(s>score){score=s;best=l;}
+  });
+  if(!best || score<3)return null;
+  var headerBand=words.filter(function(w){return Math.abs(w.top-best.top)<=10;});
+  function firstX(regex){
+    var arr=headerBand.filter(function(w){return regex.test(eiV50Strip(w.text));}).sort(function(a,b){return a.x0-b.x0;});
+    return arr.length?arr[0]:null;
+  }
+  var colRefer=firstX(/^(REFER\.?|REF\.?)$/);
+  var colDesc=firstX(/^DESCRIP/);
+  var colBodega=firstX(/^BODEGA$/);
+  var colUbic=firstX(/^UBIC/);
+  var colCant=firstX(/^CANT/);
+  var colUM=firstX(/^U\.?M\.?$/);
+  var valors=headerBand.filter(function(w){return /^VALOR$/.test(eiV50Strip(w.text)) && (!colUM || w.x0>colUM.x0);}).sort(function(a,b){return a.x0-b.x0;});
+  var colValor=valors.length?valors[0]:null;
+  if(!colRefer || !colDesc || !colCant || !colUM)return null;
+  return {top:best.top,refer:colRefer,desc:colDesc,bodega:colBodega,ubic:colUbic,cant:colCant,um:colUM,valor:colValor};
+}
+function eiV50IsFooterWord(w){
+  var t=eiV50Strip(w.text).replace(/[:.]+$/,'');
+  return /^(NOTAS|TOTALES|SUBTOTAL|TOTAL|ELABORADO|APROBADO|RECIBIDO|PAGINA|ORIGINAL|REIMPRESO)$/.test(t);
+}
+function eiV50IsReferenceCandidate(text){
+  var t=eiV50Clean(text);
+  if(!t)return false;
+  if(/^(REFER|REF|DESCRIP|BODEGA|UBICACION|CANT|COMP|U\.?M|VALOR|PARCIAL|PARQUE|INDUSTRIAL)$/i.test(t))return false;
+  if(/^\$/.test(t))return false;
+  if(/^\d{5,}$/.test(t))return true;
+  // FLETE y otros servicios pueden venir en la columna de referencia; se aceptan solo si la fila tiene cantidad y U.M.
+  if(/^[A-Z][A-Z0-9._\-/]{3,}$/i.test(t) && !/^\d+[,.]?\d*$/.test(t))return true;
+  return false;
+}
+function eiV50TextInRange(words,xMin,xMax){
+  var selected=words.filter(function(w){
+    var mid=(w.x0+w.x1)/2;
+    return mid>=xMin && mid<xMax;
+  }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+  var lines=eiV50GroupLines(selected,4);
+  return eiV50Clean(lines.map(function(l){return l.words.map(function(w){return w.text;}).join(' ');}).join(' '));
+}
+function eiV50FirstTokenInRange(words,xMin,xMax,regex){
+  var selected=words.filter(function(w){
+    var mid=(w.x0+w.x1)/2;
+    return mid>=xMin && mid<xMax && (!regex || regex.test(eiV50Clean(w.text)));
+  }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+  return selected.length?eiV50Clean(selected[0].text):'';
+}
+function eiV50NormalizeUnit(u){
+  return normalizePdfUnit ? normalizePdfUnit(u) : String(u||'').toUpperCase().replace(/\./g,'').trim();
+}
+function eiV50NormalizeQty(q){
+  return normalizePdfNumber ? normalizePdfNumber(q) : eiV50Clean(q).replace(',','.');
+}
+function eiV50CleanDesc(desc){
+  desc=eiV50Clean(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\bPARQUE\b/ig,' ').replace(/\bINDUSTRIAL\b/ig,' ');
+  return cleanDesc ? cleanDesc(desc) : eiV50Clean(desc);
+}
+function eiV50MaterialToApp(m,index,mode){
+  var unit=eiV50NormalizeUnit(m.unidad_medida||m.unidad);
+  var item={
+    id:uid('LIN'),
+    referencia:eiV50Clean(m.referencia),
+    descripcion:eiV50Clean(m.descripcion),
+    cantidad:eiV50NormalizeQty(m.cantidad),
+    unidad:unit,
+    ubicacion:eiV50Clean(m.ubicacion),
+    pagina:m.pagina||1,
+    requiereCorte:false,
+    posibleCorte:false,
+    esCable:false,
+    decisionCorteRecepcion:'NO_APLICA',
+    estado:'PENDIENTE_ALISTAMIENTO',
+    rawLine:'PDFJS_V50_'+(index+1),
+    detectionReason:'Lectura PDF.js V50 por columnas: Referencia, Descripción, Cantidad, U.M. y Ubicación. Modo: '+(mode||'COLUMNAS')
+  };
+  return recalcReceptionItemFlags ? recalcReceptionItemFlags(item) : item;
+}
+function eiV50ExtractByColumns(words,pageNum,pageHeight){
+  var header=eiV50FindHeader(words);
+  if(!header)return {materiales:[],refs:0,mode:'SIN_HEADER'};
+  var bodyStart=header.top+8;
+  var footerWords=words.filter(function(w){return w.top>bodyStart+12 && eiV50IsFooterWord(w);}).sort(function(a,b){return a.top-b.top;});
+  var bodyEnd=footerWords.length?footerWords[0].top-2:pageHeight-30;
+  var body=words.filter(function(w){return w.top>bodyStart && w.top<bodyEnd;});
+  var descLeft=header.refer.x1+6;
+  // En SIESA el encabezado "Descripción" está centrado; el contenido empieza justo después de Refer.
+  var descRight=(header.bodega?header.bodega.x0-8:(header.ubic?header.ubic.x0-70:header.cant.x0-10));
+  if(descRight<=descLeft)descRight=header.cant.x0-20;
+  var ubicLeft=header.ubic?header.ubic.x0-14:header.cant.x0-60;
+  var ubicRight=header.cant.x0-8;
+  var qtyLeft=header.cant.x0-12;
+  var qtyRight=header.um.x0-6;
+  var unitLeft=header.um.x0-8;
+  var unitRight=header.valor?header.valor.x0-8:header.um.x1+55;
+  var refLeft=header.refer.x0-12;
+  var refRight=descLeft-2;
+  var lineas=eiV50GroupLines(body,4);
+  var anchors=[];
+  lineas.forEach(function(line){
+    var ref=eiV50FirstTokenInRange(line.words,refLeft,refRight,null);
+    if(!eiV50IsReferenceCandidate(ref))return;
+    var qty=eiV50FirstTokenInRange(line.words,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/);
+    var unit=eiV50FirstTokenInRange(line.words,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i'));
+    if(!qty || !unit)return;
+    anchors.push({top:line.top,referencia:ref});
+  });
+  anchors.sort(function(a,b){return a.top-b.top;});
+  // Dedupe solo si es exactamente la misma referencia en la misma línea visual.
+  anchors=anchors.filter(function(a,i,arr){return i===0 || !(a.referencia===arr[i-1].referencia && Math.abs(a.top-arr[i-1].top)<3);});
+  var materiales=[];
+  anchors.forEach(function(a,idx){
+    var rowTop=a.top-2;
+    var rowBottom=anchors[idx+1]?anchors[idx+1].top-2:bodyEnd;
+    var rowWords=body.filter(function(w){return w.top>=rowTop && w.top<rowBottom;});
+    var desc=eiV50CleanDesc(eiV50TextInRange(rowWords,descLeft,descRight));
+    var ubic=eiV50TextInRange(rowWords,ubicLeft,ubicRight);
+    var qty=eiV50NormalizeQty(eiV50FirstTokenInRange(rowWords,qtyLeft,qtyRight,/^\d+(?:[.,]\d+)?$/));
+    var unit=eiV50NormalizeUnit(eiV50FirstTokenInRange(rowWords,unitLeft,unitRight,new RegExp('^(?:'+orderUnitPattern()+')$','i')));
+    if(!desc || !qty || !unit)return;
+    materiales.push({referencia:a.referencia,descripcion:desc,cantidad:qty,unidad_medida:unit,ubicacion:ubic,pagina:pageNum});
+  });
+  return {materiales:materiales,refs:anchors.length,mode:'COLUMNAS'};
+}
+function eiV50PlainText(items,pageHeight){
+  return eiV50GroupLines(eiV50ItemsToWords(items,pageHeight),4).map(function(l){return l.text;}).join('\n');
+}
+function eiV50ParseFallbackText(plain,pageNum){
+  var materiales=[];
+  var lines=String(plain||'').split(/\n+/).map(eiV50Clean).filter(Boolean);
+  var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i];
+    if(/^(Refer|Descripcion|Descripción|Bodega|Ubicación|Cliente|Notas|Total|SubTotal)/i.test(line))continue;
+    // Formato aproximado: REF DESCRIPCION ... UBICACION CANT UM $...
+    var tokens=line.split(/\s+/);
+    var unitIndex=-1;
+    for(var u=tokens.length-1;u>=0;u--){ if(unitRx.test(tokens[u])){unitIndex=u;break;} }
+    if(unitIndex<2)continue;
+    var qtyIndex=unitIndex-1;
+    if(!/^\d+(?:[.,]\d+)?$/.test(tokens[qtyIndex]||''))continue;
+    var ref=tokens[0];
+    if(!eiV50IsReferenceCandidate(ref))continue;
+    var before=tokens.slice(1,qtyIndex);
+    var ubic='';
+    if(before.length && /^[A-Z]{0,4}\d{2,}[A-Z0-9._\-/]*$/i.test(before[before.length-1]))ubic=before.pop();
+    before=before.filter(function(t){return !/^(PARQUE|INDUSTRIAL)$/i.test(t);});
+    var desc=eiV50CleanDesc(before.join(' '));
+    if(desc){materiales.push({referencia:ref,descripcion:desc,cantidad:eiV50NormalizeQty(tokens[qtyIndex]),unidad_medida:eiV50NormalizeUnit(tokens[unitIndex]),ubicacion:ubic,pagina:pageNum});}
+  }
+  return materiales;
+}
+function eiV50MergeMaterials(primary,fallback){
+  var out=[], seen={};
+  function add(m){
+    if(!m || !m.referencia || !m.descripcion || !m.cantidad || !m.unidad_medida)return;
+    var key=[eiV50Clean(m.referencia),eiV50Clean(m.descripcion),eiV50Clean(m.cantidad),eiV50NormalizeUnit(m.unidad_medida),eiV50Clean(m.ubicacion),m.pagina||1].join('|').toUpperCase();
+    if(seen[key])return;
+    seen[key]=1; out.push(m);
+  }
+  (primary||[]).forEach(add);
+  (fallback||[]).forEach(add);
+  return out;
+}
+readPdfFile = function(file){
+  if(!file)return Promise.reject(new Error('No se seleccionó PDF.'));
+  if(!window.pdfjsLib)return Promise.reject(new Error('No cargó el lector PDF.'));
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var arr=new Uint8Array(reader.result);
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjsLib.getDocument({data:arr,isEvalSupported:false}).promise.then(function(pdf){
+        var all=[], audit=[], plainPages=[], chain=Promise.resolve();
+        for(var i=1;i<=pdf.numPages;i++)(function(pageNo){
+          chain=chain.then(function(){return pdf.getPage(pageNo);}).then(function(page){
+            var viewport=page.getViewport({scale:1});
+            return page.getTextContent({includeMarkedContent:false,disableNormalization:false}).then(function(content){
+              var words=eiV50ItemsToWords(content.items,viewport.height);
+              var plain=eiV50PlainText(content.items,viewport.height);
+              var byCols=eiV50ExtractByColumns(words,pageNo,viewport.height);
+              var fallback=eiV50ParseFallbackText(plain,pageNo);
+              var merged=eiV50MergeMaterials(byCols.materiales,fallback);
+              all=all.concat(merged);
+              audit.push({pagina:pageNo,modo:byCols.mode,referenciasDetectadas:Math.max(byCols.refs||0,merged.length),materialesExtraidos:merged.length});
+              plainPages.push('--- PAGINA '+pageNo+' ---\n'+plain);
+            });
+          });
+        })(i);
+        return chain.then(function(){
+          if(!all.length){
+            // Respaldo: si la plantilla cambia radicalmente, usa lector anterior antes de bloquear operación.
+            return eiV50LegacyReadPdfFile(file).then(resolve).catch(function(){
+              reject(new Error('No se detectaron líneas de pedido. El PDF puede ser escaneado, tener otra plantilla o requerir edición manual.'));
+            });
+          }
+          var markers=all.map(function(m,idx){return '__EI_V50_ROW__'+JSON.stringify(eiV50MaterialToApp(m,idx,'COLUMNAS_FALLBACK'));}).join('\n');
+          var auditLine='__EI_V50_AUDIT__'+JSON.stringify({version:'V50',materialesExtraidos:all.length,paginas:audit});
+          resolve(markers+'\n'+auditLine+'\n'+plainPages.join('\n'));
+        });
+      }).catch(function(err){
+        eiV50LegacyReadPdfFile(file).then(resolve).catch(function(){reject(err);});
+      });
+    };
+    reader.onerror=function(){reject(new Error('No fue posible leer el archivo PDF.'));};
+    reader.readAsArrayBuffer(file);
+  });
+};
+extractPedidoItems = function(text){
+  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV50Clean(x);}).filter(Boolean);
+  var items=[];
+  lines.forEach(function(line){
+    if(line.indexOf('__EI_V50_ROW__')===0){
+      try{
+        var it=JSON.parse(line.slice('__EI_V50_ROW__'.length));
+        if(it && it.referencia && it.descripcion && it.cantidad && it.unidad){items.push(recalcReceptionItemFlags(it));}
+      }catch(e){console.warn('No se pudo interpretar fila V50',e,line);}
+    }
+  });
+  if(items.length)return items;
+  try{return eiV50LegacyExtractPedidoItems(text)||[];}catch(e){return [];}
+};
+extractPedido = function(text){
+  var raw=String(text||'');
+  var cleanText=raw
+    .replace(/^__EI_V50_ROW__.*$/gm,'')
+    .replace(/^__EI_V50_AUDIT__.*$/gm,'')
+    .replace(/^__EI_V49_ROW__.*$/gm,'')
+    .replace(/^__EI_V49_AUDIT__.*$/gm,'')
+    .replace(/^__EI_V48_ROW__.*$/gm,'')
+    .replace(/^__EI_V47_ROW__.*$/gm,'')
+    .replace(/^__EI_V46_ROW__.*$/gm,'')
+    .replace(/^__EI_V45_ROW__.*$/gm,'')
+    .replace(/^__EI_V43_ROW__.*$/gm,'')
+    .replace(/^__EI_V40_ROW__.*$/gm,'')
+    .replace(/^__PDF_ROW__.*$/gm,'');
+  var parsed={};
+  try{parsed=eiV50LegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
+  parsed.items=extractPedidoItems(raw);
+  parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
+  parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || 1;
+  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V50_AUDIT__')===0;});
+  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V50_AUDIT__'.length));}catch(e){}}
+  parsed.extractionMode='PDFJS_V50_COLUMNAS_FALLBACK_UNIVERSAL';
+  return parsed;
+};
+// Desde V50, todo producto con U.M. en metros debe pedir decisión en recepción:
+// enviar a corte o no cortar por carreto completo. No se limita solo a descripciones de cable.
+recalcReceptionItemFlags = function(it){
+  it=it||{};
+  it.referencia=cleanPdfValue(it.referencia||it.reference||'');
+  it.descripcion=cleanPdfValue(it.descripcion||it.description||'');
+  it.cantidad=normalizePdfNumber(it.cantidad||it.quantity||'');
+  it.unidad=normalizePdfUnit(it.unidad||it.unit||'');
+  it.ubicacion=cleanPdfValue(it.ubicacion||it.location||'');
+  it.esCable=isLikelyCable(it.referencia,it.descripcion);
+  it.posibleCorte=isMeterUnit(it.unidad);
+  var decision=String(it.decisionCorteRecepcion||'');
+  if(it.posibleCorte){
+    if(decision!=='CARRETO_COMPLETO')decision='MANDAR_CORTE';
+    it.requiereCorte=decision==='MANDAR_CORTE';
+    it.estado=it.requiereCorte?'PENDIENTE_CORTE':'PENDIENTE_ALISTAMIENTO';
+  }else{
+    decision='NO_APLICA';
+    it.requiereCorte=false;
+    it.estado='PENDIENTE_ALISTAMIENTO';
+  }
+  it.decisionCorteRecepcion=decision;
+  it.detectionReason=it.detectionReason || (it.manualEntry?'Línea agregada/corregida manualmente en recepción':'Línea detectada y validada en recepción');
+  return it;
+};
+
+
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 
 })();
