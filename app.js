@@ -2882,8 +2882,20 @@ function applyCutFormValues(cut, v){
   cut.evidenciaRegistro=v.evidenciaRegistro;
   var dis=cutParseDecimal(cut.disponibleAntes), sol=cutParseDecimal(cut.metrosSolicitados);
   if(Number.isFinite(dis)&&Number.isFinite(sol)){
-    cut.remanenteProyectado=cutNormalizeDecimal(dis-sol);
-    cut.restriccionRemanente=cutRule(cut.tipoPedido, dis-sol).condition;
+    var rem=+(dis-sol).toFixed(2);
+    var rule=cutRule(cut.tipoPedido, rem);
+    cut.remanenteProyectado=cutNormalizeDecimal(rem);
+    cut.restriccionRemanente=rule.condition;
+    // Si el sobrante queda dentro de política, el corte debe desbloquearse sin exigir guardar avance ni pedir aprobación.
+    if(!rule.requires){
+      cut.approvalRequired=false;
+      cut.approvalStatus="NO_REQUIERE";
+      cut.approverRole="";
+      cut.approverBackupRole="";
+      cut.approverLabel="";
+      cut.approvalReason="";
+      if(!cut.startedAt && !cut.finishedAt && !cutDone(cut.status))cut.status="PENDIENTE_CORTE";
+    }
   }
 }
 function cutCalc(cut){
@@ -2892,7 +2904,7 @@ function cutCalc(cut){
   var rule=cutRule(cut.tipoPedido||"VENTAS",rem);
   return {disponible:dis,solicitado:sol,remanente:rem,rule:rule,hasValues:Number.isFinite(rem)};
 }
-function cutIsApproved(cut){return cut.approvalStatus==="APROBADO" || cut.approvalRequired===false;}
+function cutIsApproved(cut){return cut.approvalStatus==="APROBADO" || cut.approvalStatus==="NO_REQUIERE" || cut.approvalRequired===false;}
 function cutCanMeasure(cut){var c=cutCalc(cut);return c.hasValues && (!c.rule.requires || cutIsApproved(cut));}
 function cutQualityOk(cut){return cut.corteUniforme!==false && cut.tramoRotulado!==false && cut.evidenciaRegistro!==false;}
 function cutFinalOk(cut){return !!(cut.fotoInicioUrl && cut.fotoFinalUrl && cut.fotoInicioAt && cut.fotoFinalAt && cut.finishedAt);}
@@ -2924,7 +2936,7 @@ function openCutModule(id,cutId){
   var timerText=fmt(cutElapsedMs(cut));
   var statusLabel=(finished?"Finalizado":(started?"En corte":(approvalPending?"Pendiente aprobación":(waitingApproval?"Bloqueado por aprobación":(canMeasure?"Habilitado":"Pendiente")))));
   var conditionHtml=calc.hasValues?'<div class="cut-calc-formula">'+esc(cutNormalizeDecimal(calc.disponible))+' m − '+esc(cutNormalizeDecimal(calc.solicitado))+' m = <span>'+esc(remText)+' m</span></div><div class="cut-calc-rule"><strong>'+esc((cut.tipoPedido==="ALUMBRADO"?"Alumbrado":"Ventas")+": "+rule.condition)+'</strong><br>'+esc(rule.route)+'</div>':'<div class="cut-calc-formula">Disponible − a cortar = <span>Sobrante</span></div><div class="cut-calc-rule">Ingrese disponibilidad y metros a cortar para calcular la restricción.</div>';
-  var lockNote=!calc.hasValues?'Ingrese metros disponibles y metros a cortar para habilitar el corte.':(waitingApproval?('<strong>Corte bloqueado.</strong><br>'+esc(rule.message)):(finished?'<strong>Corte finalizado y registrado.</strong>':(started?'<strong>Cronómetro activo.</strong><br>Debe anexar foto final para finalizar.':'<strong>Corte habilitado.</strong><br>Anexe foto inicial para iniciar el cronómetro.')));
+  var lockNote=!calc.hasValues?'Ingrese metros disponibles y metros a cortar. Puede cargar la foto inicial y pulsar Iniciar; la app validará el cálculo sin exigir guardar avance.':(waitingApproval?('<strong>Corte bloqueado.</strong><br>'+esc(rule.message)):(finished?'<strong>Corte finalizado y registrado.</strong>':(started?'<strong>Cronómetro activo.</strong><br>Debe anexar foto final para finalizar.':'<strong>Corte habilitado.</strong><br>Anexe foto inicial para iniciar el cronómetro.')));
   var approvalActions='';
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar autorización de corte</button>';}
@@ -2959,9 +2971,9 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="tramoRotulado" '+(cut.tramoRotulado!==false?'checked':'')+'> Tramo rotulado</label>'+ 
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-2">'+
-      '<label class="field"><span>Foto inicial obligatoria</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" capture="environment" '+((!canMeasure||started||finished)?'disabled':'')+'><small>'+(cut.fotoInicioUrl?'Foto inicial cargada: '+fmtDate(cut.fotoInicioAt)+(cut.fotoInicioUrl?' · Drive OK':''):'Seleccione o tome la foto antes de iniciar el corte.')+'</small></label>'+ 
+      '<label class="field"><span>Foto inicial obligatoria</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" capture="environment" '+((started||finished)?'disabled':'')+'><small>'+(cut.fotoInicioUrl?'Foto inicial cargada: '+fmtDate(cut.fotoInicioAt)+(cut.fotoInicioUrl?' · Drive OK':''):'Seleccione o tome la foto y luego pulse Iniciar corte. No necesita guardar avance.')+'</small></label>'+ 
       '<label class="field"><span>Foto final obligatoria</span><input class="input" type="file" id="cutFinalPhoto" accept="image/*" capture="environment" '+((!started||finished)?'disabled':'')+'><small>'+(cut.fotoFinalUrl?'Foto final cargada: '+fmtDate(cut.fotoFinalAt)+(cut.fotoFinalUrl?' · Drive OK':''):'Seleccione o tome la foto antes de finalizar el corte.')+'</small></label>'+ 
-    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((!canMeasure||started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button></div></fieldset>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button></div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · módulo completo",info+form));
   function refreshPreview(){
@@ -3021,15 +3033,19 @@ function handleCutAction(c,cut,action){
   }
   if(action==="startCut"){
     if(!cut.siesaBodega){alert("Debe registrar la Bodega / CO SIESA antes de iniciar el corte.");return;}
-    if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente.");return;}
+    if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente. Si el sobrante es mayor a 50 m, revise que los campos Metros disponibles y Metros a cortar estén diligenciados correctamente.");return;}
     var file=qs("#cutInitialPhoto")&&qs("#cutInitialPhoto").files&&qs("#cutInitialPhoto").files[0];
-    if(!file){alert("Debe anexar foto inicial antes de iniciar el cronómetro.");return;}
+    function markStarted(){
+      cut.status="EN_CORTE";cut.startedAt=now();cut.horaInicio=new Date().toTimeString().slice(0,8);cut.fechaCorte=new Date().toISOString().slice(0,10);cut.startedByName=state.user.name;cut.takenByUid=state.user.uid;cut.takenByName=state.user.name;c.hasCuts=true;procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
+      return persistCase(c,{type:"CUT_STARTED",detail:"Inicio de cronómetro de corte: "+(cut.code||cut.id)});
+    }
+    if(!file && !cut.fotoInicioUrl){alert("Debe anexar foto inicial antes de iniciar el cronómetro.");return;}
+    if(!file && cut.fotoInicioUrl){markStarted().then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});return;}
     var uploadedAt=now();
     uploadFileToDrive(file,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_inicial_"+file.name,evidenceType:"FOTO_INICIAL_CORTE",cutId:cut.id}).then(function(up){
       cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.initialPhotoName=up.fileName||file.name;cut.fotoInicioAt=uploadedAt;cut.fotoInicioByName=state.user.name;
       appendEvidence(c,up,"Foto inicial obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt));
-      cut.status="EN_CORTE";cut.startedAt=now();cut.horaInicio=new Date().toTimeString().slice(0,8);cut.fechaCorte=new Date().toISOString().slice(0,10);cut.startedByName=state.user.name;cut.takenByUid=state.user.uid;cut.takenByName=state.user.name;c.hasCuts=true;procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
-      return persistCase(c,{type:"CUT_STARTED",detail:"Foto inicial en Drive e inicio de cronómetro: "+(cut.code||cut.id)});
+      return markStarted();
     }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
     return;
   }
