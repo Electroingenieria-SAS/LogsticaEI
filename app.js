@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v49_pdfjs_estricto_auditado";
+var storageKey = "ei_trazabilidad_v53_proyectos_rol_limpio";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -35,6 +35,7 @@ var roles = {
   super_administrador:"Super administrador",
   gerencia:"Gerencia",
   ventas:"Ventas",
+  proyectos:"Proyectos",
   jefe_logistica:"Jefe de logística",
   lider_logistico:"Logística / despacho (unificado)",
   coordinador_logistico:"Logística / despacho (unificado)",
@@ -182,6 +183,7 @@ function normalizeRole(r){
   if(x==="auxiliar_de_corte"||x==="operario_corte"||x==="operario_de_corte")return "auxiliar_corte";
   if(x==="lider_logistica"||x==="lider_logistico"||x==="lider_de_logistica"||x==="lider_despacho"||x==="coordinador_logistica")return "coordinador_logistico";
   if(x==="lider_de_recepcion"||x==="recepcion_mercancia"||x==="recepcionista"||x==="mendoza")return "lider_recepcion";
+  if(x==="proyecto"||x==="proyectos"||x==="rol_proyectos"||x==="area_proyectos"||x==="modulo_proyectos"||x==="projects")return "proyectos";
   return x;
 }
 function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Sin rol";}
@@ -245,8 +247,9 @@ function isExecutive(){return state.user && normalizeRole(state.user.role)==="ge
 function canManageUsers(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="gerencia");}
 function canApprovePriority(){return state.user && normalizeRole(state.user.role)==="gerencia";}
 function canSeeAll(){return state.user && isPrivilegedKpiRole(state.user.role);}
+function isProjectsRole(){return state.user && normalizeRole(state.user.role)==="proyectos";}
 function canCreate(){return state.user && (normalizeRole(state.user.role)==="ventas" || isAdminRoleValue(state.user.role));}
-function canAccessProjectsModule(){return state.user && (normalizeRole(state.user.role)==="ventas" || isAdminRoleValue(state.user.role));}
+function canAccessProjectsModule(){return state.user && (isProjectsRole() || isAdminRoleValue(state.user.role));}
 function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || isAdminRoleValue(state.user.role));}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
 function projectUploadDayText(){return isProjectUploadDay()?"Habilitado hoy":"Solo se habilita los lunes y jueves";}
@@ -297,7 +300,7 @@ function persistEvidenceDocument(c,up,detail){
   };
   return db.collection("evidences").doc(ev.id).set(ev).catch(function(){return null;});
 }
-function defaultRoute(role){var r=normalizeRole(role);if(r==="gerencia")return"indicators";if(isAdminRoleValue(r))return"dashboard";if(r==="ventas")return"create";if(r==="lider_recepcion")return"reception_goods";if(r==="jefe_logistica")return"dashboard";if(r==="auxiliar_corte")return"corte_cable";if(r==="lider_logistico"||r==="coordinador_logistico")return"recepcion_pedidos";if(r==="aux_logistica")return"alistamiento";if(r==="caja")return"caja";return"dashboard";}
+function defaultRoute(role){var r=normalizeRole(role);if(r==="gerencia")return"indicators";if(isAdminRoleValue(r))return"dashboard";if(r==="ventas")return"create";if(r==="proyectos")return"projects";if(r==="lider_recepcion")return"reception_goods";if(r==="jefe_logistica")return"dashboard";if(r==="auxiliar_corte")return"corte_cable";if(r==="lider_logistico"||r==="coordinador_logistico")return"recepcion_pedidos";if(r==="aux_logistica")return"alistamiento";if(r==="caja")return"caja";return"dashboard";}
 function currentProc(c){return c.currentProcess;}
 function procStats(c,p){c.processStats=c.processStats||{};c.processStats[p]=c.processStats[p]||{activeMs:0,waitMs:0,deadMs:0,startedAt:null,completedAt:null,handoffs:0};return c.processStats[p];}
 function addStateHistory(c, type, detail, extra){
@@ -855,13 +858,14 @@ function routes(){
   var r=normalizeRole(state.user.role);
   if(r==="auxiliar_corte")return{main:["corte_cable"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods"],processes:[]};
+  if(r==="proyectos")return{main:["projects"],processes:[]};
   if(r==="gerencia")return{main:["indicators","approvals","users","admin","dashboard"],processes:[]};
   if(isAdminRoleValue(r))return{main:["dashboard","create","projects","reception_goods","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="jefe_logistica"){
     return{main:["dashboard","cases","requirements","approvals","indicators","admin"],processes:activeProcessKeys().filter(function(k){return k!=="caja";})};
   }
   var own=activeProcessKeys().filter(function(k){return canAccessProcess(r,k);});
-  return{main:["dashboard"].concat(canCreate()?["create","projects"]:[]).concat(["requirements"]),processes:own};
+  return{main:["dashboard"].concat(canCreate()?["create"]:[]).concat(canAccessProjectsModule()?["projects"]:[]).concat(["requirements"]),processes:own};
 }
 
 function navBtn(r){
@@ -873,6 +877,7 @@ function mobileItems(){
   var r=state.user?normalizeRole(state.user.role):"";
   if(r==="auxiliar_corte")return [["corte_cable","Cortes","CT"]];
   if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["dashboard","Inicio","⌂"]];
+  if(r==="proyectos")return [["projects","Proyectos","PR"]];
   if(r==="gerencia")return [["indicators","VSM","◉"],["approvals","Aprob.","✓"],["users","Usuarios","US"],["admin","Admin","AD"],["dashboard","Inicio","⌂"]];
   if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["requirements","Req.","↗"],["approvals","Aprob.","✓"],["indicators","VSM","◉"]];
   if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["projects","Proy.","PR"],["reception_goods","Recep.","RM"],["admin","Admin","AD"]];
@@ -3227,29 +3232,36 @@ function deleteUserProfile(id){
 }
 
 function renderProjectOrders(){
-  if(!canAccessProjectsModule() && !canSeeAll()){layout(header("Proyectos","Acceso restringido.")+'<div class="empty">Este módulo está disponible para Ventas y Super Admin.</div>');return;}
+  if(!canAccessProjectsModule()){layout(header("Proyectos","Acceso restringido.")+'<div class="empty">Este módulo está disponible únicamente para el rol Proyectos y Super Admin/Admin.</div>');return;}
   var enabled=isProjectUploadDay();
-  var rows=(state.projectOrders||[]).map(function(p){return '<tr><td><strong>'+esc(p.projectName||'Proyecto')+'</strong><br><small>'+esc(p.customer||'')+'</small></td><td>'+esc(p.orderRef||'')+'</td><td>'+esc(p.pickupPoint?'Recoge en punto':'Despacho / entrega')+'</td><td>'+esc(p.status||'Creado')+'</td><td>'+fmtDate(p.createdAt)+'</td><td><button class="btn btn-small" data-action="projectToCase" data-id="'+esc(p.id)+'">Enviar a flujo</button></td></tr>';}).join('');
-  layout(header("Pedidos de proyectos","Registro comercial especial para proyectos. La creación queda bloqueada por calendario y solo se permite los lunes y jueves.",(enabled?'<button class="btn btn-primary" data-action="projectOrderModal">Nuevo proyecto</button>':'<button class="btn" disabled>'+projectUploadDayText()+'</button>'))+'<section class="grid grid-3"><article class="card kpi"><span>Disponibilidad</span><strong>'+esc(enabled?'Abierto':'Cerrado')+'</strong><small>Lunes y jueves</small></article><article class="card kpi"><span>Solicitudes</span><strong>'+((state.projectOrders||[]).length)+'</strong><small>Proyectos registrados</small></article><article class="card kpi"><span>Control</span><strong>Ventas</strong><small>Con trazabilidad a logística</small></article></section><section class="card" style="margin-top:16px"><div class="notice"><strong>Regla del módulo:</strong> el formulario solo permite subir pedidos de proyectos los lunes y jueves. Admin puede consultar y convertirlos al flujo operativo.</div><h3>Bandeja de proyectos</h3><div class="table-wrap"><table><thead><tr><th>Proyecto / cliente</th><th>Pedido</th><th>Entrega</th><th>Estado</th><th>Creación</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Sin pedidos de proyectos registrados.</td></tr>')+'</tbody></table></div></section>');
+  var rows=(state.projectOrders||[]).map(function(p){
+    var tipo=p.requestType||"Pedido";
+    var entrega=p.pickupPoint?"Recoge en punto":(p.deliveryType==="obra"?"Entrega en obra/proyecto":"Despacho / entrega");
+    return '<tr><td><strong>'+esc(p.projectName||'Proyecto')+'</strong><br><small>'+esc(p.customer||'')+'</small></td><td><strong>'+esc(tipo)+'</strong><br><small>'+esc(p.orderRef||'')+'</small></td><td>'+esc(p.requiredDate||'Sin fecha')+'</td><td>'+esc(entrega)+'</td><td>'+esc(p.status||'Creado')+'</td><td>'+fmtDate(p.createdAt)+'</td><td><button class="btn btn-small" data-action="projectToCase" data-id="'+esc(p.id)+'">Enviar a flujo</button></td></tr>';
+  }).join('');
+  layout(header("Pedidos de proyectos","Módulo exclusivo para que Proyectos registre PNF y pedidos de proyectos, con fecha requerida y trazabilidad hacia logística.",(enabled?'<button class="btn btn-primary" data-action="projectOrderModal">Crear pedido / PNF</button>':'<button class="btn" disabled>'+projectUploadDayText()+'</button>'))+'<section class="grid grid-3"><article class="card kpi"><span>Disponibilidad</span><strong>'+esc(enabled?'Abierto':'Cerrado')+'</strong><small>Lunes y jueves</small></article><article class="card kpi"><span>Solicitudes</span><strong>'+((state.projectOrders||[]).length)+'</strong><small>PNF y pedidos registrados</small></article><article class="card kpi"><span>Control</span><strong>Proyectos</strong><small>Acceso exclusivo por rol</small></article></section><section class="card" style="margin-top:16px"><div class="notice"><strong>Regla del módulo:</strong> solo el rol Proyectos y Super Admin/Admin pueden ingresar. El formulario exige indicar para qué día se necesita el pedido o PNF.</div><h3>Bandeja de proyectos</h3><div class="table-wrap"><table><thead><tr><th>Proyecto / cliente</th><th>Tipo / pedido</th><th>Fecha requerida</th><th>Entrega</th><th>Estado</th><th>Creación</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin pedidos de proyectos registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openProjectOrderModal(){
   if(!canAccessProjectsModule()){alert("No tiene permiso para crear pedidos de proyecto.");return;}
   if(!isProjectUploadDay()){alert("El módulo de proyectos solo permite cargar pedidos los lunes y jueves.");return;}
-  drawer(modal("Nuevo pedido de proyecto",'<form class="form" id="projectOrderForm"><div class="notice"><strong>Pedido de proyecto:</strong> registre el nombre del proyecto, cliente, pedido y condición de entrega para que el flujo quede diferenciado de ventas normales.</div><div class="grid grid-2"><label class="field"><span>Nombre del proyecto *</span><input class="input" name="projectName" required placeholder="Ej. Proyecto alumbrado / obra / contrato"></label><label class="field"><span>Número / nombre del pedido *</span><input class="input" name="orderRef" required placeholder="PVC/PVN/OC"></label></div><div class="grid grid-2"><label class="field"><span>Cliente / tercero</span><input class="input" name="customer"></label><label class="field"><span>Responsable comercial</span><input class="input" name="commercialOwner" value="'+esc(state.user.name||'')+'"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de entrega</span><select class="select" name="deliveryType"><option value="punto">Se recoge en punto</option><option value="local">Despacho local</option><option value="nacional">Despacho nacional</option><option value="obra">Entrega en obra/proyecto</option></select></label><label class="field"><span>Fecha requerida</span><input class="input" type="date" name="requiredDate"></label></div><label class="check-card"><input type="checkbox" name="pickupPoint"> El proyecto se recoge en punto</label><label class="field"><span>Observaciones</span><textarea class="textarea" name="notes" placeholder="Dirección, contacto, condiciones de despacho, si requiere corte, documentos del proyecto."></textarea></label><button class="btn btn-primary" type="submit">Guardar proyecto</button></form>'));
+  var today=new Date().toISOString().slice(0,10);
+  drawer(modal("Crear pedido / PNF de proyecto",'<form class="form" id="projectOrderForm"><div class="notice"><strong>Pedido de proyecto:</strong> registre PNF, pedido o ambos. Este flujo queda separado de Ventas y entra a logística como solicitud de Proyectos.</div><div class="grid grid-2"><label class="field"><span>Tipo de solicitud *</span><select class="select" name="requestType" required><option value="PNF">PNF</option><option value="Pedido">Pedido</option><option value="PNF y pedido">PNF y pedido</option></select></label><label class="field"><span>Para qué día lo necesitan *</span><input class="input" type="date" name="requiredDate" min="'+today+'" required></label></div><div class="grid grid-2"><label class="field"><span>Nombre del proyecto *</span><input class="input" name="projectName" required placeholder="Ej. Obra, contrato, proyecto o frente"></label><label class="field"><span>Número / nombre del PNF o pedido *</span><input class="input" name="orderRef" required placeholder="PNF / PVC / PVN / OC"></label></div><div class="grid grid-2"><label class="field"><span>Cliente / tercero</span><input class="input" name="customer" placeholder="Cliente, obra o tercero"></label><label class="field"><span>Responsable de proyectos</span><input class="input" name="commercialOwner" value="'+esc(state.user.name||'')+'"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de entrega</span><select class="select" name="deliveryType"><option value="punto">Se recoge en punto</option><option value="local">Despacho local</option><option value="nacional">Despacho nacional</option><option value="obra">Entrega en obra/proyecto</option></select></label><label class="field"><span>Prioridad</span><select class="select" name="projectPriority"><option value="Normal">Normal</option><option value="Alta">Alta</option><option value="Crítica">Crítica</option></select></label></div><label class="check-card"><input type="checkbox" name="pickupPoint"> El proyecto se recoge en punto</label><label class="field"><span>Qué van a montar / detalle de materiales *</span><textarea class="textarea" name="itemsDetail" required placeholder="Referencias, cantidades, metros, observaciones del PNF o pedido, cortes requeridos, lugar de entrega."></textarea></label><label class="field"><span>Observaciones adicionales</span><textarea class="textarea" name="notes" placeholder="Dirección, contacto, condiciones de despacho, documentos del proyecto o aclaraciones."></textarea></label><button class="btn btn-primary" type="submit">Crear solicitud de proyecto</button></form>'));
   qs("#projectOrderForm").onsubmit=function(e){e.preventDefault();saveProjectOrder(new FormData(e.target));};
 }
 function saveProjectOrder(fd){
+  if(!fd.get("requiredDate")){alert("Debe indicar para qué día necesitan el PNF o pedido de proyecto.");return;}
+  if(!fd.get("itemsDetail")){alert("Debe especificar qué van a montar o el detalle de materiales del proyecto.");return;}
   var id=uid("PROY");
-  var doc={id:id,projectName:fd.get("projectName")||"",orderRef:fd.get("orderRef")||"",customer:fd.get("customer")||"",commercialOwner:fd.get("commercialOwner")||state.user.name||"",deliveryType:fd.get("deliveryType")||"",pickupPoint:!!fd.get("pickupPoint"),requiredDate:fd.get("requiredDate")||"",notes:fd.get("notes")||"",status:"CREADO_PROYECTOS",source:"proyectos",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role};
-  db.collection("proyectos_pedidos").doc(id).set(doc).then(function(){return createEvent({type:"PROJECT_ORDER_CREATED",detail:"Pedido de proyecto creado: "+doc.projectName+" · "+doc.orderRef,targetRole:"coordinador_logistico",visibleRoles:["ventas","coordinador_logistico","jefe_logistica","admin","super_admin"]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderProjectOrders();}).catch(function(e){showError(e.message||e);});
+  var doc={id:id,requestType:fd.get("requestType")||"Pedido",projectName:fd.get("projectName")||"",orderRef:fd.get("orderRef")||"",customer:fd.get("customer")||"",commercialOwner:fd.get("commercialOwner")||state.user.name||"",deliveryType:fd.get("deliveryType")||"",pickupPoint:!!fd.get("pickupPoint"),requiredDate:fd.get("requiredDate")||"",projectPriority:fd.get("projectPriority")||"Normal",itemsDetail:fd.get("itemsDetail")||"",notes:fd.get("notes")||"",status:"CREADO_PROYECTOS",source:"proyectos",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:normalizeRole(state.user.role)};
+  db.collection("proyectos_pedidos").doc(id).set(doc).then(function(){return createEvent({type:"PROJECT_ORDER_CREATED",detail:"Solicitud de proyecto creada: "+doc.requestType+" · "+doc.projectName+" · "+doc.orderRef+" · requerida " + doc.requiredDate,targetRole:"coordinador_logistico",visibleRoles:["proyectos","coordinador_logistico","jefe_logistica","admin","super_admin"]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderProjectOrders();}).catch(function(e){showError(e.message||e);});
 }
 function projectOrderToCase(id){
   var p=(state.projectOrders||[]).filter(function(x){return x.id===id;})[0];if(!p)return;
   var caseId=uid("CASO");
   var delivery=p.pickupPoint?"cliente_recoge":(p.deliveryType==="nacional"?"despacho_nacional":(p.deliveryType==="local"||p.deliveryType==="obra"?"despacho_local":""));
-  var c={id:caseId,reference:p.orderRef||p.projectName,client:p.customer||p.projectName,description:"Pedido de proyecto: "+(p.projectName||"")+". "+(p.notes||""),orderKind:"PROYECTO",requestedDelivery:delivery,priorityMode:"normal",source:"proyectos",projectId:p.id,projectName:p.projectName,currentProcess:"recepcion_pedidos",status:"creado_ventas",assignedRole:primaryOwnerRole("recepcion_pedidos"),assignedName:processOwnerTitle("recepcion_pedidos"),createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,checklist:{},processStats:{}};
+  var c={id:caseId,reference:p.orderRef||p.projectName,client:p.customer||p.projectName,description:"Solicitud de proyecto: "+(p.requestType||"Pedido")+". Proyecto: "+(p.projectName||"")+". Requerido para: "+(p.requiredDate||"Sin fecha")+". Detalle: "+(p.itemsDetail||"")+". "+(p.notes||""),orderKind:"PROYECTO",requestedDelivery:delivery,requiredDate:p.requiredDate||"",priority:p.projectPriority||"Normal",priorityMode:(p.projectPriority==="Crítica"||p.projectPriority==="Alta")?"gerencia":"normal",source:"proyectos",projectId:p.id,projectName:p.projectName,projectRequestType:p.requestType||"Pedido",currentProcess:"recepcion_pedidos",status:"creado_ventas",assignedRole:primaryOwnerRole("recepcion_pedidos"),assignedName:processOwnerTitle("recepcion_pedidos"),createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:normalizeRole(state.user.role),checklist:{},processStats:{}};
   processes.recepcion_pedidos.checklist.forEach(function(x){c.checklist[x]="pending";});
-  db.collection("cases").doc(caseId).set(c).then(function(){return db.collection("proyectos_pedidos").doc(id).update({status:"ENVIADO_A_FLUJO",caseId:caseId,updatedAt:now(),updatedBy:state.user.uid});}).then(function(){return createEvent({type:"PROJECT_ORDER_TO_CASE",detail:"Proyecto enviado al flujo operativo: "+(p.projectName||p.orderRef),caseId:caseId,targetRole:"coordinador_logistico",visibleRoles:["ventas","coordinador_logistico","jefe_logistica","admin","super_admin"]}).catch(function(){return null;});}).then(loadData).then(renderProjectOrders).catch(function(e){showError(e.message||e);});
+  db.collection("cases").doc(caseId).set(c).then(function(){return db.collection("proyectos_pedidos").doc(id).update({status:"ENVIADO_A_FLUJO",caseId:caseId,updatedAt:now(),updatedBy:state.user.uid});}).then(function(){return createEvent({type:"PROJECT_ORDER_TO_CASE",detail:"Proyecto enviado al flujo operativo: "+(p.projectName||p.orderRef),caseId:caseId,targetRole:"coordinador_logistico",visibleRoles:["proyectos","coordinador_logistico","jefe_logistica","admin","super_admin"]}).catch(function(){return null;});}).then(loadData).then(renderProjectOrders).catch(function(e){showError(e.message||e);});
 }
 function renderReceptionGoods(){
   if(!canAccessReceptionGoods()){layout(header("Recepción de mercancía","Acceso restringido.")+'<div class="empty">Este módulo solo puede verlo Super Admin y el rol Líder de recepción.</div>');return;}
@@ -3962,6 +3974,7 @@ function render(){
   if(state.route==="vsm"||state.route==="kpis"||state.route==="indicadores")state.route="indicators";
   if(state.route==="administracion"||state.route==="administrador")state.route="admin";
   startReminderLoop();
+  if(normalizeRole(state.user.role)==="proyectos" && state.route!=="projects")state.route="projects";
   if(state.route==="corte_cable"){renderCutsQueue();return;}
   if(processes[state.route]){state.filters.process=state.route;renderCases();return;}
   if(state.route==="dashboard")renderDashboard();

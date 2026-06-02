@@ -51,6 +51,10 @@ service cloud.firestore {
       return activeUser() && role() == 'lider_recepcion';
     }
 
+    function isProjectsRole() {
+      return activeUser() && role() == 'proyectos';
+    }
+
     function isUnifiedLogisticsRole(value) {
       return value in ['lider_logistico', 'coordinador_logistico'];
     }
@@ -85,6 +89,9 @@ service cloud.firestore {
         'administrador',
         'gerencia',
         'ventas',
+        'proyectos',
+        'proyecto',
+        'rol_proyectos',
         'jefe_logistica',
         'lider_logistico',
         'coordinador_logistico',
@@ -248,20 +255,19 @@ service cloud.firestore {
 
     match /proyectos_pedidos/{projectId} {
       allow read: if activeUser() && (
-        canSeeAll() ||
-        role() == 'ventas' ||
+        isAdminOrSuper() ||
+        isProjectsRole() ||
         resource.data.createdBy == request.auth.uid
       );
 
       allow create: if activeUser() && (
         isAdminOrSuper() ||
-        role() == 'ventas'
+        isProjectsRole()
       );
 
       allow update: if activeUser() && (
         isAdminOrSuper() ||
-        role() == 'ventas' ||
-        isChiefLogistics()
+        isProjectsRole()
       );
 
       allow delete: if isAdminOrSuper();
