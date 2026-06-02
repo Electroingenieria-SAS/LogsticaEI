@@ -47,6 +47,10 @@ service cloud.firestore {
       return activeUser() && role() == 'jefe_logistica';
     }
 
+    function isReceptionLeader() {
+      return activeUser() && role() == 'lider_recepcion';
+    }
+
     function isUnifiedLogisticsRole(value) {
       return value in ['lider_logistico', 'coordinador_logistico'];
     }
@@ -88,27 +92,19 @@ service cloud.firestore {
         'auxiliar_corte',
         'caja',
         'inventarios',
+        'lider_recepcion',
         'auditoria'
       ];
     }
 
     function validUserPayload() {
-      return request.resource.data.keys().hasOnly([
-        'name',
-        'email',
-        'role',
-        'isActive',
-        'createdAt',
-        'createdBy',
-        'updatedAt',
-        'updatedBy'
-      ])
-      && request.resource.data.name is string
+      return request.resource.data.name is string
       && request.resource.data.email is string
       && request.resource.data.role is string
       && request.resource.data.isActive is bool
       && validRoleValue(request.resource.data.role);
     }
+
 
     function validCasePayload() {
       return request.resource.data.keys().hasAny([
@@ -249,6 +245,40 @@ service cloud.firestore {
       allow create: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
       allow update, delete: if isAdminOrSuper();
     }
+
+    match /proyectos_pedidos/{projectId} {
+      allow read: if activeUser() && (
+        canSeeAll() ||
+        role() == 'ventas' ||
+        resource.data.createdBy == request.auth.uid
+      );
+
+      allow create: if activeUser() && (
+        isAdminOrSuper() ||
+        role() == 'ventas'
+      );
+
+      allow update: if activeUser() && (
+        isAdminOrSuper() ||
+        role() == 'ventas' ||
+        isChiefLogistics()
+      );
+
+      allow delete: if isAdminOrSuper();
+    }
+
+    match /recepciones_mercancia/{receptionId} {
+      allow read: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
+      allow create: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
+      allow update: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
+      allow delete: if isAdminOrSuper();
+    }
+
+    match /users_deleted_log/{logId} {
+      allow read, create: if isAdminOrSuper();
+      allow update, delete: if false;
+    }
+
 
     match /system_config/{configId} {
       allow read: if canSeeAll();
