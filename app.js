@@ -13,6 +13,7 @@ var driveTokenClient = null;
 var driveAccessToken = "";
 var driveTokenExpiresAt = 0;
 var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+var AUDIT_NC_URL = "https://contactoluiancol-art.github.io/auditoria/index.html";
 
 var state = {
   user: null,
@@ -581,6 +582,8 @@ function eventKindLabel(type){
     CASE_ACCEPTED:"Caso aceptado",
     TRANSFER_SENT:"Cambio de etapa",
     CHECK_UPDATED:"Checklist actualizado",
+    CHECKLIST_CLOSED:"Checklist cerrado",
+    NON_CONFORMITY_REPORTED:"Inconformidad reportada",
     REQUIREMENT_SENT:"Requerimiento generado",
     REQUIREMENT_ANSWERED:"Requerimiento respondido",
     EVIDENCE_UPLOADED:"Evidencia cargada",
@@ -2133,6 +2136,7 @@ function renderDetail(id){
     if(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
+    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-danger" data-action="reportNonConformity" data-id="'+c.id+'">Reportar inconformidad</button>';
     if(c.status==="espera_ventas"&&normalizeRole(state.user.role)==="ventas")actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">Responder</button>';
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
@@ -2146,9 +2150,10 @@ function renderDetail(id){
     }
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
-  var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
+  var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'" data-current="'+esc(v)+'" data-original="'+esc(v)+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
+  var checklistActions='<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Modo fluido:</strong> marque todos los puntos necesarios y luego pulse <strong>Cerrar checklist</strong>. No se guarda ni se recarga por cada clic.</div><div class="checklist-actions"><button class="btn btn-success" data-action="closeChecklist" data-id="'+c.id+'">Cerrar checklist</button><button class="btn" data-action="discardChecklist" data-id="'+c.id+'">Descartar cambios</button></div>';
   var cutAlertPanel=(c.cutReturnAlerts||[]).length?'<section class="card" style="margin-top:16px"><h3>Carretos disponibles para empaletar</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Hora</th><th>Acción</th></tr></thead><tbody>'+(c.cutReturnAlerts||[]).slice().reverse().map(function(a){return '<tr><td>'+esc(a.cutCode||a.cutId||'')+'</td><td>'+esc(a.reference||'')+'</td><td>'+esc(a.meters||'')+'</td><td>'+esc(fmtDate(a.returnedAt))+'</td><td>'+esc(a.detail||'Recoger en corte y empaletar para facturación.')+'</td></tr>';}).join('')+'</tbody></table></div></section>':'';
-  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
+  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
 }
 
 function nextActionButtons(c){
@@ -3829,6 +3834,102 @@ function openSupervisorNote(id){
   };
 }
 
+
+function nonConformityFindings(c){
+  var findings=[];
+  if(!c)return findings;
+  Object.keys(c.checklist||{}).forEach(function(k){
+    if(c.checklist[k]==="bad")findings.push("Checklist no conforme: "+k);
+  });
+  (c.orderItems||[]).forEach(function(it,i){
+    var st=String(it.alistamientoStatus||"").toUpperCase();
+    if(st==="NOVEDAD" || st==="NO_ENCONTRADO"){
+      findings.push("Diferencia en alistamiento línea "+(it.line||it.item||i+1)+": "+(it.reference||it.ref||"")+" · "+(it.description||"")+" · estado "+st+(it.alistamientoNovelty?" · "+it.alistamientoNovelty:""));
+    }
+  });
+  (c.cutRequests||[]).forEach(function(cut,i){
+    var st=String(cut.status||cut.estado||"").toUpperCase();
+    if(/RECHAZ|NOVEDAD|NO_CONFORME|ERROR|BLOQUE/.test(st)){
+      findings.push("Novedad en corte "+(cut.code||cut.id||i+1)+": "+(cut.reference||cut.ref||"")+" · "+(cut.meters||cut.metros||"")+" m · estado "+st);
+    }
+  });
+  if(c.openRequirement && (c.openRequirement.detail||c.openRequirement.reason)){
+    findings.push("Requerimiento activo: "+(c.openRequirement.reason||"")+(c.openRequirement.detail?" · "+c.openRequirement.detail:""));
+  }
+  return findings;
+}
+function buildNonConformityText(c,fd){
+  fd=fd||new FormData();
+  var findings=nonConformityFindings(c);
+  var manual=String(fd.get("detail")||"").trim();
+  var difference=String(fd.get("difference")||"").trim();
+  var action=String(fd.get("action")||"").trim();
+  var type=String(fd.get("type")||"Inconformidad logística");
+  var lines=[];
+  lines.push("REPORTE DE INCONFORMIDAD - LOGÍSTICA EI");
+  lines.push("Origen: Aplicativo de trazabilidad logística");
+  lines.push("Fecha del reporte: "+new Date().toLocaleString("es-CO"));
+  lines.push("Reporta: "+((state.user&&state.user.name)||"Usuario")+" · Rol: "+roleTitle((state.user&&state.user.role)||""));
+  lines.push("Tipo: "+type);
+  lines.push("");
+  lines.push("DATOS DEL PEDIDO / CASO");
+  lines.push("Radicado interno: "+(c.id||""));
+  lines.push("Pedido / referencia: "+(c.reference||""));
+  lines.push("Cliente: "+(c.client||""));
+  lines.push("Proceso donde se detecta: "+processTitle(c.currentProcess));
+  lines.push("Estado actual: "+(c.status||""));
+  lines.push("Responsable actual: "+(c.assignedName||roleTitle(c.assignedRole)||""));
+  lines.push("");
+  lines.push("DIFERENCIA O INCONFORMIDAD DETECTADA");
+  if(difference)lines.push(difference);
+  if(manual)lines.push(manual);
+  if(findings.length){findings.forEach(function(x){lines.push("- "+x);});}
+  if(!difference && !manual && !findings.length)lines.push("Describir exactamente la diferencia detectada entre pedido, físico, PDF, corte, factura, cantidad, referencia, estado físico o soporte.");
+  lines.push("");
+  lines.push("ACCIÓN INMEDIATA / CONTENCIÓN");
+  lines.push(action||"Pendiente registrar acción inmediata y responsable en plataforma de Auditoría.");
+  lines.push("");
+  lines.push("TRAZABILIDAD");
+  lines.push("Este texto debe copiarse igual en la plataforma de Auditoría para que la inconformidad quede diferenciada del flujo operativo de logística.");
+  return lines.join("\n");
+}
+function auditUrlForCase(c){
+  var q="?origen=logistica_ei&tipo=inconformidad&pedido="+encodeURIComponent((c&&c.reference)||"")+"&caso="+encodeURIComponent((c&&c.id)||"")+"&proceso="+encodeURIComponent((c&&c.currentProcess)||"");
+  return AUDIT_NC_URL+q;
+}
+function copyTextToClipboard(text){
+  if(navigator.clipboard && navigator.clipboard.writeText)return navigator.clipboard.writeText(text);
+  return new Promise(function(resolve){
+    var ta=document.createElement("textarea");
+    ta.value=text;
+    ta.setAttribute("readonly","");
+    ta.style.position="fixed";ta.style.opacity="0";ta.style.left="-9999px";
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");}catch(e){}
+    document.body.removeChild(ta);resolve();
+  });
+}
+function openNonConformityModal(id){
+  var c=caseById(id);if(!c)return;
+  var auto=buildNonConformityText(c,new FormData());
+  drawer(modal("Reportar inconformidad",'<form class="form" id="ncForm"><div class="notice danger"><strong>Proceso separado:</strong> la inconformidad se registra en la plataforma de Auditoría. Aquí se genera el mismo texto para copiarlo y dejar trazabilidad en logística.</div><label class="field"><span>Tipo de inconformidad</span><select class="select" name="type"><option>Inconformidad logística</option><option>Diferencia contra pedido/PDF</option><option>Diferencia de referencia</option><option>Diferencia de cantidad</option><option>Mercancía averiada</option><option>Error de corte</option><option>Error de facturación o soporte</option><option>Otro hallazgo operativo</option></select></label><label class="field"><span>Diferencia exacta detectada</span><textarea class="textarea" name="difference" placeholder="Ej.: En el PDF figura X referencia/cantidad, pero físicamente se encontró Y. Indicar qué está diferente."></textarea></label><label class="field"><span>Detalle adicional para Auditoría</span><textarea class="textarea" name="detail" placeholder="Amplíe la inconformidad si necesita agregar contexto adicional."></textarea></label><label class="field"><span>Base automática del reporte</span><textarea class="textarea" readonly>'+esc(auto)+'</textarea></label><label class="field"><span>Acción inmediata / contención</span><textarea class="textarea" name="action" placeholder="Ej.: se retiene mercancía, se informa a jefe logístico, se solicita corrección a ventas, etc."></textarea></label><div class="notice"><strong>Uso:</strong> pulse el botón, se copia el texto y se abre Auditoría. En la otra app pegue exactamente el mismo contenido.</div><div class="top-actions"><button class="btn btn-primary" type="submit">Copiar texto y abrir Auditoría</button><a class="btn" target="_blank" rel="noopener" href="'+esc(auditUrlForCase(c))+'">Abrir Auditoría sin copiar</a></div></form>'));
+  var f=qs("#ncForm");
+  if(f)f.onsubmit=function(e){e.preventDefault();submitNonConformity(id,new FormData(f));};
+}
+function submitNonConformity(id,fd){
+  var c=caseById(id);if(!c)return;
+  var text=buildNonConformityText(c,fd);
+  c.nonConformityReports=c.nonConformityReports||[];
+  c.nonConformityReports.push({id:uid("INC"),text:text,type:fd.get("type")||"Inconformidad logística",auditUrl:auditUrlForCase(c),createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,process:c.currentProcess});
+  copyTextToClipboard(text).then(function(){
+    return persistCase(c,{type:"NON_CONFORMITY_REPORTED",detail:"Inconformidad generada para registrar en Auditoría: "+(fd.get("type")||"Inconformidad logística"),targetRole:"auditoria",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","auditoria",c.assignedRole,state.user.role]});
+  }).then(function(){
+    window.open(auditUrlForCase(c),"_blank","noopener");
+    alert("Texto copiado. Pegue exactamente el mismo reporte en la plataforma de Auditoría.");
+    closeDrawer();renderDetail(id);
+  }).catch(function(e){showError((e&&e.message)||e||"No se pudo registrar la trazabilidad de inconformidad.");});
+}
+
 function openCertificateModal(){
   var version=(window.appSettings&&window.appSettings.version)||"Sistema de trazabilidad logística";
   drawer(modal("Certificado de creación",'<section class="certificate-card"><div class="certificate-inner"><div class="certificate-ribbon">Certificado profesional de creación funcional</div><img class="certificate-logo" src="'+esc(logoPath)+'" alt="Electroingeniería"><h2>Sistema de Trazabilidad Logística y Control Operativo</h2><p class="certificate-lead">Se certifica que el presente aplicativo fue concebido, estructurado y promovido por:</p><h1>Juan Esteban Pérez</h1><p>Como autor funcional del sistema, incluyendo su enfoque operativo, flujo de procesos, trazabilidad documental, control de evidencias, módulos de corte, indicadores VSM/KPIs y estructura de seguimiento gerencial.</p><div class="certificate-meta"><span><b>Aplicativo:</b> Trazabilidad Logística EI</span><span><b>Versión:</b> '+esc(version)+'</span><span><b>Fecha:</b> '+esc(new Date().toLocaleDateString("es-CO"))+'</span><span><b>Uso:</b> Interno / operativo / gerencial</span></div><img class="certificate-gif" src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExMzk2bDF5cW0yNm5xeDQwa2pzNW40bzFqMnIxYnh3ZjJ3aXYwMWdnZiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YaP3iYxN3T8nIEN5rD/giphy.gif" alt="GIF de autoría"><div class="certificate-seal">Creación funcional · Juan Esteban Pérez</div><div class="certificate-actions"><button class="btn btn-primary" data-action="printCertificate">Imprimir / guardar PDF</button><button class="btn" data-action="closeDrawer">Cerrar</button></div></div></section>'));
@@ -3871,12 +3972,44 @@ function transfer(id,next){
   }
   assignToProcess(c,next,"Relevo a "+processTitle(next)).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
+function checklistManualBlockReason(c,item){
+  if(!c)return "Caso no encontrado.";
+  if(c.currentProcess==="recepcion_pedidos")return "En Recepción el checklist se llena automáticamente con la lectura del PDF. Cargue/relea el PDF para actualizarlo.";
+  if(c.currentProcess==="alistamiento" && /pedido recibido|referencia|descripci|cantidad|unidad|corte/i.test(item))return "Ese checklist se calcula desde las líneas detectadas del PDF y los cortes. Use el PDF/cortes para actualizarlo.";
+  if(isDeliveryProcess(c.currentProcess) && /foto antes|mercancía subida|mercancia subida|carro cerrado|entrega final/i.test(item))return "Este punto se actualiza automáticamente al subir la foto obligatoria de entrega a Drive.";
+  return "";
+}
 function updateCheck(el){
-  var seg=el.parentNode,id=seg.getAttribute("data-id"),item=seg.getAttribute("data-check"),val=el.getAttribute("data-value"),c=caseById(id);
-  if(c.currentProcess==="recepcion_pedidos"){alert("En Recepción el checklist se llena automáticamente con la lectura del PDF. Cargue/relea el PDF para actualizarlo.");return;}
-  if(c.currentProcess==="alistamiento" && /pedido recibido|referencia|descripci|cantidad|unidad|corte/i.test(item)){alert("Ese checklist se calcula desde las líneas detectadas del PDF y los cortes. Use el PDF/cortes para actualizarlo.");return;}
-  if(isDeliveryProcess(c.currentProcess) && /foto antes|mercancía subida|mercancia subida|carro cerrado|entrega final/i.test(item)){alert("Este punto se actualiza automáticamente al subir la foto obligatoria de entrega a Drive.");return;}
-  c.checklist[item]=val;persistCase(c,{type:"CHECK_UPDATED",detail:item+": "+val}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  var seg=el.parentNode,id=seg.getAttribute("data-id"),item=seg.getAttribute("data-check"),val=el.getAttribute("data-value"),c=caseById(id),reason=checklistManualBlockReason(c,item);
+  if(reason){alert(reason);return;}
+  seg.setAttribute("data-current",val);
+  qsa("button",seg).forEach(function(btn){
+    var bval=btn.getAttribute("data-value");
+    btn.className=(bval===val?("active "+bval):"");
+  });
+  var row=seg.closest?seg.closest(".check-row"):seg.parentNode;
+  if(row){
+    if(seg.getAttribute("data-original")!==val)row.classList.add("check-dirty");
+    else row.classList.remove("check-dirty");
+  }
+}
+function closeChecklist(id){
+  var c=caseById(id);if(!c)return;
+  var changed=[], blocked=[];
+  c.checklist=c.checklist||{};
+  qsa('.segment[data-id="'+id+'"]').forEach(function(seg){
+    var item=seg.getAttribute("data-check"),val=seg.getAttribute("data-current")||"pending",original=seg.getAttribute("data-original")||"pending",reason=checklistManualBlockReason(c,item);
+    if(val!==original){
+      if(reason)blocked.push(item);
+      else{c.checklist[item]=val;changed.push(item+": "+val);}
+    }
+  });
+  if(blocked.length){alert("Algunos puntos no se guardaron porque son automáticos: "+blocked.join(", "));}
+  if(!changed.length){alert("No hay cambios nuevos para guardar.");return;}
+  persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
+}
+function discardChecklistChanges(id){
+  renderDetail(id);
 }
 function clearPwaCache(){if("serviceWorker" in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){if(r.active)r.active.postMessage({type:"CLEAR_CACHE"});r.update();});setTimeout(function(){location.reload();},700);}).catch(function(){location.reload();});}else location.reload();}
 
@@ -4023,8 +4156,11 @@ function bindActions(){
     if(a==="receptionGoodsModal")openReceptionGoodsModal();
     if(a==="openReceptionGoods")openReceptionGoods(id);
     if(a==="reportReceptionGoods")reportReceptionGoods(id);
+    if(a==="reportNonConformity")openNonConformityModal(id);
     if(a==="closeReceptionGoods")closeReceptionGoods(id);
     if(a==="check")updateCheck(b);
+    if(a==="closeChecklist")closeChecklist(id);
+    if(a==="discardChecklist")discardChecklistChanges(id);
     if(a==="clearPwa")clearPwaCache();
     if(a==="openMobileMenu")openMobileMenu();
     if(a==="closeMobileMenu")closeMobileMenu();
