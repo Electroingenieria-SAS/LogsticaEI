@@ -386,6 +386,7 @@ function initFirebaseAsync(){
 }
 function clearPwaCachesAndReload(){
   var tasks=[];
+  clearDriveFolderCache();
   try{if(window.caches)tasks.push(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));}catch(e){}
   try{if(navigator.serviceWorker)tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){return Promise.all(regs.map(function(r){return r.unregister();}));}));}catch(e){}
   Promise.all(tasks).then(function(){location.reload(true);}).catch(function(){location.reload(true);});
@@ -1260,6 +1261,16 @@ function ensureDriveToken(promptMode){
     });
   });
 }
+function clearDriveFolderCache(){
+  try{
+    var remove=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k && k.indexOf("ei_drive_folder_")===0)remove.push(k);
+    }
+    remove.forEach(function(k){localStorage.removeItem(k);});
+  }catch(e){}
+}
 function driveFetch(url,options){
   return ensureDriveToken("").then(function(token){
     options=options||{};
@@ -1270,7 +1281,13 @@ function driveFetch(url,options){
         driveAccessToken="";driveTokenExpiresAt=0;
         throw new Error("Google Drive requiere autorización nuevamente. Presione la acción otra vez y autorice el acceso.");
       }
-      if(!res.ok){return res.text().catch(function(){return "";}).then(function(txt){throw new Error("Error Google Drive "+res.status+": "+txt.slice(0,220));});}
+      if(!res.ok){return res.text().catch(function(){return "";}).then(function(txt){
+        if(res.status===404){
+          clearDriveFolderCache();
+          throw new Error("Google Drive no encontró una carpeta o archivo usado como destino. Se limpió la referencia interna de carpetas; vuelva a intentar la carga con la misma cuenta de Drive. Detalle técnico: "+txt.slice(0,180));
+        }
+        throw new Error("Error Google Drive "+res.status+": "+txt.slice(0,220));
+      });}
       return res;
     });
   });
@@ -1290,12 +1307,11 @@ function driveCreateFolder(name,parentId){
   return driveFetch("https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(meta)}).then(function(res){return res.json();});
 }
 function driveEnsureFolder(name,parentId){
-  var key="ei_drive_folder_"+(parentId||"root")+"_"+safeDrivePart(name);
-  var cached=localStorage.getItem(key);
-  if(cached)return Promise.resolve({id:cached,name:name});
+  // No se reutilizan IDs de carpetas guardados en localStorage porque pueden quedar obsoletos
+  // si la carpeta fue eliminada, movida, creada con otra cuenta o si el navegador conserva caché vieja.
   return driveFindFolder(name,parentId).then(function(existing){
-    if(existing&&existing.id){localStorage.setItem(key,existing.id);return existing;}
-    return driveCreateFolder(name,parentId).then(function(folder){localStorage.setItem(key,folder.id);return folder;});
+    if(existing&&existing.id)return existing;
+    return driveCreateFolder(name,parentId);
   });
 }
 function driveEnsurePath(parts){
@@ -4011,7 +4027,7 @@ function closeChecklist(id){
 function discardChecklistChanges(id){
   renderDetail(id);
 }
-function clearPwaCache(){if("serviceWorker" in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){if(r.active)r.active.postMessage({type:"CLEAR_CACHE"});r.update();});setTimeout(function(){location.reload();},700);}).catch(function(){location.reload();});}else location.reload();}
+function clearPwaCache(){clearDriveFolderCache();if("serviceWorker" in navigator){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){if(r.active)r.active.postMessage({type:"CLEAR_CACHE"});r.update();});setTimeout(function(){location.reload();},700);}).catch(function(){location.reload();});}else location.reload();}
 
 
 var reminderMemory = {};
