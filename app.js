@@ -987,7 +987,11 @@ function renderDashboard(){
 
 function caseList(list){
   if(!list.length)return'<div class="empty">No hay casos.</div>';
-  return'<div class="case-list">'+list.map(function(c){return'<article class="case-card"><div><h3>'+esc(c.reference||c.id)+' · '+esc(c.client||"Caso operativo")+'</h3><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span></div></div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver</button>'+(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';}).join("")+'</div>';
+  return'<div class="case-list">'+list.map(function(c){
+    var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
+    var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
+    return'<article class="case-card"><div><h3>'+esc(c.reference||c.id)+' · '+esc(c.client||"Caso operativo")+'</h3><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span></div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver</button>'+(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
+  }).join("")+'</div>';
 }
 
 function renderCases(){
@@ -2123,7 +2127,7 @@ function renderDetail(id){
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle")){
     if(db && (canSeeAll() || isAdminRoleValue(state.user.role))){db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo guardar migración legacy",e);});}
   }
-  if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)<0;})){renderCutsQueue();return;}
+  if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);})){renderCutsQueue();return;}
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="";
   if(!c.closedAt){
     if(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
@@ -2143,7 +2147,8 @@ function renderDetail(id){
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
   var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
-  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
+  var cutAlertPanel=(c.cutReturnAlerts||[]).length?'<section class="card" style="margin-top:16px"><h3>Carretos disponibles para empaletar</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Hora</th><th>Acción</th></tr></thead><tbody>'+(c.cutReturnAlerts||[]).slice().reverse().map(function(a){return '<tr><td>'+esc(a.cutCode||a.cutId||'')+'</td><td>'+esc(a.reference||'')+'</td><td>'+esc(a.meters||'')+'</td><td>'+esc(fmtDate(a.returnedAt))+'</td><td>'+esc(a.detail||'Recoger en corte y empaletar para facturación.')+'</td></tr>';}).join('')+'</tbody></table></div></section>':'';
+  layout(header(c.reference||c.id,processTitle(c.currentProcess)+" · "+(c.client||"Sin cliente"),'<button class="btn" data-route="cases">Volver</button>'+actions)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3><div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
 }
 
 function nextActionButtons(c){
@@ -2156,7 +2161,7 @@ function nextActionButtons(c){
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return x.status==="CONFORME"||x.status==="AUTORIZADO"||x.status==="FINALIZADO";}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -2787,6 +2792,14 @@ function openCutsPlanner(id){
 function cutPayload(c,cut){return {caseId:c.id,cutId:cut.id,pedido:c.reference||cut.pedido||"",tipoPedido:(String(c.orderKind||cut.tipoPedido||"VENTAS").toUpperCase()==="ALUMBRADO"?"ALUMBRADO":"VENTAS"),referencia:cut.referencia||"",descripcion:cut.descripcion||"",metrosSolicitados:cut.metrosSolicitados||"",disponibleAntes:cut.disponibleAntes||"",cliente:c.client||"",source:"firebase_principal"};}
 function findCut(c,cutId){return (c.cutRequests||[]).filter(function(x){return x.id===cutId;})[0]||null;}
 function cutDone(st){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(st)>=0;}
+function cutIsOperationallyDone(cut){
+  if(!cut)return false;
+  if(cut.status==="FINALIZADO")return true;
+  if(cut.registeredAt)return true;
+  // Compatibilidad con registros antiguos: CONFORME/AUTORIZADO solo cuenta como terminado si realmente tuvo cierre o registro.
+  if(["CONFORME","AUTORIZADO"].indexOf(cut.status)>=0 && (cut.completedAt||cut.finishedAt||cut.durationText||cut.durationMs))return true;
+  return false;
+}
 function cutElapsedMs(cut){
   var stored=Number(cut.durationMs||0);
   if(cut.status==="EN_CORTE"&&cut.startedAt)stored+=msSince(cut.startedAt);
@@ -2907,7 +2920,7 @@ function cutCalc(cut){
 function cutIsApproved(cut){return cut.approvalStatus==="APROBADO" || cut.approvalStatus==="NO_REQUIERE" || cut.approvalRequired===false;}
 function cutCanMeasure(cut){var c=cutCalc(cut);return c.hasValues && (!c.rule.requires || cutIsApproved(cut));}
 function cutQualityOk(cut){return cut.corteUniforme!==false && cut.tramoRotulado!==false && cut.evidenciaRegistro!==false;}
-function cutFinalOk(cut){return !!(cut.fotoInicioUrl && cut.fotoFinalUrl && cut.fotoInicioAt && cut.fotoFinalAt && cut.finishedAt);}
+function cutFinalOk(cut){return !!(cut.fotoInicioAt && cut.fotoFinalAt && cut.finishedAt);}
 function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
@@ -2926,7 +2939,7 @@ function openCutModule(id,cutId){
   if(cut.corteUniforme===undefined)cut.corteUniforme=true;
   if(cut.tramoRotulado===undefined)cut.tramoRotulado=true;
   if(cut.evidenciaRegistro===undefined)cut.evidenciaRegistro=true;
-  var calc=cutCalc(cut), rule=calc.rule, finished=cutDone(cut.status), started=!!cut.startedAt || cut.status==="EN_CORTE", canMeasure=cutCanMeasure(cut);
+  var calc=cutCalc(cut), rule=calc.rule, finished=cutIsOperationallyDone(cut), started=!!cut.startedAt || cut.status==="EN_CORTE", canMeasure=cutCanMeasure(cut);
   var approvalPending=rule.requires && cut.approvalStatus==="PENDIENTE";
   var waitingApproval=rule.requires && !cutIsApproved(cut);
   var approvalGroup=cutApproverGroup(rule);
@@ -3032,21 +3045,36 @@ function handleCutAction(c,cut,action){
     return;
   }
   if(action==="startCut"){
-    if(!cut.siesaBodega){alert("Debe registrar la Bodega / CO SIESA antes de iniciar el corte.");return;}
+    cut.siesaBodega=cut.siesaBodega||((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"PENDIENTE_VALIDAR");
     if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente. Si el sobrante es mayor a 50 m, revise que los campos Metros disponibles y Metros a cortar estén diligenciados correctamente.");return;}
     var file=qs("#cutInitialPhoto")&&qs("#cutInitialPhoto").files&&qs("#cutInitialPhoto").files[0];
-    function markStarted(){
-      cut.status="EN_CORTE";cut.startedAt=now();cut.horaInicio=new Date().toTimeString().slice(0,8);cut.fechaCorte=new Date().toISOString().slice(0,10);cut.startedByName=state.user.name;cut.takenByUid=state.user.uid;cut.takenByName=state.user.name;c.hasCuts=true;procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
-      return persistCase(c,{type:"CUT_STARTED",detail:"Inicio de cronómetro de corte: "+(cut.code||cut.id)});
-    }
-    if(!file && !cut.fotoInicioUrl){alert("Debe anexar foto inicial antes de iniciar el cronómetro.");return;}
-    if(!file && cut.fotoInicioUrl){markStarted().then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});return;}
     var uploadedAt=now();
-    uploadFileToDrive(file,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_inicial_"+file.name,evidenceType:"FOTO_INICIAL_CORTE",cutId:cut.id}).then(function(up){
-      cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.initialPhotoName=up.fileName||file.name;cut.fotoInicioAt=uploadedAt;cut.fotoInicioByName=state.user.name;
-      appendEvidence(c,up,"Foto inicial obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt));
-      return markStarted();
-    }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+    function markStarted(){
+      if(file){
+        cut.fotoInicioAt=cut.fotoInicioAt||uploadedAt;
+        cut.fotoInicioByName=state.user.name;
+        cut.initialPhotoName=file.name||"foto_inicial.jpg";
+        cut.fotoInicioPendingUpload=true;
+      }else if(cut.fotoInicioAt){
+        cut.fotoInicioPendingUpload=cut.fotoInicioPendingUpload||!cut.fotoInicioUrl;
+      }
+      cut.status="EN_CORTE";cut.startedAt=now();cut.horaInicio=new Date().toTimeString().slice(0,8);cut.fechaCorte=new Date().toISOString().slice(0,10);cut.startedByName=state.user.name;cut.takenByUid=state.user.uid;cut.takenByName=state.user.name;c.hasCuts=true;procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
+      return persistCase(c,{type:"CUT_STARTED",detail:"Inicio de cronómetro de corte: "+(cut.code||cut.id)+(file?" · foto inicial tomada":"")});
+    }
+    function uploadInitialAsync(){
+      if(!file)return Promise.resolve(null);
+      return uploadFileToDrive(file,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_inicial_"+file.name,evidenceType:"FOTO_INICIAL_CORTE",cutId:cut.id}).then(function(up){
+        cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.initialPhotoName=up.fileName||file.name;cut.fotoInicioAt=cut.fotoInicioAt||uploadedAt;cut.fotoInicioByName=state.user.name;cut.fotoInicioPendingUpload=false;
+        appendEvidence(c,up,"Foto inicial obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt));
+        return persistCase(c,{type:"CUT_INITIAL_PHOTO_UPLOADED",detail:"Foto inicial cargada a Drive: "+(cut.code||cut.id)});
+      }).catch(function(err){
+        cut.fotoInicioPendingUpload=true;
+        cut.fotoInicioUploadError=String((err&&err.message)||err||"No fue posible cargar la foto inicial a Drive").slice(0,240);
+        return persistCase(c,{type:"CUT_INITIAL_PHOTO_PENDING_UPLOAD",detail:"El cronómetro inició. La foto inicial quedó pendiente de Drive: "+cut.fotoInicioUploadError}).catch(function(){return null;});
+      });
+    }
+    if(!file && !cut.fotoInicioAt && !cut.fotoInicioUrl){alert("Debe anexar foto inicial antes de iniciar el cronómetro.");return;}
+    markStarted().then(function(){closeDrawer();openCutModule(c.id,cut.id);return uploadInitialAsync();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="finishCut"){
@@ -3054,34 +3082,69 @@ function handleCutAction(c,cut,action){
     var file2=qs("#cutFinalPhoto")&&qs("#cutFinalPhoto").files&&qs("#cutFinalPhoto").files[0];
     if(!file2){alert("Debe anexar foto final antes de finalizar.");return;}
     var uploadedAt2=now();
-    uploadFileToDrive(file2,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_final_"+file2.name,evidenceType:"FOTO_FINAL_CORTE",cutId:cut.id}).then(function(up){
-      var extra=cut.startedAt?msSince(cut.startedAt):0;cut.durationMs=Number(cut.durationMs||0)+extra;cut.durationText=fmt(cut.durationMs);cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;cut.finishedByName=state.user.name;cut.fotoFinalUrl=up.url;cut.fotoFinalDriveId=up.fileId;cut.fotoFinalFolder=up.folderPath||up.folder;cut.finalPhotoName=up.fileName||file2.name;cut.fotoFinalAt=uploadedAt2;cut.fotoFinalByName=state.user.name;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
-      appendEvidence(c,up,"Foto final obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt2));
+    function markFinished(){
+      var extra=cut.startedAt?msSince(cut.startedAt):0;cut.durationMs=Number(cut.durationMs||0)+extra;cut.durationText=fmt(cut.durationMs);cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;cut.finishedByName=state.user.name;cut.finalPhotoName=file2.name||"foto_final.jpg";cut.fotoFinalAt=uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=true;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
       var dis=cutParseDecimal(cut.disponibleAntes), fin=cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados);if(Number.isFinite(dis)&&Number.isFinite(fin))cut.remanenteReal=cutNormalizeDecimal(dis-fin);
-      return persistCase(c,{type:"CUT_FINISHED_PENDING_REGISTER",detail:"Foto final en Drive. Pendiente registrar corte: "+(cut.code||cut.id)+" · "+cut.durationText});
-    }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+      return persistCase(c,{type:"CUT_FINISHED_PENDING_REGISTER",detail:"Foto final tomada. Pendiente registrar corte: "+(cut.code||cut.id)+" · "+cut.durationText});
+    }
+    function uploadFinalAsync(){
+      return uploadFileToDrive(file2,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_final_"+file2.name,evidenceType:"FOTO_FINAL_CORTE",cutId:cut.id}).then(function(up){
+        cut.fotoFinalUrl=up.url;cut.fotoFinalDriveId=up.fileId;cut.fotoFinalFolder=up.folderPath||up.folder;cut.finalPhotoName=up.fileName||file2.name;cut.fotoFinalAt=cut.fotoFinalAt||uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=false;
+        appendEvidence(c,up,"Foto final obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt2));
+        return persistCase(c,{type:"CUT_FINAL_PHOTO_UPLOADED",detail:"Foto final cargada a Drive: "+(cut.code||cut.id)});
+      }).catch(function(err){
+        cut.fotoFinalPendingUpload=true;
+        cut.fotoFinalUploadError=String((err&&err.message)||err||"No fue posible cargar la foto final a Drive").slice(0,240);
+        return persistCase(c,{type:"CUT_FINAL_PHOTO_PENDING_UPLOAD",detail:"El corte finalizó. La foto final quedó pendiente de Drive: "+cut.fotoFinalUploadError}).catch(function(){return null;});
+      });
+    }
+    markFinished().then(function(){closeDrawer();openCutModule(c.id,cut.id);return uploadFinalAsync();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="registerCut"){
     if(!cut.siesaBodega){alert("Debe registrar la Bodega / CO SIESA antes de registrar el corte.");return;}
-    if(!cutFinalOk(cut)){alert("No se puede registrar sin foto inicial en Drive, foto final en Drive, hora inicial y hora final.");return;}
+    if(!cutFinalOk(cut)){alert("No se puede registrar sin foto inicial, foto final, hora inicial y hora final. El enlace de Drive ya no bloquea el avance.");return;}
     if(!cutQualityOk(cut)){alert("Falta confirmar corte uniforme, tramo rotulado y evidencia/registro realizado.");return;}
     cut.status="FINALIZADO";cut.registeredAt=now();cut.siesaExportStatus=cut.siesaExportStatus||"PENDIENTE";cut.registeredBy=state.user.uid;cut.registeredByName=state.user.name;refreshCutStats(c);
-    var pending=(c.cutRequests||[]).filter(function(x){return !cutDone(x.status) && x.id!==cut.id;});
-    var event={type:"CUT_REGISTERED",detail:"Corte registrado: "+(cut.code||cut.id)+" · "+(cut.durationText||"")};
-    if(pending.length===0 && (c.currentProcess==="alistamiento"||c.currentProcess==="corte_cable")){
-      stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=now();
-      c.currentProcess="facturacion";c.status="asignado";c.assignedRole=primaryOwnerRole("facturacion");c.assignedName=processOwnerTitle("facturacion");c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.checklist={};processes.facturacion.checklist.forEach(function(x){c.checklist[x]="pending";});if(c.checklist["Compromiso ratificado por facturación"]!==undefined)c.checklist["Compromiso ratificado por facturación"]="pending";
-      event.detail+=". Todos los cortes finalizados; pasa a Facturación. La facturación ratifica el compromiso de mercancía.";
+    var pending=(c.cutRequests||[]).filter(function(x){return !cutIsOperationallyDone(x) && x.id!==cut.id;});
+    c.cutReturnAlerts=c.cutReturnAlerts||[];
+    c.cutReturnAlerts.push({
+      id:uid("CRA"),
+      cutId:cut.id,
+      cutCode:cut.code||cut.id,
+      reference:cut.referencia||cut.descripcion||"Corte",
+      meters:cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||""),
+      returnedAt:now(),
+      returnedBy:state.user.name,
+      status:"DISPONIBLE_PARA_EMPALETAR",
+      detail:"Recoger en corte, llevar a alistamiento y empaletar para facturación."
+    });
+    if(c.cutReturnAlerts.length>25)c.cutReturnAlerts=c.cutReturnAlerts.slice(-25);
+    var event={type:"CUT_AVAILABLE_FOR_PALLETIZING",detail:"Carreto disponible para empaletar: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. Alistamiento debe recogerlo, llevarlo al pedido y empaletarlo para facturación.",targetRole:primaryOwnerRole("alistamiento"),visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]};
+    stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=pending.length===0?(procStats(c,"corte_cable").completedAt||now()):procStats(c,"corte_cable").completedAt;
+    c.currentProcess="alistamiento";
+    c.status="en_proceso";
+    c.assignedRole=primaryOwnerRole("alistamiento");
+    c.assignedName=processOwnerTitle("alistamiento");
+    c.assignedTo="";
+    c.deadStartedAt=now();
+    c.activeStartedAt=now();
+    c.waitStartedAt=null;
+    c.checklist=c.checklist||{};
+    processes.alistamiento.checklist.forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]="pending";});
+    if(c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]=pending.length===0?"ok":"pending";
+    if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
+    if(pending.length){
+      event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero este carreto ya queda liberado para empaletar.";
     }else{
-      c.assignedRole="auxiliar_corte";c.assignedName=roleTitle("auxiliar_corte");c.status="asignado";
+      event.detail+=" Todos los cortes del pedido quedaron registrados; Alistamiento debe terminar validación y enviar a Facturación.";
     }
     persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();enforceSiesaExportIfNeeded(c);}).catch(function(e){showError(e.message||e);});
     return;
   }
 }
 function durationToMs(v){var s=String(v||"");var m=s.match(/(\d+):(\d+):(\d+)/);if(m)return ((+m[1])*3600+(+m[2])*60+(+m[3]))*1000;var n=Number(s);return Number.isFinite(n)?n:0;}
-function refreshCutStats(c){var cuts=c.cutRequests||[], st=procStats(c,"corte_cable"), total=0, complete=0;cuts.forEach(function(x){total+=durationToMs(x.durationText||x.durationMs);if(["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(x.status)>=0)complete++;});st.activeMs=total;if(cuts.length&&complete===cuts.length){st.completedAt=st.completedAt||now();if(c.checklist&&c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]="ok";}}
+function refreshCutStats(c){var cuts=c.cutRequests||[], st=procStats(c,"corte_cable"), total=0, complete=0;cuts.forEach(function(x){total+=durationToMs(x.durationText||x.durationMs);if(cutIsOperationallyDone(x))complete++;});st.activeMs=total;if(cuts.length&&complete===cuts.length){st.completedAt=st.completedAt||now();if(c.checklist&&c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]="ok";}}
 function normalizeCutRequirementReason(reason){
   var map={CABLE_NO_DISPONIBLE_TOTAL:"Cable no disponible en su totalidad para el corte",CHIPA_MAYOR_VENDER_TODA:"Chipa con cantidad mayor que se puede vender toda",MAL_REGISTRO_PEDIDO:"Mal registro del pedido",OTROS:"Otros"};
   return map[reason]||reason||"Requerimiento generado desde corte";
@@ -3117,7 +3180,7 @@ function syncCutBridge(id){
 }
 function cutGroupKey(cut){return normalizeRefText(cut.referencia||cut.descripcion||"SIN_REFERENCIA")||"SIN_REFERENCIA";}
 function cutGroupTitle(cut){return (cut.referencia||"Sin referencia")+(cut.descripcion?" · "+cut.descripcion:"");}
-function cutPendingStatus(cut){return ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(cut.status)<0;}
+function cutPendingStatus(cut){return !cutIsOperationallyDone(cut);}
 function renderCutsQueue(){
   var rows=[];
   state.cases.forEach(function(c){(c.cutRequests||[]).forEach(function(cut){if(!cutPendingStatus(cut))return;rows.push({c:c,cut:cut});});});
@@ -3339,7 +3402,7 @@ function caseChecks(c){
   return {total:total,bad:bad};
 }
 function hasRequirement(c){return Number(c.totalRequirements||0)>0 || ((c.requirements||[]).length>0);}
-function cutDoneCount(c){var total=0,done=0;(c.cutRequests||[]).forEach(function(x){total++;if(cutDone(x.status))done++;});return {total:total,done:done};}
+function cutDoneCount(c){var total=0,done=0;(c.cutRequests||[]).forEach(function(x){total++;if(cutIsOperationallyDone(x))done++;});return {total:total,done:done};}
 function isCancelled(c){return /cancel/i.test(String(c.status||"")) || !!c.cancelledAt;}
 function slaDeadline(c){
   var d=new Date(c.createdAt||c.updatedAt||now());
@@ -3365,7 +3428,7 @@ function processRows(data){
       if(c.currentProcess===p){if(!(c.processStats&&c.processStats[p]))count++; if(!c.closedAt)wip++;}
       if(c.requirements){c.requirements.forEach(function(r){if(r.source===p||r.sourceProcess===p)req++;});}
       var ch=caseChecks(c);checks+=ch.total;bad+=ch.bad;
-      if(p==="corte_cable"){(c.cutRequests||[]).forEach(function(x){cuts++;if(cutDone(x.status))finishedCuts++;});}
+      if(p==="corte_cable"){(c.cutRequests||[]).forEach(function(x){cuts++;if(cutIsOperationallyDone(x))finishedCuts++;});}
     });
     var total=ac+wt+dd;
     return{key:p,label:processTitle(p),value:total,count:count,active:ac,wait:wt,dead:dd,requirements:req,cuts:cuts,finishedCuts:finishedCuts,wip:wip,badChecks:bad,totalChecks:checks,avg:count?total/count:0};
