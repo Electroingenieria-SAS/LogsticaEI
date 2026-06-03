@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v62_recepcion_sin_envio_jefe_gerencia";
+var storageKey = "ei_trazabilidad_v65_super_admin_elimina_reportes";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -257,6 +257,7 @@ function canDeleteReceptionGoods(){return state.user && isSuperAdminRoleValue(st
 function canAccessReportsModule(){return !!state.user;}
 function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
 function canCommentReports(){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion";}
+function canDeleteReports(){return state.user && isSuperAdminRoleValue(state.user.role);}
 function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return isSuperAdminRoleValue(r)||r==="lider_recepcion";}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
 function projectUploadDayText(){return isProjectUploadDay()?"Habilitado hoy":"Solo se habilita los lunes y jueves";}
@@ -3464,7 +3465,7 @@ function saveReportDocument(report){
 function createReceptionGoodsReport(r,text,status){
   var report={
     id:uid("REP"),
-    title:"Novedad recepción mercancía · "+(r.documentNumber||r.id),
+    title:"Reporte a Jefe Logístico y Gerencia · Recepción mercancía · "+(r.documentNumber||r.id),
     category:"Recepción de mercancía",
     sourceModule:"recepcion_mercancia",
     sourceType:"ingreso_mercancia",
@@ -3480,11 +3481,14 @@ function createReceptionGoodsReport(r,text,status){
     decisionAuthority:"lider_recepcion",
     closeOnlyFromReception:true,
     bossCanClose:false,
+    reportTo:["jefe_logistica","gerencia"],
+    targetRoles:["jefe_logistica","gerencia"],
+    visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"],
     managementComments:[],
     createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role
   };
   return saveReportDocument(report).then(function(rep){
-    return createEvent({type:"REPORT_CREATED",detail:"Reporte generado: "+rep.title,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion"]}).catch(function(){return null;}).then(function(){return rep;});
+    return createEvent({type:"REPORT_CREATED",detail:"Reporte generado para Jefe Logístico y Gerencia: "+rep.title,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;}).then(function(){return rep;});
   });
 }
 function saveReceptionGoods(fd,file){
@@ -3496,9 +3500,9 @@ function saveReceptionGoods(fd,file){
   uploadFileToDrive(file,fakeCase,{processName:"Recepción de mercancía",processKey:"reception_goods",fileName:(fd.get("documentNumber")||id)+"_soporte_"+file.name,evidenceType:"DOCUMENTO_INGRESO"}).then(function(up){
     var checklist={};receptionChecklist().forEach(function(c,i){checklist[c]=fd.get("chk_"+i)?"ok":"pending";});
     var finding=String(fd.get("finding")||"").trim();
-    var doc={id:id,documentNumber:fd.get("documentNumber")||"",supplier:fd.get("supplier")||"",receiptType:fd.get("receiptType")||"",carrier:fd.get("carrier")||"",deliveredBy:fd.get("deliveredBy")||"",checklist:checklist,conformity:selected,findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:[]}]:[],actionPlan:fd.get("action")||"",support:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()},status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,visibleRoles:["admin","super_admin","lider_recepcion"]};
+    var doc={id:id,documentNumber:fd.get("documentNumber")||"",supplier:fd.get("supplier")||"",receiptType:fd.get("receiptType")||"",carrier:fd.get("carrier")||"",deliveredBy:fd.get("deliveredBy")||"",checklist:checklist,conformity:selected,findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:["jefe_logistica","gerencia"]}]:[],actionPlan:fd.get("action")||"",support:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()},status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]};
     return db.collection("recepciones_mercancia").doc(id).set(doc).then(function(){
-      return createEvent({type:"GOODS_RECEPTION_CREATED",detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;}).then(function(){return doc;});
+      return createEvent({type:"GOODS_RECEPTION_CREATED",detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;}).then(function(){return doc;});
     });
   }).then(function(doc){
     if(receptionConformityIsNovelty(doc.conformity)){
@@ -3532,15 +3536,15 @@ function openReceptionGoods(id){
   var closure=r.closedAt?'<article class="notice success"><strong>Cierre:</strong> '+esc(r.finalDecisionStatus||r.conformity||'Cerrado')+'<br><strong>Decisión:</strong> '+esc(r.finalDecisionComment||'')+'<br><small>'+fmtDate(r.closedAt)+'</small>'+(r.closureEvidence&&r.closureEvidence.url?'<br><a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.closureEvidence.url)+'">Abrir evidencia de cierre</a>':'')+'</article>':'';
   var actions='';
   if(receptionIsOpen(r) && canCloseReceptionNovelty())actions+='<button class="btn btn-success" data-action="closeReceptionGoods" data-id="'+esc(r.id)+'">Cerrar retenido con evidencia</button>';
-  if(receptionConformityIsNovelty(r.conformity) && receptionIsOpen(r))actions+='<button class="btn btn-gold" data-action="reportReceptionGoods" data-id="'+esc(r.id)+'">Copiar y abrir Auditoría</button>';
+  if(receptionConformityIsNovelty(r.conformity) && receptionIsOpen(r))actions+='<button class="btn btn-gold" data-action="reportReceptionGoods" data-id="'+esc(r.id)+'">Diligenciar novedad en Auditoría</button>';
   if(canDeleteReceptionGoods())actions+='<button class="btn btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar ingreso</button>';
-  drawer(modal("Ingreso de mercancía",'<section class="grid grid-2"><article class="card"><h3>'+esc(r.documentNumber||r.id)+'</h3><p>'+esc(r.supplier||'')+'</p><p>'+esc(r.receiptType||'')+' · '+esc(r.conformity||'')+' · '+esc(r.status||'')+'</p></article><article class="card"><h3>Soporte</h3>'+(r.support&&r.support.url?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.support.url)+'">Abrir documento</a>':'<span>Sin soporte</span>')+'</article></section><section class="card" style="margin-top:12px"><h3>Chequeos</h3><ul>'+checks+'</ul></section><section class="card" style="margin-top:12px"><h3>Hallazgos y reportes</h3>'+findings+closure+'<div class="top-actions">'+actions+'</div></section>'));
+  drawer(modal("Ingreso de mercancía",'<section class="grid grid-2"><article class="card"><h3>'+esc(r.documentNumber||r.id)+'</h3><p>'+esc(r.supplier||'')+'</p><p>'+esc(r.receiptType||'')+' · '+esc(r.conformity||'')+' · '+esc(r.status||'')+'</p></article><article class="card"><h3>Soporte</h3>'+(r.support&&r.support.url?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.support.url)+'">Abrir documento</a>':'<span>Sin soporte</span>')+'</article></section><section class="card" style="margin-top:12px"><h3>Chequeos</h3><ul>'+checks+'</ul></section><section class="card" style="margin-top:12px"><h3>Hallazgo / novedad de recepción</h3><div class="notice warning"><strong>Reporte a Jefe Logístico y Gerencia:</strong> esta novedad queda visible para ambos en la bandeja Reportes. Ellos pueden revisar y comentar, pero el cierre definitivo del retenido solo se realiza desde Recepción con evidencia.</div>'+findings+closure+'<div class="top-actions">'+actions+'</div></section>'));
 }
 function reportReceptionGoods(id){
   var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
   var text=buildReceptionGoodsNoveltyText(r);
   copyTextToClipboard(text).then(function(){
-    return createEvent({type:"GOODS_RECEPTION_REPORT",detail:"Novedad de recepción enviada a Auditoría: "+(r.documentNumber||id),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;});
+    return createEvent({type:"GOODS_RECEPTION_REPORT",detail:"Novedad de recepción preparada para Auditoría: "+(r.documentNumber||id),targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;});
   }).then(function(){
     var ok=confirm("Será redirigido a diligenciar la novedad de recepción. El texto fue copiado para pegarlo en Auditoría. ¿Desea continuar?");
     if(ok)window.open(auditUrlForReceptionGoods(r),"_blank","noopener");
@@ -3567,7 +3571,7 @@ function submitCloseReceptionGoods(id,fd,file){
   }).then(function(payload){
     var linked=(state.reports||[]).filter(function(rep){return rep.sourceModule==="recepcion_mercancia" && rep.sourceId===id && rep.status!=="CERRADO";});
     var updates=linked.map(function(rep){return db.collection("reportes_novedad").doc(rep.id).update({status:"CERRADO",finalStatus:payload.finalDecisionStatus,closureComment:payload.finalDecisionComment,closedAt:payload.closedAt,closedBy:payload.closedBy,closedByName:payload.closedByName,closureEvidence:payload.closureEvidence,updatedAt:now()});});
-    return Promise.all(updates).then(function(){return createEvent({type:"GOODS_RECEPTION_CLOSED",detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;});});
+    return Promise.all(updates).then(function(){return createEvent({type:"GOODS_RECEPTION_CLOSED",detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;});});
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo cerrar la novedad retenida.");});
 }
 function deleteReceptionGoods(id){
@@ -3589,7 +3593,7 @@ function renderReports(){
   var list=state.reports||[];
   var open=list.filter(function(r){return String(r.status||"").indexOf("CERRADO")<0;}).length;
   var retained=list.filter(function(r){return r.sourceModule==="recepcion_mercancia" && String(r.status||"").indexOf("CERRADO")<0;}).length;
-  var rows=list.map(function(r){var manage=canCommentReports()?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td>'+manage+'</td></tr>';}).join('');
+  var rows=list.map(function(r){var manage=canCommentReports()?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';}).join('');
   layout(header("Reportes y novedades","Bandeja transversal: todos ven el estado; jefes gestionan. Las novedades de recepción retenida solo se cierran desde Recepción con evidencia.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
@@ -3599,8 +3603,20 @@ function openReport(id){
   if(r.sourceModule==="recepcion_mercancia" && canAccessReceptionGoods())sourceBtn='<button class="btn btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.sourceId)+'">Abrir ingreso de recepción</button>';
   var actions='';
   if(canCommentReports())actions+='<button class="btn btn-gold" data-action="manageReport" data-id="'+esc(r.id)+'">Agregar gestión</button>';
+  if(canDeleteReports())actions+='<button class="btn btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar reporte</button>';
   drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p>'+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
 }
+function deleteReport(id){
+  var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];
+  if(!r)return;
+  if(!canDeleteReports()){alert("Solo el Super Admin puede eliminar reportes.");return;}
+  var ref=r.title||r.sourceReference||id;
+  if(!confirm("Eliminar este reporte de la bandeja? Esta acción solo borra el reporte/novedad, no elimina el ingreso de mercancía ni el caso asociado.\n\n"+ref))return;
+  db.collection("reportes_novedad").doc(id).delete().then(function(){
+    return createEvent({type:"REPORT_DELETED",detail:"Reporte eliminado por Super Admin: "+ref,targetRole:"super_admin",visibleRoles:["admin","super_admin","super_administrador"]}).catch(function(){return null;});
+  }).then(loadData).then(function(){closeDrawer();renderReports();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el reporte.");});
+}
+
 function openManageReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
   if(!canCommentReports()){alert("Solo jefes o responsables autorizados pueden gestionar reportes.");return;}
@@ -4401,6 +4417,7 @@ function bindActions(){
     if(a==="generalReport")openGeneralReportModal(id);
     if(a==="openReport")openReport(id);
     if(a==="manageReport")openManageReport(id);
+    if(a==="deleteReport")deleteReport(id);
     if(a==="closeReceptionGoods")closeReceptionGoods(id);
     if(a==="deleteReceptionGoods")deleteReceptionGoods(id);
     if(a==="check")updateCheck(b);

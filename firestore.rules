@@ -316,7 +316,7 @@ service cloud.firestore {
       allow read: if activeUser();
       allow create: if activeUser() && validReportPayload();
       allow update: if activeUser() && (canManageReports() || isReceptionLeader()) && validReportPayload();
-      allow delete: if isAdminOrSuper();
+      allow delete: if isSuperAdmin();
     }
 
     match /users_deleted_log/{logId} {
