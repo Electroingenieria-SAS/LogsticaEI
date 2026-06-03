@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v60_reportes_recepcion";
+var storageKey = "ei_trazabilidad_v61_permisos_reportes";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -462,15 +462,26 @@ function loadReportsForRole(){
   return db.collection("reportes_novedad").orderBy("updatedAt","desc").limit(300).get().then(docsToList).catch(function(){return [];});
 }
 
+function safeLoadBlock(label, loader){
+  return Promise.resolve().then(loader).catch(function(e){
+    console.warn("Carga omitida por permisos o reglas pendientes:", label, e);
+    state.loadWarnings = state.loadWarnings || [];
+    var msg = (e && e.message) ? e.message : String(e || "Error desconocido");
+    state.loadWarnings.push(label + ": " + msg);
+    return [];
+  });
+}
+
 function loadData(){
   if(!firebaseReady || !db || !state.user){return Promise.resolve();}
+  state.loadWarnings=[];
   return Promise.all([
-    loadCasesForRole(),
-    loadEventsForRole(),
-    loadUsersForRole(),
-    loadReceptionGoodsForRole(),
-    loadProjectOrdersForRole(),
-    loadReportsForRole()
+    safeLoadBlock("Casos", loadCasesForRole),
+    safeLoadBlock("Eventos", loadEventsForRole),
+    safeLoadBlock("Usuarios", loadUsersForRole),
+    safeLoadBlock("Recepción de mercancía", loadReceptionGoodsForRole),
+    safeLoadBlock("Proyectos", loadProjectOrdersForRole),
+    safeLoadBlock("Reportes/Novedades", loadReportsForRole)
   ]).then(function(res){
     state.cases=res[0]||[];
     state.events=res[1]||[];
@@ -930,9 +941,14 @@ function mobileFullMenuHtml(){
   '</section>';
 }
 
+function loadWarningsHtml(){
+  if(!state.loadWarnings || !state.loadWarnings.length)return "";
+  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique firestore.rules de esta versión en Firebase Console.</small></div>';
+}
+
 function layout(content){
   var rs=routes();
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
   bindActions();
 }
