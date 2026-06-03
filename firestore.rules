@@ -55,6 +55,10 @@ service cloud.firestore {
       return activeUser() && role() == 'proyectos';
     }
 
+    function canManageReports() {
+      return isAdminOrSuper() || isManager() || isChiefLogistics();
+    }
+
     function isUnifiedLogisticsRole(value) {
       return value in ['lider_logistico', 'coordinador_logistico'];
     }
@@ -112,12 +116,42 @@ service cloud.firestore {
       && validRoleValue(request.resource.data.role);
     }
 
-
     function validCasePayload() {
       return request.resource.data.keys().hasAny([
         'currentProcess',
         'assignedRole',
         'status',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validReceptionPayload() {
+      return request.resource.data.keys().hasAny([
+        'documentNumber',
+        'supplier',
+        'receiptType',
+        'conformity',
+        'status',
+        'support',
+        'closureEvidence',
+        'finalDecisionStatus',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validReportPayload() {
+      return request.resource.data.keys().hasAny([
+        'title',
+        'category',
+        'sourceModule',
+        'sourceId',
+        'sourceReference',
+        'status',
+        'severity',
+        'description',
+        'detail',
         'createdAt',
         'updatedAt'
       ]);
@@ -176,13 +210,8 @@ service cloud.firestore {
 
     match /cases/{caseId} {
       allow read: if canReadCase();
-
-      allow create: if activeUser()
-        && validCasePayload();
-
-      allow update: if canOperateCase()
-        && validCasePayload();
-
+      allow create: if activeUser() && validCasePayload();
+      allow update: if canOperateCase() && validCasePayload();
       allow delete: if isAdminOrSuper();
     }
 
@@ -218,6 +247,10 @@ service cloud.firestore {
         (
           request.resource.data.targetRole == 'ventas'
           && request.resource.data.sourceProcess == 'corte_cable'
+        ) ||
+        (
+          request.resource.data.targetRole == 'proyectos'
+          && request.resource.data.sourceProcess == 'proyectos'
         )
       );
 
@@ -245,7 +278,6 @@ service cloud.firestore {
       allow read: if canSeeAll();
       allow create, update, delete: if isAdminOrSuper();
     }
-
 
     match /siesa_exports/{exportId} {
       allow read: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
@@ -275,8 +307,15 @@ service cloud.firestore {
 
     match /recepciones_mercancia/{receptionId} {
       allow read: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
-      allow create: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
-      allow update: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
+      allow create: if activeUser() && (isAdminOrSuper() || isReceptionLeader()) && validReceptionPayload();
+      allow update: if activeUser() && (isAdminOrSuper() || isReceptionLeader()) && validReceptionPayload();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /reportes_novedad/{reportId} {
+      allow read: if activeUser();
+      allow create: if activeUser() && validReportPayload();
+      allow update: if activeUser() && (canManageReports() || isReceptionLeader()) && validReportPayload();
       allow delete: if isAdminOrSuper();
     }
 
@@ -285,14 +324,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-
     match /system_config/{configId} {
       allow read: if canSeeAll();
       allow create, update, delete: if isAdminOrSuper();
     }
 
-    // Protección adicional para limpieza administrativa de pruebas.
-    // Permite al admin/super admin borrar documentos auxiliares aunque existan colecciones nuevas.
     match /{document=**} {
       allow delete: if isAdminOrSuper();
     }
