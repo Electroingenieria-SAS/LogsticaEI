@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v61_permisos_reportes";
+var storageKey = "ei_trazabilidad_v62_recepcion_sin_envio_jefe_gerencia";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -3484,7 +3484,7 @@ function createReceptionGoodsReport(r,text,status){
     createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role
   };
   return saveReportDocument(report).then(function(rep){
-    return createEvent({type:"REPORT_CREATED",detail:"Reporte generado: "+rep.title,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion"]}).catch(function(){return null;}).then(function(){return rep;});
+    return createEvent({type:"REPORT_CREATED",detail:"Reporte generado: "+rep.title,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion"]}).catch(function(){return null;}).then(function(){return rep;});
   });
 }
 function saveReceptionGoods(fd,file){
@@ -3496,9 +3496,9 @@ function saveReceptionGoods(fd,file){
   uploadFileToDrive(file,fakeCase,{processName:"Recepción de mercancía",processKey:"reception_goods",fileName:(fd.get("documentNumber")||id)+"_soporte_"+file.name,evidenceType:"DOCUMENTO_INGRESO"}).then(function(up){
     var checklist={};receptionChecklist().forEach(function(c,i){checklist[c]=fd.get("chk_"+i)?"ok":"pending";});
     var finding=String(fd.get("finding")||"").trim();
-    var doc={id:id,documentNumber:fd.get("documentNumber")||"",supplier:fd.get("supplier")||"",receiptType:fd.get("receiptType")||"",carrier:fd.get("carrier")||"",deliveredBy:fd.get("deliveredBy")||"",checklist:checklist,conformity:selected,findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:["gerencia","jefe_logistica"]}]:[],actionPlan:fd.get("action")||"",support:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()},status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,visibleRoles:["admin","super_admin","lider_recepcion"]};
+    var doc={id:id,documentNumber:fd.get("documentNumber")||"",supplier:fd.get("supplier")||"",receiptType:fd.get("receiptType")||"",carrier:fd.get("carrier")||"",deliveredBy:fd.get("deliveredBy")||"",checklist:checklist,conformity:selected,findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:[]}]:[],actionPlan:fd.get("action")||"",support:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()},status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,visibleRoles:["admin","super_admin","lider_recepcion"]};
     return db.collection("recepciones_mercancia").doc(id).set(doc).then(function(){
-      return createEvent({type:"GOODS_RECEPTION_CREATED",detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion","gerencia","jefe_logistica"]}).catch(function(){return null;}).then(function(){return doc;});
+      return createEvent({type:"GOODS_RECEPTION_CREATED",detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;}).then(function(){return doc;});
     });
   }).then(function(doc){
     if(receptionConformityIsNovelty(doc.conformity)){
@@ -3540,7 +3540,7 @@ function reportReceptionGoods(id){
   var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
   var text=buildReceptionGoodsNoveltyText(r);
   copyTextToClipboard(text).then(function(){
-    return createEvent({type:"GOODS_RECEPTION_REPORT",detail:"Novedad de recepción enviada a Auditoría: "+(r.documentNumber||id),targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","lider_recepcion","gerencia","jefe_logistica"]}).catch(function(){return null;});
+    return createEvent({type:"GOODS_RECEPTION_REPORT",detail:"Novedad de recepción enviada a Auditoría: "+(r.documentNumber||id),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;});
   }).then(function(){
     var ok=confirm("Será redirigido a diligenciar la novedad de recepción. El texto fue copiado para pegarlo en Auditoría. ¿Desea continuar?");
     if(ok)window.open(auditUrlForReceptionGoods(r),"_blank","noopener");
@@ -3567,7 +3567,7 @@ function submitCloseReceptionGoods(id,fd,file){
   }).then(function(payload){
     var linked=(state.reports||[]).filter(function(rep){return rep.sourceModule==="recepcion_mercancia" && rep.sourceId===id && rep.status!=="CERRADO";});
     var updates=linked.map(function(rep){return db.collection("reportes_novedad").doc(rep.id).update({status:"CERRADO",finalStatus:payload.finalDecisionStatus,closureComment:payload.finalDecisionComment,closedAt:payload.closedAt,closedBy:payload.closedBy,closedByName:payload.closedByName,closureEvidence:payload.closureEvidence,updatedAt:now()});});
-    return Promise.all(updates).then(function(){return createEvent({type:"GOODS_RECEPTION_CLOSED",detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion","gerencia","jefe_logistica"]}).catch(function(){return null;});});
+    return Promise.all(updates).then(function(){return createEvent({type:"GOODS_RECEPTION_CLOSED",detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","lider_recepcion"]}).catch(function(){return null;});});
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo cerrar la novedad retenida.");});
 }
 function deleteReceptionGoods(id){
@@ -3575,7 +3575,7 @@ function deleteReceptionGoods(id){
   var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];
   if(!confirm("¿Eliminar definitivamente el ingreso de mercancía "+((r&&r.documentNumber)||id)+"? Esta acción borra el registro operativo, no los archivos ya creados en Drive."))return;
   db.collection("recepciones_mercancia").doc(id).delete().then(function(){
-    return createEvent({type:"GOODS_RECEPTION_DELETED",detail:"Super Admin eliminó ingreso de mercancía: "+((r&&r.documentNumber)||id),targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion"]}).catch(function(){return null;});
+    return createEvent({type:"GOODS_RECEPTION_DELETED",detail:"Super Admin eliminó ingreso de mercancía: "+((r&&r.documentNumber)||id),targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion"]}).catch(function(){return null;});
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el ingreso.");});
 }
 
@@ -4153,7 +4153,7 @@ function copyTextToClipboard(text){
 function openNonConformityModal(id){
   var c=caseById(id);if(!c)return;
   var auto=buildNonConformityText(c,new FormData());
-  drawer(modal("Reportar inconformidad",'<form class="form" id="ncForm"><div class="notice danger"><strong>Proceso separado:</strong> la inconformidad se registra en la plataforma de Auditoría. Aquí se genera el mismo texto para copiarlo y dejar trazabilidad en logística.</div><label class="field"><span>Tipo de inconformidad</span><select class="select" name="type"><option>Inconformidad logística</option><option>Diferencia contra pedido/PDF</option><option>Diferencia de referencia</option><option>Diferencia de cantidad</option><option>Mercancía averiada</option><option>Error de corte</option><option>Error de facturación o soporte</option><option>Otro hallazgo operativo</option></select></label><label class="field"><span>Diferencia exacta detectada</span><textarea class="textarea" name="difference" placeholder="Ej.: En el PDF figura X referencia/cantidad, pero físicamente se encontró Y. Indicar qué está diferente."></textarea></label><label class="field"><span>Detalle adicional para Auditoría</span><textarea class="textarea" name="detail" placeholder="Amplíe la inconformidad si necesita agregar contexto adicional."></textarea></label><label class="field"><span>Base automática del reporte</span><textarea class="textarea" readonly>'+esc(auto)+'</textarea></label><label class="field"><span>Acción inmediata / contención</span><textarea class="textarea" name="action" placeholder="Ej.: se retiene mercancía, se informa a jefe logístico, se solicita corrección a ventas, etc."></textarea></label><div class="notice"><strong>Uso:</strong> pulse el botón, se copia el texto y se abre Auditoría. En la otra app pegue exactamente el mismo contenido.</div><div class="top-actions"><button class="btn btn-primary" type="submit">Copiar texto y abrir Auditoría</button><a class="btn" target="_blank" rel="noopener" href="'+esc(auditUrlForCase(c))+'">Abrir Auditoría sin copiar</a></div></form>'));
+  drawer(modal("Reportar inconformidad",'<form class="form" id="ncForm"><div class="notice danger"><strong>Proceso separado:</strong> la inconformidad se registra en la plataforma de Auditoría. Aquí se genera el mismo texto para copiarlo y dejar trazabilidad en logística.</div><label class="field"><span>Tipo de inconformidad</span><select class="select" name="type"><option>Inconformidad logística</option><option>Diferencia contra pedido/PDF</option><option>Diferencia de referencia</option><option>Diferencia de cantidad</option><option>Mercancía averiada</option><option>Error de corte</option><option>Error de facturación o soporte</option><option>Otro hallazgo operativo</option></select></label><label class="field"><span>Diferencia exacta detectada</span><textarea class="textarea" name="difference" placeholder="Ej.: En el PDF figura X referencia/cantidad, pero físicamente se encontró Y. Indicar qué está diferente."></textarea></label><label class="field"><span>Detalle adicional para Auditoría</span><textarea class="textarea" name="detail" placeholder="Amplíe la inconformidad si necesita agregar contexto adicional."></textarea></label><label class="field"><span>Base automática del reporte</span><textarea class="textarea" readonly>'+esc(auto)+'</textarea></label><label class="field"><span>Acción inmediata / contención</span><textarea class="textarea" name="action" placeholder="Ej.: se retiene mercancía, se separa el material, se solicita corrección, se deja trazabilidad interna, etc."></textarea></label><div class="notice"><strong>Uso:</strong> pulse el botón, se copia el texto y se abre Auditoría. En la otra app pegue exactamente el mismo contenido.</div><div class="top-actions"><button class="btn btn-primary" type="submit">Copiar texto y abrir Auditoría</button><a class="btn" target="_blank" rel="noopener" href="'+esc(auditUrlForCase(c))+'">Abrir Auditoría sin copiar</a></div></form>'));
   var f=qs("#ncForm");
   if(f)f.onsubmit=function(e){e.preventDefault();submitNonConformity(id,new FormData(f));};
 }
