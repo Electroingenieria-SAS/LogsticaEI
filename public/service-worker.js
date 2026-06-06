@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v51-pdf-siesa-validado";
+var CACHE_VERSION = "ei-trazabilidad-v60-ventas-caja-parciales-descargas";
 var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];
 function sameOrigin(request){try{return new URL(request.url).origin===self.location.origin;}catch(e){return false;}}
 function isHtml(request){return request.mode==="navigate" || ((request.headers.get("accept")||"").indexOf("text/html")>=0);}
