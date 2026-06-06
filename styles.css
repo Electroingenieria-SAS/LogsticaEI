@@ -260,3 +260,66 @@ button,input,select,textarea{font:inherit} button{border:0;cursor:pointer} texta
 .cut-group[open] summary{margin-bottom:12px}
 .top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 @media(max-width:760px){.cut-group summary{display:block}.top-actions .btn{width:100%}}
+
+/* V62 · OC visible y guía visual por pasos */
+.case-card-subtitle{
+  margin:4px 0 8px;
+  color:#64748b;
+  font-size:.88rem;
+  font-weight:750;
+  line-height:1.35;
+}
+.gold-chip{
+  background:#fff8df!important;
+  border-color:#f2c94c!important;
+  color:#7a5600!important;
+}
+.process-guide-card{
+  margin-bottom:16px;
+  border:1px solid #dbe7f4;
+  background:linear-gradient(180deg,#ffffff,#f8fbff);
+}
+.process-guide-card .mini-notice{
+  margin:0 0 12px;
+  padding:9px 12px;
+}
+.process-steps{
+  list-style:none;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin:0;
+  padding:0;
+}
+.process-steps li{
+  min-height:94px;
+  border:1px solid #e2e8f0;
+  border-radius:18px;
+  background:#fff;
+  padding:12px;
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  box-shadow:0 10px 26px rgba(6,27,70,.05);
+}
+.process-steps li span{
+  flex:0 0 auto;
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#061b46;
+  color:#fff;
+  font-weight:950;
+  font-size:.82rem;
+}
+.process-steps li p{
+  margin:0;
+  color:#334155;
+  font-weight:800;
+  line-height:1.35;
+  font-size:.86rem;
+}
+@media(max-width:1100px){.process-steps{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:680px){.process-steps{grid-template-columns:1fr}.process-steps li{min-height:auto}.case-card-subtitle{font-size:.8rem}}
