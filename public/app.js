@@ -14,6 +14,18 @@ var driveAccessToken = "";
 var driveTokenExpiresAt = 0;
 var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 var AUDIT_NC_URL = "https://contactoluiancol-art.github.io/auditoria/index.html";
+var notificationAssets = {
+  general:"./assets/sounds/universfield-new-notification-051-494246.mp3",
+  requirement:"./assets/sounds/te-llego-un-requerimiento.mp3",
+  report:"./assets/sounds/te-llego-un-reporte.mp3",
+  overdue:"./assets/sounds/tu-pedido-lleva-mas.mp3",
+  newOrder:"./assets/sounds/tienes-un-nuevo-pedido.mp3",
+  closed:"./assets/sounds/han-cerrado-tu-pedido.mp3"
+};
+var feedbackAssets = {
+  loading:"./assets/feedback/art-spinning-sticker.gif",
+  success:"./assets/feedback/hands-up-ok-gauss.gif"
+};
 
 var state = {
   user: null,
@@ -701,6 +713,56 @@ function showLiveToast(title,msg,withButton){
 }
 
 
+
+function soundKeyForEvent(e){
+  var t=String((e&&e.type)||"").toUpperCase();
+  if(!t)return "general";
+  if(t.indexOf("REQUIREMENT")>=0 || t==="BOX_HOLD_TO_SALES" || t==="NO_DELIVERY_REQUIREMENT" || t.indexOf("_TO_SALES")>=0)return "requirement";
+  if(t.indexOf("REPORT")>=0 || t==="GOODS_RECEPTION_REPORT" || t==="NON_CONFORMITY_REPORTED")return "report";
+  if(t==="CASE_CREATED" || t==="PROJECT_ORDER_TO_CASE" || t==="PENDING_ITEMS_RESENT")return "newOrder";
+  if(t.indexOf("CASE_CLOSED")>=0 || t==="GOODS_RECEPTION_CLOSED" || t.indexOf("CLOSED")>=0)return "closed";
+  return "general";
+}
+
+function playAudioAsset(src,volume){
+  if(!src)return;
+  try{
+    var audio=new Audio(src);
+    audio.preload="auto";
+    audio.volume=Math.max(0,Math.min(1,volume==null?0.72:volume));
+    var p=audio.play();
+    if(p&&p.catch)p.catch(function(){try{playBeep();}catch(e){}});
+  }catch(e){try{playBeep();}catch(x){}}
+}
+
+function playNotificationSound(kind){
+  kind=kind||"general";
+  playAudioAsset(notificationAssets.general,0.58);
+  if(kind && kind!=="general")setTimeout(function(){playAudioAsset(notificationAssets[kind],0.92);},260);
+}
+
+function showUploadFeedback(mode,msg){
+  var box=document.getElementById("ei-upload-feedback");
+  if(!box){
+    box=document.createElement("div");
+    box.id="ei-upload-feedback";
+    document.body.appendChild(box);
+  }
+  var isSuccess=mode==="success";
+  var img=isSuccess?feedbackAssets.success:feedbackAssets.loading;
+  box.className="ei-upload-feedback show "+(isSuccess?"success":"loading");
+  box.innerHTML='<div class="ei-upload-feedback-card"><img src="'+esc(img)+'" alt=""><strong>'+esc(isSuccess?"Carga completada":"Cargando archivo")+'</strong><span>'+esc(msg||(isSuccess?"La evidencia quedó guardada correctamente.":"Estamos subiendo el soporte. No cierre esta ventana."))+'</span></div>';
+  clearTimeout(box.__timer);
+  if(isSuccess){box.__timer=setTimeout(hideUploadFeedback,1800);}
+}
+
+function hideUploadFeedback(){
+  var box=document.getElementById("ei-upload-feedback");
+  if(!box)return;
+  box.classList.remove("show");
+  clearTimeout(box.__timer);
+}
+
 function uniqueArray(arr){
   var out=[];
   (arr||[]).forEach(function(x){x=normalizeRole(x||"");if(x && out.indexOf(x)<0)out.push(x);});
@@ -789,14 +851,14 @@ function eventMessage(e){
   return ref+(proc?" · "+proc:"")+(det?" · "+det:"");
 }
 
-function dispatchNotification(title,msg,forceSound){
+function dispatchNotification(title,msg,forceSound,event){
   showLiveToast(title,msg,false);
   var nowMs=Date.now();
   if(canNotify() && Notification.permission==="granted"){
     try{new Notification(title,{body:msg,icon:"./assets/app-icon.svg",badge:"./assets/app-icon.svg",tag:"ei-logistica-"+title,renotify:true});}catch(e){}
   }
   if(forceSound || !(canNotify() && Notification.permission==="granted")){
-    if(nowMs-(state.notifications.lastSoundAt||0)>900){state.notifications.lastSoundAt=nowMs;playBeep();}
+    if(nowMs-(state.notifications.lastSoundAt||0)>900){state.notifications.lastSoundAt=nowMs;playNotificationSound(soundKeyForEvent(event));}
   }
 }
 
@@ -816,11 +878,11 @@ function flushEventNotifications(){
   if(!q.length)return;
   if(q.length===1){
     var e=q[0];
-    dispatchNotification(eventKindLabel(e.type),eventMessage(e),true);
+    dispatchNotification(eventKindLabel(e.type),eventMessage(e),true,e);
     return;
   }
   var ref=q[0].caseReference||q[0].caseId||"el sistema";
-  dispatchNotification("Nuevos movimientos",q.length+" movimientos registrados. Último: "+eventMessage(q[q.length-1]),true);
+  dispatchNotification("Nuevos movimientos",q.length+" movimientos registrados. Último: "+eventMessage(q[q.length-1]),true,q[q.length-1]);
 }
 
 function applyRealtimeEvents(list){
@@ -901,7 +963,7 @@ function notifyRealtimeChanges(newList, oldList){
   if(canNotify() && Notification.permission==="granted"){
     try{new Notification(title,{body:msg,icon:"./assets/app-icon.svg",badge:"./assets/app-icon.svg"});}catch(e){}
   }else{
-    playBeep();
+    playNotificationSound((changes.length===1 && changes[0].type==="nuevo")?"newOrder":"general");
   }
 }
 
@@ -1524,6 +1586,7 @@ function driveTryShare(fileId){
 }
 function uploadFileToDrive(file,c,processOrOptions,fileName){
   var opts=typeof processOrOptions==="object"?(processOrOptions||{}):{processName:processOrOptions,fileName:fileName};
+  showUploadFeedback("loading","Subiendo soporte a Drive. Espere la confirmación antes de continuar.");
   return ensureDriveToken("consent").then(function(){return prepareFileForDrive(file);}).then(function(prep){
     var uploadedAt=now();
     var date=new Date(uploadedAt);
@@ -1545,6 +1608,12 @@ function uploadFileToDrive(file,c,processOrOptions,fileName){
         });
       });
     });
+  }).then(function(result){
+    showUploadFeedback("success","Archivo cargado y listo para registrarse en el flujo.");
+    return result;
+  }).catch(function(err){
+    hideUploadFeedback();
+    throw err;
   });
 }
 function appendEvidence(c,up,detail){
@@ -4466,12 +4535,12 @@ function playBeep(){
   }catch(e){}
 }
 
-function notifyUser(title,msg,force){
-  playBeep();
+function notifyUser(title,msg,force,soundKind){
+  playNotificationSound(soundKind||"general");
   if(canNotify()&&Notification.permission==="granted"){
     try{new Notification(title,{body:msg,icon:"./assets/app-icon.svg",badge:"./assets/app-icon.svg"});}catch(e){}
   }
-  if(force){alert(title+"\\n"+msg);}
+  if(force){alert(title+"\n"+msg);}
 }
 
 function reminderCheck(){
@@ -4494,7 +4563,7 @@ function reminderCheck(){
     }
     if(key&&!reminderMemory[key]){
       reminderMemory[key]=true;
-      notifyUser(title,msg,false);
+      notifyUser(title,msg,false,"overdue");
     }
   });
 }

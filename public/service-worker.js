@@ -1,5 +1,5 @@
-var CACHE_VERSION = "ei-trazabilidad-v62-oc-guia-pasos";
-var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];
+var CACHE_VERSION = "ei-trazabilidad-v63-sonidos-feedback-cargue";
+var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg","./assets/sounds/universfield-new-notification-051-494246.mp3","./assets/sounds/te-llego-un-requerimiento.mp3","./assets/sounds/te-llego-un-reporte.mp3","./assets/sounds/tu-pedido-lleva-mas.mp3","./assets/sounds/tienes-un-nuevo-pedido.mp3","./assets/sounds/han-cerrado-tu-pedido.mp3","./assets/feedback/art-spinning-sticker.gif","./assets/feedback/hands-up-ok-gauss.gif"];
 function sameOrigin(request){try{return new URL(request.url).origin===self.location.origin;}catch(e){return false;}}
 function isHtml(request){return request.mode==="navigate" || ((request.headers.get("accept")||"").indexOf("text/html")>=0);}
 function isCore(url){return /\/(index\.html|app\.js|styles\.css|firebase-config\.js|manifest\.json)$/.test(url.pathname);}
