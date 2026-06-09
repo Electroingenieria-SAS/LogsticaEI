@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v67_no_entrega_requerimientos";
+var storageKey = "ei_trazabilidad_v68_audios_por_accion";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -20,7 +20,11 @@ var notificationAssets = {
   report:"./assets/sounds/te-llego-un-reporte.mp3",
   overdue:"./assets/sounds/tu-pedido-lleva-mas.mp3",
   newOrder:"./assets/sounds/tienes-un-nuevo-pedido.mp3",
-  closed:"./assets/sounds/han-cerrado-tu-pedido.mp3"
+  closed:"./assets/sounds/han-cerrado-tu-pedido.mp3",
+  logisticsClosed:"./assets/sounds/haz-cerrado-el-caso.mp3",
+  createdRequirement:"./assets/sounds/haz-creado-un-requerimiento.mp3",
+  createdOrder:"./assets/sounds/haz-creado-pedido.mp3",
+  createdReport:"./assets/sounds/novedad-creada.mp3"
 };
 var feedbackAssets = {
   loading:"./assets/feedback/art-spinning-sticker.gif",
@@ -910,13 +914,59 @@ function showLiveToast(title,msg,withButton){
 
 
 
+function eventIsOwn(e){
+  return !!(state.user && e && (e.createdBy===state.user.uid || e.userId===state.user.uid));
+}
+
+function eventProcessKey(e){
+  return String((e&&(e.currentProcess||e.process))||"").trim();
+}
+
+function eventIsDispatchProcess(e){
+  var p=eventProcessKey(e);
+  return ["despacho_local","despacho_nacional","cierre_despacho_nacional","cliente_punto","cliente_recoge"].indexOf(p)>=0;
+}
+
+function eventActorRole(e){
+  return normalizeRole((e&&(e.createdByRole||e.sourceRole||e.role)) || (state.user&&state.user.role) || "");
+}
+
+function eventActorIsLogistics(e){
+  var r=eventActorRole(e);
+  return ["lider_logistico","coordinador_logistico","aux_logistica","jefe_logistica"].indexOf(r)>=0;
+}
+
+function eventTypeIsRequirement(t){
+  return t.indexOf("REQUIREMENT")>=0 || t==="BOX_HOLD_TO_SALES" || t==="NO_DELIVERY_REQUIREMENT" || t.indexOf("_TO_SALES")>=0 || t.indexOf("REQUERIMIENTO")>=0;
+}
+
+function eventTypeIsReport(t){
+  return t.indexOf("REPORT")>=0 || t==="GOODS_RECEPTION_REPORT" || t==="NON_CONFORMITY_REPORTED" || t.indexOf("NOVEDAD")>=0;
+}
+
+function eventTypeIsOrderCreated(t){
+  return t==="CASE_CREATED" || t==="PROJECT_ORDER_TO_CASE" || t==="PENDING_ITEMS_RESENT";
+}
+
+function eventTypeIsClosed(t){
+  return t.indexOf("CASE_CLOSED")>=0 || t==="GOODS_RECEPTION_CLOSED" || t.indexOf("CLOSED")>=0 || t.indexOf("CERRADO")>=0;
+}
+
 function soundKeyForEvent(e){
   var t=String((e&&e.type)||"").toUpperCase();
   if(!t)return "general";
-  if(t.indexOf("REQUIREMENT")>=0 || t==="BOX_HOLD_TO_SALES" || t==="NO_DELIVERY_REQUIREMENT" || t.indexOf("_TO_SALES")>=0)return "requirement";
-  if(t.indexOf("REPORT")>=0 || t==="GOODS_RECEPTION_REPORT" || t==="NON_CONFORMITY_REPORTED")return "report";
-  if(t==="CASE_CREATED" || t==="PROJECT_ORDER_TO_CASE" || t==="PENDING_ITEMS_RESENT")return "newOrder";
-  if(t.indexOf("CASE_CLOSED")>=0 || t==="GOODS_RECEPTION_CLOSED" || t.indexOf("CLOSED")>=0)return "closed";
+
+  if(eventIsOwn(e)){
+    if(eventTypeIsClosed(t) && eventIsDispatchProcess(e) && eventActorIsLogistics(e))return "logisticsClosed";
+    if(eventTypeIsRequirement(t))return "createdRequirement";
+    if(eventTypeIsReport(t))return "createdReport";
+    if(eventTypeIsOrderCreated(t))return "createdOrder";
+  }
+
+  if(eventTypeIsRequirement(t))return "requirement";
+  if(eventTypeIsReport(t))return "report";
+  if(eventTypeIsOrderCreated(t))return "newOrder";
+  if(eventTypeIsClosed(t))return "closed";
   return "general";
 }
 
