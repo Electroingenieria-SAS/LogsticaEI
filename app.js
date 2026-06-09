@@ -346,7 +346,8 @@ function canManageAlistamientoAssignment(c){
 }
 function noDeliveryVisibleRoles(){return ["coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador","ventas","caja"];}
 function noDeliveryManagementRoles(){return ["coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador"];}
-function isNoDeliveryCase(c){return !!(c && (c.status==="no_entregado" || c.noDeliveryStatus==="ABIERTO" || (c.openRequirement && c.openRequirement.source==="no_entrega")));}
+function isNoDeliveryCase(c){return !!(c && (c.status==="no_entregado" || c.status==="devolucion_caja" || c.noDelivery===true || c.noDeliveryStatus==="ABIERTO" || c.noDeliveryStatus==="GESTION_LOGISTICA" || c.noDeliveryStatus==="DEVOLUCION_CAJA" || (c.openRequirement && c.openRequirement.source==="no_entrega")));}
+function isOpenNoDeliveryCase(c){return !!(c && isNoDeliveryCase(c) && c.noDeliveryStatus!=="CERRADO_SOLUCIONADO" && c.status!=="cerrado_conforme" && c.status!=="cerrado_con_novedad" && c.status!=="cancelado");}
 function noDeliveryProcess(c){
   var p=(c&&(c.deliveryType||c.requestedDelivery||c.currentProcess))||"despacho_nacional";
   if(isDeliveryProcess(p))return p;
@@ -354,11 +355,12 @@ function noDeliveryProcess(c){
   return "despacho_nacional";
 }
 function canManageNoDelivery(c){
-  if(!state.user || !c || c.closedAt)return false;
+  if(!state.user || !c)return false;
+  if(c.closedAt && !isOpenNoDeliveryCase(c))return false;
   var r=normalizeRole(state.user.role);
   if(c.status==="devolucion_caja" && r==="caja")return true;
-  if(isNoDeliveryCase(c) && r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
-  return isNoDeliveryCase(c) && noDeliveryManagementRoles().map(normalizeRole).indexOf(r)>=0;
+  if(isOpenNoDeliveryCase(c) && r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
+  return isOpenNoDeliveryCase(c) && noDeliveryManagementRoles().map(normalizeRole).indexOf(r)>=0;
 }
 function caseBelongsToCurrentSalesUser(c){
   if(!state.user || !c)return false;
@@ -366,10 +368,11 @@ function caseBelongsToCurrentSalesUser(c){
   return c.createdBy===uid || normalizePersonText(c.createdByName||'')===me || normalizePersonText(c.salesAdvisor||'')===me;
 }
 function canCloseCaseFromRole(c){
-  if(!state.user || !c || c.closedAt)return false;
+  if(!state.user || !c)return false;
+  if(c.closedAt && !isOpenNoDeliveryCase(c))return false;
   var r=normalizeRole(state.user.role);
-  if(isAdminRoleValue(r) || r==="jefe_logistica" || r==="gerencia")return true;
-  if(isNoDeliveryCase(c)){
+  if(isOpenNoDeliveryCase(c)){
+    if(isAdminRoleValue(r) || r==="jefe_logistica" || r==="gerencia")return true;
     if(r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
     if(r==="caja" && c.status==="devolucion_caja")return true;
     if(noDeliveryManagementRoles().map(normalizeRole).indexOf(r)>=0)return true;
@@ -2717,12 +2720,15 @@ function renderDetail(id){
     }
     if(canCloseCaseFromRole(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
+  if(canManageNoDelivery(c) && actions.indexOf('manageNoDelivery')===-1)actions+='<button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento de no entrega</button>';
+  if(canCloseCaseFromRole(c) && actions.indexOf('data-action="close"')===-1)actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   var checklistPanel=checklistPanelHtml(c,def);
   var deliveryMismatchPanel=c.deliveryRouteMismatchWarning?'<section class="notice" style="margin-top:16px"><strong>Revisión de ruta:</strong> '+esc(c.deliveryRouteMismatchWarning)+'</section>':'';
   var cutAlertPanel=(c.cutReturnAlerts||[]).length?'<section class="card" style="margin-top:16px"><h3>Carretos disponibles para empaletar</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Hora</th><th>Acción</th></tr></thead><tbody>'+(c.cutReturnAlerts||[]).slice().reverse().map(function(a){return '<tr><td>'+esc(a.cutCode||a.cutId||'')+'</td><td>'+esc(a.reference||'')+'</td><td>'+esc(a.meters||'')+'</td><td>'+esc(fmtDate(a.returnedAt))+'</td><td>'+esc(a.detail||'Recoger en corte y empaletar para facturación.')+'</td></tr>';}).join('')+'</tbody></table></div></section>':'';
   var caseDataPanel='<article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article>';
   var detailPanels=checklistPanel?'<section class="grid grid-2" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section style="margin-top:16px">'+caseDataPanel+'</section>';
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+processGuidePanel(c)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+detailPanels);
+  var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+processGuidePanel(c)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+detailPanels);
 }
 
 function nextActionButtons(c){
@@ -5044,6 +5050,8 @@ function openSalesNoDelivery(id){
       var targetProcess=noDeliveryProcess(c), visible=noDeliveryVisibleRoles();
       stopActive(c);stopWait(c);
       c.currentProcess=targetProcess;
+      c.closedAt=null;
+      c.closedByName='';
       c.status='no_entregado';
       c.noDelivery=true;
       c.noDeliveryStatus='ABIERTO';
@@ -5103,7 +5111,7 @@ function openNoDeliveryManagement(id){
       }
       var proc=noDeliveryProcess(c);
       stopWait(c);
-      c.currentProcess=proc;c.status='en_proceso';c.noDelivery=true;c.noDeliveryStatus='GESTION_LOGISTICA';c.requirementType='no_entrega';c.visibleRoles=c.visibleRoles||noDeliveryVisibleRoles();c.targetRoles=c.targetRoles||noDeliveryVisibleRoles();c.assignedRole='coordinador_logistico';c.assignedName=roleTitle('coordinador_logistico');c.activeStartedAt=now();c.waitStartedAt=null;c.openRequirement=null;
+      c.currentProcess=proc;c.closedAt=null;c.closedByName='';c.status='en_proceso';c.noDelivery=true;c.noDeliveryStatus='GESTION_LOGISTICA';c.requirementType='no_entrega';c.visibleRoles=c.visibleRoles||noDeliveryVisibleRoles();c.targetRoles=c.targetRoles||noDeliveryVisibleRoles();c.assignedRole='coordinador_logistico';c.assignedName=roleTitle('coordinador_logistico');c.activeStartedAt=now();c.waitStartedAt=null;c.openRequirement=null;
       resolveNoDeliveryRequirements(c,detail);
       if(report)report.status='GESTION_LOGISTICA';
       addStateHistory(c,'solucion_entrega',detail||'Solución logística/reprogramación de entrega',{tipo_estado:'valor',motivo_novedad:'Solución logística no entrega'});
