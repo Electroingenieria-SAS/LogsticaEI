@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v65_ventas_dashboard_individual";
+var storageKey = "ei_trazabilidad_v66_asignacion_alistamiento";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -295,6 +295,54 @@ function canAccessProcess(role,p){
   var nr=normalizeRole(role);
   return processOwnerRoles(p).map(normalizeRole).indexOf(nr)>=0;
 }
+function caseAssignedUserIds(c){
+  var ids=[];
+  if(c && Array.isArray(c.assignedUserIds))ids=ids.concat(c.assignedUserIds);
+  if(c && Array.isArray(c.assignedUsers))ids=ids.concat(c.assignedUsers.map(function(u){return u.uid||u.id||u.userId||"";}));
+  return uniqueArray(ids.map(function(x){return String(x||"").trim();}).filter(Boolean));
+}
+function caseAssignedUsers(c){
+  var map={}, out=[];
+  if(c && Array.isArray(c.assignedUsers)){
+    c.assignedUsers.forEach(function(u){
+      var id=String(u.uid||u.id||u.userId||"").trim(), key=id||personKey("",u.name,u.email);
+      if(!key||map[key])return;
+      map[key]=1;out.push({uid:id,name:u.name||u.displayName||u.email||"Usuario",email:u.email||"",role:u.role||"aux_logistica"});
+    });
+  }
+  caseAssignedUserIds(c).forEach(function(id){
+    var key="uid:"+id;if(map[key])return;
+    var u=(state.users||[]).filter(function(x){return x.uid===id||x.id===id;})[0]||{};
+    map[key]=1;out.push({uid:id,name:u.name||u.displayName||u.email||id,email:u.email||"",role:u.role||"aux_logistica"});
+  });
+  return out;
+}
+function assignedPeopleText(c){
+  var names=caseAssignedUsers(c).map(function(u){return u.name||u.email||u.uid;});
+  return uniqueArray(names).join(" · ");
+}
+function caseHasPersonalAssignees(c){return caseAssignedUserIds(c).length>0;}
+function currentUserIsAssignedToCase(c){return !!(state.user && caseAssignedUserIds(c).indexOf(state.user.uid)>=0);}
+function isRestrictedAlistamientoCase(c){return !!(c && c.currentProcess==="alistamiento" && caseHasPersonalAssignees(c));}
+function currentUserBlockedByAssignment(c){
+  if(!state.user || !isRestrictedAlistamientoCase(c))return false;
+  return normalizeRole(state.user.role)==="aux_logistica" && !currentUserIsAssignedToCase(c);
+}
+function canOperateCurrentProcess(c){
+  if(!state.user || !c)return false;
+  if(isAdminRoleValue(state.user.role))return true;
+  if(currentUserBlockedByAssignment(c))return false;
+  if(currentUserIsAssignedToCase(c))return true;
+  return canAccessProcess(state.user.role,c.currentProcess);
+}
+function canManageAlistamientoAssignment(c){
+  if(!state.user || !c || c.closedAt)return false;
+  var r=normalizeRole(state.user.role);
+  return isAdminRoleValue(r)||r==="jefe_logistica"||r==="coordinador_logistico"||r==="lider_logistico";
+}
+function alistamientoAssignableUsers(){
+  return (state.users||[]).filter(function(u){return u && u.isActive!==false && normalizeRole(u.role)==="aux_logistica";}).sort(function(a,b){return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));});
+}
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
 function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="coordinador_logistico");}
@@ -320,6 +368,8 @@ function canSeeKpis(){return state.user && isPrivilegedKpiRole(state.user.role);
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
   if(canSeeAll())return true;
+  if(currentUserBlockedByAssignment(c))return false;
+  if(currentUserIsAssignedToCase(c))return true;
   if(normalizeRole(c.assignedRole)===normalizeRole(state.user.role))return true;
   if(c.assignedUid===state.user.uid || c.assignedTo===state.user.uid)return true;
   if(c.createdBy===state.user.uid)return true;
@@ -510,7 +560,9 @@ function loadEventsForRole(){
 }
 
 function loadUsersForRole(){
-  if(!canSeeAll() && !canManageUsers())return Promise.resolve([]);
+  if(!state.user)return Promise.resolve([]);
+  var r=normalizeRole(state.user.role);
+  if(!canSeeAll() && !canManageUsers() && r!=="coordinador_logistico" && r!=="lider_logistico")return Promise.resolve([]);
   return db.collection("users").get().then(docsToList).catch(function(){return [];});
 }
 
@@ -563,7 +615,7 @@ function loadData(){
 
 function caseLiveHash(list){
   return (list||[]).map(function(c){
-    return [c.id,c.updatedAt||"",c.status||"",c.currentProcess||"",c.assignedRole||"",c.assignedTo||"",c.closedAt||""].join("|");
+    return [c.id,c.updatedAt||"",c.status||"",c.currentProcess||"",c.assignedRole||"",c.assignedTo||"",(c.assignedUserIds||[]).join(","),c.closedAt||""].join("|");
   }).sort().join("~");
 }
 
@@ -586,7 +638,7 @@ function caseDisplaySubtitle(c){
   return parts.join(" · ") || "Caso operativo";
 }
 function caseSearchText(c){
-  return [caseDisplayTitle(c),c&&c.client,c&&c.assignedName,c&&c.createdByName,c&&c.salesAdvisor,c&&c.deliveryType,c&&c.requestedDelivery,c&&c.invoiceNumber,c&&c.factura,c&&c.status,processTitle(c&&c.currentProcess)].join(" ").toLowerCase();
+  return [caseDisplayTitle(c),c&&c.client,c&&c.assignedName,assignedPeopleText(c),c&&c.createdByName,c&&c.salesAdvisor,c&&c.deliveryType,c&&c.requestedDelivery,c&&c.invoiceNumber,c&&c.factura,c&&c.status,processTitle(c&&c.currentProcess)].join(" ").toLowerCase();
 }
 function caseSummary(c){
   return caseDisplayTitle(c);
@@ -622,6 +674,7 @@ function caseParticipantMap(c){
   addPersonToMap(map,c.createdBy,c.createdByName,"",c.createdByRole||"ventas","ventas");
   addPersonToMap(map,"",c.salesAdvisor,"","ventas","ventas");
   addPersonToMap(map,c.assignedUid||c.assignedTo,c.assignedName,"",c.assignedRole,c.currentProcess);
+  caseAssignedUsers(c).forEach(function(u){addPersonToMap(map,u.uid,u.name,u.email,u.role||"aux_logistica",c.currentProcess);});
   (c.stateHistory||[]).forEach(function(h){addPersonToMap(map,h.responsibleUid||h.userId,h.responsibleName||h.userName,"",h.responsibleRole||h.userRole,h.process||c.currentProcess);});
   (c.evidence||[]).forEach(function(e){addPersonToMap(map,e.createdBy||e.uploadedBy,e.createdByName||e.uploadedByName||e.responsibleName,"",e.responsibleRole||e.role,e.process||e.processKey||c.currentProcess);});
   Object.keys(c.processStats||{}).forEach(function(p){
@@ -1334,10 +1387,18 @@ function login(fd){
   auth.signInWithEmailAndPassword(email,password).catch(function(err){showError(err.message||err);});
 }
 
+function caseVisibleForCurrentUser(c){
+  if(!state.user || !c)return false;
+  if(canSeeAll())return true;
+  if(c.createdBy===state.user.uid)return true;
+  if(currentUserIsAssignedToCase(c))return true;
+  if(currentUserBlockedByAssignment(c))return false;
+  if(normalizeRole(c.assignedRole)===normalizeRole(state.user.role))return true;
+  if(c.assignedUid===state.user.uid || c.assignedTo===state.user.uid)return true;
+  return canAccessProcess(state.user.role,c.currentProcess);
+}
 function visibleCases(){
-  var list=canSeeAll()?state.cases:state.cases.filter(function(c){
-    return normalizeRole(c.assignedRole)===normalizeRole(state.user.role) || c.createdBy===state.user.uid || c.assignedTo===state.user.uid || canAccessProcess(state.user.role,c.currentProcess);
-  });
+  var list=state.cases.filter(caseVisibleForCurrentUser);
   var f=state.filters;
   if(f.search){var q=f.search.toLowerCase();list=list.filter(function(c){return caseSearchText(c).indexOf(q)>=0;});}
   if(f.status)list=list.filter(function(c){return c.status===f.status;});
@@ -1361,7 +1422,7 @@ function caseList(list){
   return'<div class="case-list">'+list.map(function(c){
     var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
     var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
-    return'<article class="case-card"><div><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span></div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver</button>'+(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
+    return'<article class="case-card"><div><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedPeopleText(c)?'<span class="chip success">Asignado: '+esc(assignedPeopleText(c))+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
   }).join("")+'</div>';
 }
 
@@ -2522,7 +2583,7 @@ function canEditGenericChecklist(c){
   var role=normalizeRole(state.user.role);
   if(role==="ventas" || role==="caja")return false;
   if(c.currentProcess==="caja")return false;
-  return canAccessProcess(state.user.role,c.currentProcess);
+  return canOperateCurrentProcess(c);
 }
 function checklistPanelHtml(c,def){
   if(!canEditGenericChecklist(c))return "";
@@ -2540,25 +2601,26 @@ function renderDetail(id){
     if(db && (canSeeAll() || isAdminRoleValue(state.user.role))){db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo guardar corrección automática",e);});}
   }
   if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);})){renderCutsQueue();return;}
-  var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="";
+  var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="", canOperate=canOperateCurrentProcess(c);
   if(!c.closedAt){
-    if(c.status==="asignado"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
+    if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-danger" data-action="reportNonConformity" data-id="'+c.id+'">Reportar inconformidad</button>';
+    if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
+    if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-danger" data-action="reportNonConformity" data-id="'+c.id+'">Reportar inconformidad</button>';
     if(canAccessReportsModule())actions+='<button class="btn btn-gold" data-action="generalReport" data-id="'+c.id+'">Reportar novedad interna</button>';
     if(c.status==="espera_ventas"&&normalizeRole(state.user.role)==="ventas")actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">Responder</button>';
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar / releer PDF recepción</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canAccessProcess(state.user.role,c.currentProcess))actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-success" data-action="alistPartial" data-id="'+c.id+'">Crear envío parcial</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canOperate)actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar / releer PDF recepción</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canOperate)actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-success" data-action="alistPartial" data-id="'+c.id+'">Crear envío parcial</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
+    if(c.currentProcess==="alistamiento"&&canManageAlistamientoAssignment(c))actions+='<button class="btn btn-gold" data-action="assignAlistamiento" data-id="'+c.id+'">Cambiar asignación alistamiento</button>';
     if(c.status==="pendiente_gerencia"&&normalizeRole(state.user.role)==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)){
+    if(c.status==="en_proceso"&&canOperate){
       if(c.currentProcess==="facturacion")actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
       else if(c.currentProcess==="caja")actions+=(c.salesHold&&c.salesHold.status!=="CERRADO"?'<button class="btn btn-gold" data-action="boxHold" data-id="'+c.id+'">Gestionar retenido</button>':'<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Confirmar caja / enviar a despacho</button>');
       else actions+=nextActionButtons(c);
     }
-    if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
+    if(c.status==="en_proceso"&&canOperate&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
   var checklistPanel=checklistPanelHtml(c,def);
   var deliveryMismatchPanel=c.deliveryRouteMismatchWarning?'<section class="notice" style="margin-top:16px"><strong>Revisión de ruta:</strong> '+esc(c.deliveryRouteMismatchWarning)+'</section>':'';
@@ -2572,13 +2634,15 @@ function nextActionButtons(c){
   var next=(processes[c.currentProcess]||{}).next||[];
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){
     var disabled="", label="Enviar a "+processTitle(n), cls="btn btn-primary";
+    var action="transfer";
+    if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento"){action="assignAlistamiento";label="Enviar a alistamiento y asignar";}
     if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento" && !receptionPdfIsComplete(c)){cls="btn btn-gold";label="PDF y compromiso obligatorios";}
     if(c.currentProcess==="alistamiento" && n==="facturacion")label="Enviar a facturación";
-    return '<button class="'+cls+'" data-action="transfer" data-next="'+n+'" data-id="'+c.id+'">'+esc(label)+'</button>';
+    return '<button class="'+cls+'" data-action="'+action+'" data-next="'+n+'" data-id="'+c.id+'">'+esc(label)+'</button>';
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",df.receptionPdfDriveUrl?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -2620,7 +2684,7 @@ function alistamientoStatusChip(st){
 function alistamientoLineChecklistPanel(c, compact){
   var items=c.orderItems||[];
   if(!items.length)return '<section class="card" style="margin-top:16px"><h3>Lista marcable de alistamiento</h3><div class="empty">No hay líneas leídas del PDF. Recepción debe cargar, leer y validar el PDF antes de alistar.</div></section>';
-  var canMark=c.status==="en_proceso" && c.currentProcess==="alistamiento" && canAccessProcess(state.user.role,c.currentProcess);
+  var canMark=c.status==="en_proceso" && c.currentProcess==="alistamiento" && canOperateCurrentProcess(c);
   var rows=items.map(function(it,i){
     var st=it.alistamientoStatus||'PENDIENTE';
     var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
@@ -2635,6 +2699,7 @@ function refreshAlistamientoChecklist(c){
 }
 function markAlistamientoItem(id,idx,status,detail,reason){
   var c=caseById(id);if(!c)return;
+  if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return Promise.resolve(false);}
   var items=c.orderItems||[];idx=Number(idx);
   if(idx<0||idx>=items.length)return;
   var it=items[idx];
@@ -2720,6 +2785,7 @@ function eligiblePartialItems(c){
 }
 function openPartialShipment(id){
   var c=caseById(id);if(!c)return;
+  if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}
   if(c.currentProcess!=="alistamiento"||c.status!=="en_proceso"){alert("El envío parcial solo se registra desde Alistamiento en proceso.");return;}
   var items=eligiblePartialItems(c);
   if(!items.length){alert("No hay líneas pendientes para registrar como envío parcial.");return;}
@@ -2791,6 +2857,9 @@ function createPartialShipment(id,fd){
   child.assignedRole=primaryOwnerRole('facturacion');
   child.assignedName=processOwnerTitle('facturacion');
   child.assignedTo='';
+  child.assignedUid='';
+  child.assignedUsers=[];
+  child.assignedUserIds=[];
   child.createdAt=stamp;
   child.createdBy=state.user.uid;
   child.createdByName=state.user.name;
@@ -3197,7 +3266,7 @@ function autoCreateCutsFromItems(c,createdByName){
   return added;
 }
 function openCutsPlanner(id){
-  var c=caseById(id);if(!c)return;var items=c.orderItems||[];
+  var c=caseById(id);if(!c)return;if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}var items=c.orderItems||[];
   var rows=items.length?items.map(function(it,i){var checked=it.requiereCorte?'checked':'';var decision=it.posibleCorte?(it.requiereCorte?'Recepción: enviar a corte':'Recepción: no cortar · carreto completo'):'No aplica';return'<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad||"")+'</td><td>'+esc(it.unidad||"")+'</td><td>'+esc(decision)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.cantidad||"")+'"></td><td><input class="input" name="available_'+i+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';}).join(""):'<tr><td colspan="8">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
   drawer(modal("Definir / ajustar cortes del pedido",'<form class="form" id="cutsPlanForm"><div class="notice">Alistamiento visualiza todas las líneas leídas desde Recepción. Las líneas con decisión “no cortar · carreto completo” quedan para alistamiento normal; las marcadas se envían al módulo de corte.</div><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Decisión recepción</th><th>Metros a cortar</th><th>Disponible</th></tr></thead><tbody>'+rows+'</tbody></table></div><fieldset><legend>Corte manual opcional</legend><div class="grid grid-3"><label class="field"><span>Referencia</span><input class="input" name="manualRef"></label><label class="field"><span>Metros</span><input class="input" name="manualMeters"></label><label class="field"><span>Disponible</span><input class="input" name="manualAvailable"></label></div><label class="field"><span>Observación</span><textarea class="textarea" name="manualObs"></textarea></label></fieldset><button class="btn btn-primary" type="submit">Guardar solicitudes de corte</button></form>'));
   qs("#cutsPlanForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);c.cutRequests=c.cutRequests||[];var added=0;items.forEach(function(it,i){it.requiereCorte=!!fd.get("cut_"+i);it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";if(!it.requiereCorte)return;var meters=fd.get("meters_"+i)||it.cantidad||"";var ref=it.referencia||"";var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});if(exists){c.cutRequests.forEach(function(x){if(x.sourceLineId===it.id){x.metrosSolicitados=meters;x.disponibleAntes=fd.get("available_"+i)||x.disponibleAntes||"";}});return;}var idc=uid("CUT");c.cutRequests.push({id:idc,code:"CT-"+(c.cutRequests.length+1),sourceLineId:it.id,caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:ref,descripcion:it.descripcion||"",metrosSolicitados:meters,unidad:it.unidad||"M",disponibleAntes:fd.get("available_"+i)||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"ALISTAMIENTO",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});added++;});
@@ -4262,17 +4331,71 @@ function stopWait(c){
   if(c.waitStartedAt){procStats(c,c.currentProcess).waitMs+=msSince(c.waitStartedAt);}
   c.waitStartedAt=null;
 }
-function assignToProcess(c,next,detail){
+function normalizeAssignmentUsers(users){
+  return uniqueArray((users||[]).map(function(u){
+    var uidValue=String(u.uid||u.id||u.userId||"").trim();
+    if(!uidValue)return null;
+    return {uid:uidValue,name:u.name||u.displayName||u.email||"Usuario",email:u.email||"",role:normalizeRole(u.role||"aux_logistica")};
+  }).filter(Boolean).map(function(u){return JSON.stringify(u);})).map(function(x){return JSON.parse(x);});
+}
+function applyPersonalAssignment(c,next,assignmentUsers){
+  var users=normalizeAssignmentUsers(assignmentUsers);
+  c.assignedUsers=[];c.assignedUserIds=[];c.assignedUid="";
+  if(next==="alistamiento" && users.length){
+    c.assignedUsers=users;
+    c.assignedUserIds=users.map(function(u){return u.uid;});
+    c.assignedTo=users[0].uid;
+    c.assignedUid=users[0].uid;
+    c.assignedName=users.map(function(u){return u.name||u.email||u.uid;}).join(" / ");
+    c.assignedRole="aux_logistica";
+  }else{
+    c.assignedTo="";
+    c.assignedName=processOwnerTitle(next);
+    c.assignedRole=primaryOwnerRole(next);
+  }
+}
+function assignToProcess(c,next,detail,assignmentUsers){
   var current=c.currentProcess;
   stopActive(c);stopWait(c);
   procStats(c,current).completedAt=now();
   addStateHistory(c,"handoff","Cambio de etapa: "+processTitle(current)+" → "+processTitle(next),{fromProcess:current,toProcess:next,fecha_hora_fin_estado:procStats(c,current).completedAt,tipo_estado:"valor"});
-  c.currentProcess=next;c.status="asignado";c.assignedRole=primaryOwnerRole(next);c.assignedName=processOwnerTitle(next);c.assignedTo="";c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.openRequirement=null;c.checklist={};
+  c.currentProcess=next;c.status="asignado";applyPersonalAssignment(c,next,assignmentUsers);c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.openRequirement=null;c.checklist={};
   if(isDeliveryProcess(next)){c.deliveryType=expectedDeliveryTypeForProcess(next);}
   var s=procStats(c,next);s.startedAt=s.startedAt||now();s.handoffs=Number(s.handoffs||0)+1;
   processes[next].checklist.forEach(function(x){c.checklist[x]="pending";});
   if(next==="alistamiento")applyAlistamientoAutoChecklist(c);
-  return persistCase(c,{type:"TRANSFER_SENT",detail:detail||("Relevo a "+processTitle(next))});
+  var assigned=assignedPeopleText(c);
+  return persistCase(c,{type:"TRANSFER_SENT",detail:(detail||("Relevo a "+processTitle(next)))+(assigned?" · Asignado a: "+assigned:""),assignedUserIds:c.assignedUserIds||[],assignedUsers:c.assignedUsers||[]});
+}
+
+function openAlistamientoAssignment(id){
+  var c=caseById(id);if(!c)return;
+  if(c.currentProcess==="recepcion_pedidos" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: debe cargar el PDF oficial, leerlo correctamente, guardarlo en Drive, detectar las líneas del pedido y confirmar compromiso de mercancía.");return;}
+  if(c.currentProcess!=="recepcion_pedidos" && c.currentProcess!=="alistamiento"){alert("La asignación individual solo aplica al paso de Alistamiento.");return;}
+  if(c.currentProcess==="alistamiento" && !canManageAlistamientoAssignment(c)){alert("Solo coordinación, jefe logística o administrador puede cambiar esta asignación.");return;}
+  var users=alistamientoAssignableUsers();
+  var selected=caseAssignedUserIds(c);
+  var rows=users.map(function(u){
+    var idu=u.uid||u.id, checked=selected.indexOf(idu)>=0?'checked':'';
+    return '<label class="check-card"><input type="checkbox" name="alistamientoUser" value="'+esc(idu)+'" '+checked+'> <strong>'+esc(u.name||u.email||idu)+'</strong><br><small>'+esc(roleTitle(u.role||"aux_logistica"))+(u.email?' · '+esc(u.email):'')+'</small></label>';
+  }).join('');
+  if(!rows)rows='<div class="notice warning"><strong>No encontré usuarios activos con rol Auxiliar logística.</strong><br>Puede enviar el pedido a la bandeja general de Alistamiento, pero para asignación individual primero cree o active usuarios con ese rol.</div>';
+  drawer(modal('Asignar solicitud de alistamiento','<form class="form" id="alistAssignForm"><div class="notice"><strong>Recepción define quién alista:</strong> seleccione de 1 a 3 auxiliares. El pedido quedará visible para los usuarios seleccionados y el VSM guardará la asignación individual.</div>'+rows+'<label class="field"><span>Observación de asignación</span><textarea class="textarea" name="detail" placeholder="Ej.: pedido grande, asignar a dos auxiliares; pedido urgente; separar por referencias."></textarea></label><button class="btn btn-primary" type="submit">'+(c.currentProcess==="recepcion_pedidos"?'Enviar a alistamiento':'Guardar asignación')+'</button></form>'));
+  qs('#alistAssignForm').onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target);
+    var ids=qsa('input[name="alistamientoUser"]:checked',e.target).map(function(x){return x.value;});
+    if(users.length && !ids.length){alert('Seleccione al menos un auxiliar de alistamiento.');return;}
+    if(ids.length>3){alert('Seleccione máximo 3 personas para evitar reprocesos y confusión.');return;}
+    var picked=users.filter(function(u){return ids.indexOf(u.uid||u.id)>=0;});
+    if(c.currentProcess==="recepcion_pedidos"){
+      assignToProcess(c,'alistamiento',fd.get('detail')||'Recepción envía a alistamiento con responsable definido.',picked).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    }else{
+      applyPersonalAssignment(c,'alistamiento',picked);
+      addStateHistory(c,'asignacion','Asignación de alistamiento actualizada: '+(assignedPeopleText(c)||'Bandeja general'),{tipo_estado:'asignacion',assignedUserIds:c.assignedUserIds||[]});
+      persistCase(c,{type:'ALISTAMIENTO_ASSIGNMENT_UPDATED',detail:(fd.get('detail')||'Asignación de alistamiento actualizada')+(assignedPeopleText(c)?' · '+assignedPeopleText(c):''),assignedUserIds:c.assignedUserIds||[],assignedUsers:c.assignedUsers||[]}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    }
+  };
 }
 
 function openEvidence(id){
@@ -4603,9 +4726,10 @@ function approve(id){
 function reject(id){
   var c=caseById(id);stopWait(c);c.status="cancelado";c.closedAt=now();if(c.priorityApproval)c.priorityApproval.status="rechazado";persistCase(c,{type:"MANAGER_REJECTED",detail:"Gerencia rechazó prioridad"}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
 }
-function accept(id){var c=caseById(id);startActive(c);persistCase(c,{type:"CASE_ACCEPTED",detail:"Caso aceptado por "+state.user.name}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});}
+function accept(id){var c=caseById(id);if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario o no pertenece a su macroproceso.");return;}startActive(c);persistCase(c,{type:"CASE_ACCEPTED",detail:"Caso aceptado por "+state.user.name}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});}
 function transfer(id,next){
   var c=caseById(id);
+  if(!canOperateCurrentProcess(c)){alert("Este pedido tiene asignación individual o no pertenece a su macroproceso.");return;}
   if(c.currentProcess==="recepcion_pedidos" && next!=="alistamiento"){alert("El flujo obligatorio es: Recepción de pedidos → Alistamiento. El compromiso de mercancía se registra dentro de Recepción.");return;}
   if(next==="alistamiento" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: debe cargar el PDF oficial, leerlo correctamente, guardarlo en Drive, detectar las líneas del pedido y confirmar que la mercancía fue comprometida.");return;}
   if(c.currentProcess==="alistamiento" && next!=="facturacion"){alert("Después de alistamiento el flujo continúa directamente a Facturación. Si hay cortes, primero deben quedar registrados.");return;}
@@ -4900,7 +5024,7 @@ function exportSalesReport(){
     '<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Creado</th><th>Actualizado</th><th>Entrega solicitada</th><th>Entrega definida</th><th>Responsables que intervinieron</th><th>Flujo con nombres</th><th>Requerimientos</th><th>Anexos</th><th>Cierre</th></tr></thead><tbody>'+detailRows+'</tbody></table></body></html>';
   downloadTextFile('dashboard_ventas_'+new Date().toISOString().slice(0,10)+'.xls',html,'application/vnd.ms-excel;charset=utf-8');
 }
-function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
+function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
@@ -4923,6 +5047,7 @@ function bindActions(){
     if(a==="initialCommit")openInitialCommitment(id);
     if(a==="ratifyCommit")openRatificationCommitment(id);
     if(a==="transfer")transfer(id,b.getAttribute("data-next"));
+    if(a==="assignAlistamiento")openAlistamientoAssignment(id);
     if(a==="close")openClose(id);
     if(a==="approve")approve(id);
     if(a==="reject")reject(id);
