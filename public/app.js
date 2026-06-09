@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v65_super_admin_elimina_reportes";
+var storageKey = "ei_trazabilidad_v65_ventas_dashboard_individual";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -37,6 +37,7 @@ var state = {
   projectOrders: [],
   reports: [],
   filters: { search:"", status:"", process:"" },
+  salesFilters: { search:"", advisor:"", from:"", to:"", process:"", status:"" },
   kpiFilters: { from:"", to:"", process:"", user:"" },
   pdfExtraction: null,
   realtime: { caseUnsubs: [], eventUnsub: null, eventUnsubs: [], userUnsub: null, pollTimer: null, buckets: {}, eventBuckets: {}, initialCasesLoaded: false, initialEventsLoaded: false, lastHash: "", lastEventHash: "", lastChangeAt: 0, lastEventAt: 0, startedAt: 0, pendingRender: false },
@@ -214,7 +215,7 @@ function ensureDeliveryChecklistDefinitions(){
 ensureDeliveryChecklistDefinitions();
 
 var routeInfo = {
-  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"],
+  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], sales_reports:["Ventas diaria","VD"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"],
   approvals:["Aprobaciones","AU"], corte_cable:["Cortes","CT"], indicators:["VSM","VS"], users:["Usuarios","US"], admin:["Admin","AD"]
 };
 
@@ -1224,12 +1225,12 @@ function routes(){
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","reports"],processes:[]};
   if(r==="gerencia")return{main:["indicators","approvals","reports","users","admin","dashboard"],processes:[]};
-  if(isAdminRoleValue(r))return{main:["dashboard","create","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
+  if(isAdminRoleValue(r))return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="jefe_logistica"){
     return{main:["dashboard","cases","requirements","approvals","reports","indicators","admin"],processes:activeProcessKeys().filter(function(k){return k!=="caja";})};
   }
   var own=activeProcessKeys().filter(function(k){return canAccessProcess(r,k);});
-  return{main:["dashboard"].concat(canCreate()?["create"]:[]).concat(canAccessProjectsModule()?["projects"]:[]).concat(["reports","requirements"]),processes:own};
+  return{main:["dashboard"].concat(canCreate()?["create","sales_reports"]:[]).concat(canAccessProjectsModule()?["projects"]:[]).concat(["reports","requirements"]),processes:own};
 }
 
 function navBtn(r){
@@ -1243,8 +1244,9 @@ function mobileItems(){
   if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["reports","Reportes","RP"],["dashboard","Inicio","⌂"]];
   if(r==="proyectos")return [["projects","Proyectos","PR"],["reports","Reportes","RP"]];
   if(r==="gerencia")return [["indicators","VSM","◉"],["approvals","Aprob.","✓"],["reports","Reportes","RP"],["users","Usuarios","US"],["dashboard","Inicio","⌂"]];
+  if(r==="ventas")return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["requirements","Req.","↗"]];
   if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["reports","Reportes","RP"],["requirements","Req.","↗"],["approvals","Aprob.","✓"]];
-  if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["reception_goods","Recep.","RM"],["reports","Reportes","RP"],["admin","Admin","AD"]];
+  if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["reports","Reportes","RP"],["admin","Admin","AD"]];
   var rs=routes();return [["dashboard","Inicio","⌂"],[rs.processes[0]||"cases","Panel","▤"],[canCreate()?"create":"requirements",canCreate()?"Crear":"Req.",canCreate()?"+":"↗"],["requirements","Req.","↗"]];
 }
 
@@ -2515,6 +2517,20 @@ function createCase(fd){
 
 function initialCheckFromPdf(item,x){if(!x)return"pending";if(item==="Contenido del pedido completo")return x.orderNumber&&x.client?"ok":"pending";if(item==="Cliente identificado")return x.client?"ok":"pending";if(item==="Forma de pago definida")return x.paymentCondition?"ok":"pending";return"pending";}
 
+function canEditGenericChecklist(c){
+  if(!c || c.closedAt || !state.user)return false;
+  var role=normalizeRole(state.user.role);
+  if(role==="ventas" || role==="caja")return false;
+  if(c.currentProcess==="caja")return false;
+  return canAccessProcess(state.user.role,c.currentProcess);
+}
+function checklistPanelHtml(c,def){
+  if(!canEditGenericChecklist(c))return "";
+  def=def||processes[c.currentProcess]||processes.recepcion_pedidos;
+  var checks=(def.checklist||[]).map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'" data-current="'+esc(v)+'" data-original="'+esc(v)+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
+  var checklistActions='<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Modo fluido:</strong> marque únicamente los puntos de este macroproceso y luego pulse <strong>Cerrar checklist</strong>. Ventas y Caja no ven esta lista para evitar confusiones.</div><div class="checklist-actions"><button class="btn btn-success" data-action="closeChecklist" data-id="'+c.id+'">Cerrar checklist</button><button class="btn" data-action="discardChecklist" data-id="'+c.id+'">Descartar cambios</button></div>';
+  return '<article class="card"><h3>Checklist operativo</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article>';
+}
 function renderDetail(id){
   var c=caseById(id);if(!c){renderCases();return;}
   var correctedOnOpen=false;
@@ -2544,11 +2560,12 @@ function renderDetail(id){
     }
     if(c.status==="en_proceso"&&canAccessProcess(state.user.role,c.currentProcess)&&canCloseHere(c))actions+='<button class="btn btn-success" data-action="close" data-id="'+c.id+'">Cerrar caso</button>';
   }
-  var checks=def.checklist.map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'" data-current="'+esc(v)+'" data-original="'+esc(v)+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
-  var checklistActions='<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Modo fluido:</strong> marque todos los puntos necesarios y luego pulse <strong>Cerrar checklist</strong>. No se guarda ni se recarga por cada clic.</div><div class="checklist-actions"><button class="btn btn-success" data-action="closeChecklist" data-id="'+c.id+'">Cerrar checklist</button><button class="btn" data-action="discardChecklist" data-id="'+c.id+'">Descartar cambios</button></div>';
+  var checklistPanel=checklistPanelHtml(c,def);
   var deliveryMismatchPanel=c.deliveryRouteMismatchWarning?'<section class="notice" style="margin-top:16px"><strong>Revisión de ruta:</strong> '+esc(c.deliveryRouteMismatchWarning)+'</section>':'';
   var cutAlertPanel=(c.cutReturnAlerts||[]).length?'<section class="card" style="margin-top:16px"><h3>Carretos disponibles para empaletar</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Hora</th><th>Acción</th></tr></thead><tbody>'+(c.cutReturnAlerts||[]).slice().reverse().map(function(a){return '<tr><td>'+esc(a.cutCode||a.cutId||'')+'</td><td>'+esc(a.reference||'')+'</td><td>'+esc(a.meters||'')+'</td><td>'+esc(fmtDate(a.returnedAt))+'</td><td>'+esc(a.detail||'Recoger en corte y empaletar para facturación.')+'</td></tr>';}).join('')+'</tbody></table></div></section>':'';
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+processGuidePanel(c)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+'<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Checklist</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article><article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article></section>');
+  var caseDataPanel='<article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+'<h3 style="margin-top:18px">Eventos</h3>'+eventList(c.id)+'</article>';
+  var detailPanels=checklistPanel?'<section class="grid grid-2" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section style="margin-top:16px">'+caseDataPanel+'</section>';
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+processGuidePanel(c)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+'</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+detailPanels);
 }
 
 function nextActionButtons(c){
@@ -3652,6 +3669,17 @@ function bars(items){
   }).join('')+'</div>';
 }
 
+function countBars(items){
+  items=(items||[]).filter(function(x){return x&&Number.isFinite(Number(x.value||0));});
+  if(!items.length)return '<div class="empty" style="padding:12px">Sin datos suficientes para graficar.</div>';
+  var max=items.reduce(function(m,x){return Math.max(m,Number(x.value||0));},0)||1;
+  return '<div class="bars">'+items.map(function(x){
+    var val=Number(x.value||0);
+    var w=clamp((val/max)*100,0,100);
+    return '<div class="bar-row"><span>'+esc(x.label||'Sin etiqueta')+'</span><div><b style="width:'+w.toFixed(1)+'%"></b></div><small>'+val+'</small></div>';
+  }).join('')+'</div>';
+}
+
 function modal(title,body){
   return '<section class="modal"><div class="modal-head"><div><h3>'+esc(title||'Detalle')+'</h3></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+(body||'')+'</section>';
 }
@@ -4599,6 +4627,7 @@ function checklistManualBlockReason(c,item){
 }
 function updateCheck(el){
   var seg=el.parentNode,id=seg.getAttribute("data-id"),item=seg.getAttribute("data-check"),val=el.getAttribute("data-value"),c=caseById(id),reason=checklistManualBlockReason(c,item);
+  if(!canEditGenericChecklist(c)){alert("Este checklist solo lo edita el responsable del macroproceso operativo. Ventas y Caja solo ven sus acciones necesarias.");return;}
   if(reason){alert(reason);return;}
   seg.setAttribute("data-current",val);
   qsa("button",seg).forEach(function(btn){
@@ -4613,6 +4642,7 @@ function updateCheck(el){
 }
 function closeChecklist(id){
   var c=caseById(id);if(!c)return;
+  if(!canEditGenericChecklist(c)){alert("Este checklist no aplica para este rol o macroproceso.");return;}
   var changed=[], blocked=[];
   c.checklist=c.checklist||{};
   qsa('.segment[data-id="'+id+'"]').forEach(function(seg){
@@ -4769,14 +4799,107 @@ function openSalesCaseInfo(id){
   var c=caseById(id);if(!c)return;var at=caseAllAttachments(c);var rows=at.map(function(a){return '<tr><td>'+esc(a.tipo)+'</td><td>'+esc(a.nombre)+'</td><td>'+esc(a.responsable||'')+'</td><td>'+esc(fmtDate(a.fecha))+'</td><td>'+fileDownloadLink(a.url,'Descargar')+'</td></tr>';}).join('');
   drawer(modal('Información general del pedido','<section class="grid grid-2"><article class="card"><h3>'+esc(c.reference||c.id)+'</h3><p><strong>Cliente:</strong> '+esc(c.client||'')+'</p><p><strong>Asesor:</strong> '+esc(c.salesAdvisor||c.createdByName||'')+'</p><p><strong>OC:</strong> '+esc(c.purchaseOrder||'')+'</p><p><strong>Factura:</strong> '+esc(c.invoiceNumber||c.factura||'')+'</p><p><strong>Estado:</strong> '+esc(c.status||'')+' · '+esc(processTitle(c.currentProcess))+'</p></article><article class="card"><h3>Acciones</h3><button class="btn btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">Reportar no entrega</button> '+((c.partialShipmentOpen||c.hasPartialShipment)?'<button class="btn btn-primary" data-action="resendPending" data-id="'+esc(c.id)+'">Reenviar faltante</button>':'')+'</article></section><section class="card" style="margin-top:12px"><h3>Anexos descargables</h3><div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Archivo</th><th>Responsable</th><th>Fecha</th><th>Descarga</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin anexos registrados.</td></tr>')+'</tbody></table></div></section>'));
 }
-function salesReportRows(){var q=(state.filters.search||'').toLowerCase();return state.cases.filter(function(c){var created=new Date(c.createdAt||Date.now()).toISOString().slice(0,10);var txt=[c.reference,c.client,c.purchaseOrder,c.invoiceNumber,c.factura,c.salesAdvisor,c.createdByName,c.status,processTitle(c.currentProcess)].join(' ').toLowerCase();return !q||txt.indexOf(q)>=0;}).sort(function(a,b){return new Date(b.createdAt||b.updatedAt)-new Date(a.createdAt||a.updatedAt);});}
-function renderSalesReports(){
-  var list=salesReportRows();var byAdvisor={};list.forEach(function(c){var k=c.salesAdvisor||c.createdByName||'Sin asesor';byAdvisor[k]=(byAdvisor[k]||0)+1;});var barsHtml=bars(Object.keys(byAdvisor).map(function(k){return{label:k,value:byAdvisor[k]};}));
-  var rows=list.map(function(c){return '<tr><td><strong>'+esc(caseDisplayTitle(c))+'</strong><br><small>Factura: '+esc(c.invoiceNumber||c.factura||'—')+'</small></td><td>'+esc(c.client||'')+'</td><td>'+esc(c.salesAdvisor||c.createdByName||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td><button class="btn btn-small btn-primary" data-action="salesCaseInfo" data-id="'+esc(c.id)+'">Ver anexos</button> <button class="btn btn-small btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">No entrega</button></td></tr>';}).join('');
-  layout(header('Recuento diario de ventas','Pedidos por asesor, distribución del flujo, búsqueda por pedido, orden de compra, factura, cliente o estado.','<button class="btn btn-gold" data-action="exportSalesReport">Descargar informe</button>')+'<section class="card"><div class="grid grid-2"><label class="field"><span>Buscar</span><input class="input" id="salesSearch" value="'+esc(state.filters.search||'')+'" placeholder="Pedido, OC, factura, cliente, asesor, estado"></label></div></section><section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Pedidos por asesor</h3>'+barsHtml+'</article><article class="card kpi"><span>Total filtrado</span><strong>'+list.length+'</strong><small>Pedidos</small></article></section><section class="card" style="margin-top:16px"><h3>Listado trazable</h3><div class="table-wrap"><table><thead><tr><th>Pedido / OC</th><th>Cliente</th><th>Asesor</th><th>Proceso</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin pedidos.</td></tr>')+'</tbody></table></div></section>');
-  var inp=qs('#salesSearch');if(inp)inp.oninput=function(){state.filters.search=this.value;renderSalesReports();};
+function salesAdvisorName(c){return String((c&&(c.salesAdvisor||c.createdByName||c.createdByEmail))||'Sin asesor').trim()||'Sin asesor';}
+function canSeeAllSalesReports(){return canSeeAll() || isAdminRoleValue(state.user&&state.user.role);}
+function salesBaseRows(){
+  var role=normalizeRole(state.user&&state.user.role);
+  return state.cases.filter(function(c){
+    if(!c)return false;
+    if(canSeeAllSalesReports())return true;
+    if(role==="ventas"){
+      var me=normalizePersonText(state.user.name||''), uid=state.user.uid||'';
+      return c.createdBy===uid || normalizePersonText(c.createdByName||'')===me || normalizePersonText(c.salesAdvisor||'')===me;
+    }
+    return c.createdBy===(state.user&&state.user.uid);
+  });
 }
-function exportSalesReport(){var list=salesReportRows();var rows=list.map(function(c){return '<tr><td>'+esc(c.reference||'')+'</td><td>'+esc(c.purchaseOrder||'')+'</td><td>'+esc(c.invoiceNumber||c.factura||'')+'</td><td>'+esc(c.client||'')+'</td><td>'+esc(c.salesAdvisor||c.createdByName||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+esc(c.status||'')+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td>'+caseAllAttachments(c).length+'</td></tr>';}).join('');downloadTextFile('recuento_ventas_'+new Date().toISOString().slice(0,10)+'.xls','<html><meta charset="utf-8"><body><h2>Recuento diario de ventas</h2><table border="1"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso</th><th>Estado</th><th>Fecha</th><th>Anexos</th></tr></thead><tbody>'+rows+'</tbody></table></body></html>','application/vnd.ms-excel;charset=utf-8');}
+function salesAdvisorOptions(){
+  var map={};
+  salesBaseRows().forEach(function(c){var a=salesAdvisorName(c);map[a]=1;});
+  return Object.keys(map).sort(function(a,b){return a.localeCompare(b);});
+}
+function salesReportRows(){
+  var f=state.salesFilters||{search:'',advisor:'',from:'',to:'',process:'',status:''};
+  var q=String(f.search||'').toLowerCase();
+  return salesBaseRows().filter(function(c){
+    var created=new Date(c.createdAt||c.updatedAt||Date.now());
+    var createdDay=!isNaN(created.getTime())?created.toISOString().slice(0,10):'';
+    var txt=[caseDisplayTitle(c),c.client,c.purchaseOrder,c.invoiceNumber,c.factura,salesAdvisorName(c),c.createdByName,c.status,processTitle(c.currentProcess),c.requestedDelivery,c.deliveryType].join(' ').toLowerCase();
+    if(q && txt.indexOf(q)<0)return false;
+    if(f.advisor && salesAdvisorName(c)!==f.advisor)return false;
+    if(f.process && c.currentProcess!==f.process)return false;
+    if(f.status && c.status!==f.status)return false;
+    if(f.from && createdDay && createdDay<f.from)return false;
+    if(f.to && createdDay && createdDay>f.to)return false;
+    return true;
+  }).sort(function(a,b){return new Date(b.createdAt||b.updatedAt)-new Date(a.createdAt||a.updatedAt);});
+}
+function salesCountBy(list,fn){
+  var map={};
+  (list||[]).forEach(function(c){var k=fn(c)||'Sin dato';map[k]=(map[k]||0)+1;});
+  return Object.keys(map).sort(function(a,b){return map[b]-map[a]||a.localeCompare(b);}).map(function(k){return{label:k,value:map[k]};});
+}
+function salesSummaryStats(list){
+  list=list||[];
+  return {
+    total:list.length,
+    abiertos:list.filter(function(c){return !c.closedAt && !/cerrado|cancelado/i.test(String(c.status||''));}).length,
+    cerrados:list.filter(function(c){return !!c.closedAt || /^cerrado/i.test(String(c.status||''));}).length,
+    requerimientos:list.filter(function(c){return Number(c.totalRequirements||0)>0 || c.status==='en_espera' || c.status==='espera_ventas';}).length,
+    retenidos:list.filter(function(c){return !!c.salesHold || c.currentProcess==='caja' || /reten/i.test(String(c.priority||''));}).length,
+    parciales:list.filter(function(c){return !!(c.isPartialShipment||c.hasPartialShipment||c.partialShipmentOpen||(c.partialShipments||[]).length);}).length
+  };
+}
+function statusText(st){
+  var map={creado_ventas:'Creado por ventas',asignado:'Asignado',en_proceso:'En proceso',en_espera:'En espera',espera_transportadora:'Espera transportadora',espera_ventas:'Ventas pendiente',pendiente_gerencia:'Gerencia pendiente',cerrado_conforme:'Cerrado conforme',cerrado_con_novedad:'Cerrado con novedad',cancelado:'Cancelado'};
+  return map[st]||st||'Sin estado';
+}
+function caseProcessFlowWithNames(c){
+  var parts=[];
+  FLOW.forEach(function(p){
+    var st=c.processStats&&c.processStats[p];
+    var names=[];
+    if(st&&st.responsibles){names=(st.responsibles||[]).map(function(r){return r.name||r.userName||r.email||'';}).filter(Boolean);}
+    if(c.currentProcess===p && c.assignedName)names.push(c.assignedName);
+    names=uniqueArray(names).filter(function(n){return normalizePersonText(n)!==normalizePersonText(processOwnerTitle(p));});
+    if(st || c.currentProcess===p)parts.push(processTitle(p)+': '+(names.length?names.join(', '):'sin responsable individual registrado'));
+  });
+  return parts.join(' | ') || ('Ventas: '+salesAdvisorName(c));
+}
+function renderSalesReports(){
+  var list=salesReportRows(), f=state.salesFilters||{};
+  var advisors=salesAdvisorOptions();
+  var summary=salesSummaryStats(list);
+  var byAdvisor=salesCountBy(list,salesAdvisorName);
+  var byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);});
+  var byStatus=salesCountBy(list,function(c){return statusText(c.status);});
+  var advisorOpts='<option value="">Todos los asesores visibles</option>'+advisors.map(function(a){return '<option value="'+esc(a)+'" '+(f.advisor===a?'selected':'')+'>'+esc(a)+'</option>';}).join('');
+  var processOpts='<option value="">Todos los procesos</option>'+activeProcessKeys().map(function(k){return '<option value="'+k+'" '+(f.process===k?'selected':'')+'>'+esc(processTitle(k))+'</option>';}).join('');
+  var statusOpts=[['','Todos los estados'],['asignado','Asignado'],['en_proceso','En proceso'],['en_espera','En espera'],['espera_ventas','Ventas pendiente'],['espera_transportadora','Espera transportadora'],['cerrado_conforme','Cerrado conforme'],['cerrado_con_novedad','Cerrado con novedad'],['cancelado','Cancelado']].map(function(o){return '<option value="'+o[0]+'" '+(f.status===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join('');
+  var rows=list.map(function(c){return '<tr><td><strong>'+esc(caseDisplayTitle(c))+'</strong><br><small>Factura: '+esc(c.invoiceNumber||c.factura||'—')+'</small></td><td>'+esc(c.client||'')+'</td><td>'+esc(salesAdvisorName(c))+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td>'+esc(caseResponsibleNames(c))+'</td><td><button class="btn btn-small btn-primary" data-action="salesCaseInfo" data-id="'+esc(c.id)+'">Ver anexos</button> <button class="btn btn-small btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">No entrega</button></td></tr>';}).join('');
+  layout(header('Ventas diaria','Seguimiento individual de pedidos creados por asesor, con filtros y exportación tipo dashboard.','<button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
+    '<section class="card"><div class="grid grid-3"><label class="field"><span>Buscar</span><input class="input" id="salesSearch" value="'+esc(f.search||'')+'" placeholder="Pedido, OC, factura, cliente, asesor, estado"></label><label class="field"><span>Asesor</span><select class="select" id="salesAdvisor">'+advisorOpts+'</select></label><label class="field"><span>Proceso</span><select class="select" id="salesProcess">'+processOpts+'</select></label></div><div class="grid grid-3" style="margin-top:10px"><label class="field"><span>Desde</span><input class="input" type="date" id="salesFrom" value="'+esc(f.from||'')+'"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="salesTo" value="'+esc(f.to||'')+'"></label><label class="field"><span>Estado</span><select class="select" id="salesStatus">'+statusOpts+'</select></label></div></section>'+
+    '<section class="grid grid-4" style="margin-top:16px"><article class="card kpi"><span>Total filtrado</span><strong>'+summary.total+'</strong><small>Pedidos</small></article><article class="card kpi"><span>Abiertos</span><strong>'+summary.abiertos+'</strong><small>En flujo</small></article><article class="card kpi"><span>Cerrados</span><strong>'+summary.cerrados+'</strong><small>Finalizados</small></article><article class="card kpi"><span>Req. / retenidos</span><strong>'+summary.requerimientos+' / '+summary.retenidos+'</strong><small>Gestión especial</small></article></section>'+
+    '<section class="grid grid-3" style="margin-top:16px"><article class="card"><h3>Pedidos por asesor</h3>'+countBars(byAdvisor)+'</article><article class="card"><h3>Distribución por proceso</h3>'+countBars(byProcess)+'</article><article class="card"><h3>Distribución por estado</h3>'+countBars(byStatus)+'</article></section>'+
+    '<section class="card" style="margin-top:16px"><h3>Listado trazable por asesor</h3><div class="table-wrap"><table><thead><tr><th>Pedido / OC</th><th>Cliente</th><th>Asesor</th><th>Proceso</th><th>Estado</th><th>Fecha</th><th>Intervinieron</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin pedidos para los filtros seleccionados.</td></tr>')+'</tbody></table></div></section>');
+  ['salesSearch','salesAdvisor','salesProcess','salesFrom','salesTo','salesStatus'].forEach(function(id){var el=qs('#'+id);if(!el)return;el.oninput=el.onchange=function(){state.salesFilters.search=qs('#salesSearch').value;state.salesFilters.advisor=qs('#salesAdvisor').value;state.salesFilters.process=qs('#salesProcess').value;state.salesFilters.from=qs('#salesFrom').value;state.salesFilters.to=qs('#salesTo').value;state.salesFilters.status=qs('#salesStatus').value;renderSalesReports();};});
+}
+function excelBar(value,max){var w=max?Math.round((Number(value||0)/max)*100):0;return '<div style="background:#dbeafe;width:160px;height:14px;border:1px solid #bfdbfe"><div style="background:#1d4ed8;width:'+w+'%;height:14px"></div></div>'; }
+function excelSectionTable(title,items){
+  items=items||[];var max=items.reduce(function(m,x){return Math.max(m,Number(x.value||0));},0)||1;
+  return '<h2>'+escapeExcel(title)+'</h2><table border="1" cellspacing="0" cellpadding="4"><tr><th>Concepto</th><th>Cantidad</th><th>Gráfica</th></tr>'+items.map(function(x){return '<tr><td>'+escapeExcel(x.label)+'</td><td>'+Number(x.value||0)+'</td><td>'+excelBar(x.value,max)+'</td></tr>';}).join('')+'</table>';
+}
+function exportSalesReport(){
+  var list=salesReportRows(), summary=salesSummaryStats(list);
+  var byAdvisor=salesCountBy(list,salesAdvisorName), byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);}), byStatus=salesCountBy(list,function(c){return statusText(c.status);});
+  var detailRows=list.map(function(c){return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.invoiceNumber||c.factura||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(statusText(c.status))+'</td><td>'+escapeExcel(fmtDate(c.createdAt))+'</td><td>'+escapeExcel(fmtDate(c.updatedAt))+'</td><td>'+escapeExcel(c.requestedDelivery?processTitle(c.requestedDelivery):'')+'</td><td>'+escapeExcel(c.deliveryType?processTitle(c.deliveryType):'')+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(caseProcessFlowWithNames(c))+'</td><td>'+Number(c.totalRequirements||0)+'</td><td>'+caseAllAttachments(c).length+'</td><td>'+escapeExcel(c.closedAt?fmtDate(c.closedAt):'')+'</td></tr>';}).join('');
+  var html='<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1{color:#173b77}h2{color:#173b77;margin-top:24px}table{border-collapse:collapse;margin-bottom:16px}th{background:#173b77;color:#fff}td,th{font-size:12px} .kpi td{font-size:16px;font-weight:bold;text-align:center}</style></head><body>'+
+    '<h1>Dashboard ventas · trazabilidad por asesor</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>El informe respeta los filtros aplicados en la consola de Ventas diaria.</p>'+
+    '<table class="kpi" border="1" cellspacing="0" cellpadding="8"><tr><th>Total pedidos</th><th>Abiertos</th><th>Cerrados</th><th>Requerimientos</th><th>Retenidos</th><th>Parciales</th></tr><tr><td>'+summary.total+'</td><td>'+summary.abiertos+'</td><td>'+summary.cerrados+'</td><td>'+summary.requerimientos+'</td><td>'+summary.retenidos+'</td><td>'+summary.parciales+'</td></tr></table>'+
+    excelSectionTable('Gráfica 1 · Pedidos por asesor',byAdvisor)+excelSectionTable('Gráfica 2 · Distribución por proceso',byProcess)+excelSectionTable('Gráfica 3 · Distribución por estado',byStatus)+
+    '<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Creado</th><th>Actualizado</th><th>Entrega solicitada</th><th>Entrega definida</th><th>Responsables que intervinieron</th><th>Flujo con nombres</th><th>Requerimientos</th><th>Anexos</th><th>Cierre</th></tr></thead><tbody>'+detailRows+'</tbody></table></body></html>';
+  downloadTextFile('dashboard_ventas_'+new Date().toISOString().slice(0,10)+'.xls',html,'application/vnd.ms-excel;charset=utf-8');
+}
 function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
 function bindActions(){
