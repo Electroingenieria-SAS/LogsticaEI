@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v66-asignacion-alistamiento";
+var CACHE_VERSION = "ei-trazabilidad-v67-no-entrega-requerimientos";
 var APP_SHELL = ["./","./index.html","./styles.css","./app.js","./firebase-config.js","./manifest.json","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg","./assets/sounds/universfield-new-notification-051-494246.mp3","./assets/sounds/te-llego-un-requerimiento.mp3","./assets/sounds/te-llego-un-reporte.mp3","./assets/sounds/tu-pedido-lleva-mas.mp3","./assets/sounds/tienes-un-nuevo-pedido.mp3","./assets/sounds/han-cerrado-tu-pedido.mp3","./assets/feedback/art-spinning-sticker.gif","./assets/feedback/hands-up-ok-gauss.gif"];
 function sameOrigin(request){try{return new URL(request.url).origin===self.location.origin;}catch(e){return false;}}
 function isHtml(request){return request.mode==="navigate" || ((request.headers.get("accept")||"").indexOf("text/html")>=0);}
