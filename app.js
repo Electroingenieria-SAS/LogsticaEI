@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v84_ios_feed_fast_sales";
+var storageKey = "ei_trazabilidad_v85_ventas_diarias_rapidas";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -44,6 +44,9 @@ var state = {
   dataLoading: false,
   filters: { search:"", status:"", process:"" },
   salesFilters: { search:"", advisor:"", from:"", to:"", process:"", status:"" },
+  salesLoading: false,
+  salesLastRefreshAt: 0,
+  salesRefreshPromise: null,
   kpiFilters: { from:"", to:"", process:"", user:"" },
   pdfExtraction: null,
   realtime: { caseUnsubs: [], eventUnsub: null, eventUnsubs: [], userUnsub: null, pollTimer: null, buckets: {}, eventBuckets: {}, initialCasesLoaded: false, initialEventsLoaded: false, lastHash: "", lastEventHash: "", lastChangeAt: 0, lastEventAt: 0, startedAt: 0, pendingRender: false },
@@ -733,10 +736,9 @@ function salesLoadIdentityKeys(){
   if(!state.user)return [];
   var name=String(state.user.name||"").trim();
   var email=String(state.user.email||"").trim();
-  var base=[state.user.uid,state.user.id,state.user.profileUid,state.user.userId,email,name];
+  var uidValue=String(state.user.uid||state.user.id||state.user.profileUid||state.user.userId||"").trim();
+  var base=[uidValue,email,name];
   if(name){
-    base.push(name.toUpperCase());
-    base.push(name.toLowerCase());
     base.push(stripAccents(name).toLowerCase().replace(/\s+/g,"_"));
     base.push(stripAccents(name).toLowerCase().replace(/\s+/g," "));
   }
@@ -744,26 +746,100 @@ function salesLoadIdentityKeys(){
     base.push(email.toLowerCase());
     base.push(email.toLowerCase().replace(/[@.\-]+/g,"_"));
   }
-  return uniqueArray(base.map(function(x){return String(x||"").trim();}).filter(Boolean)).slice(0,10);
+  return uniqueArray(base.map(function(x){return String(x||"").trim();}).filter(Boolean)).slice(0,6);
 }
-function loadSalesCasesFast(){
+function salesCacheKey(){
+  var u=state.user||{};
+  var id=String(u.uid||u.id||u.email||u.name||"anon").replace(/[^a-z0-9_@.\-]+/gi,"_");
+  return storageKey+"_ventas_diarias_cache_"+id;
+}
+function compactSalesCaseForCache(c){
+  if(!c)return null;
+  var keep=["id","reference","caseNumber","pedido","purchaseOrder","ordenCompra","oc","invoiceNumber","factura","client","nit","city","createdAt","updatedAt","closedAt","status","currentProcess","procedureCode","requestedDelivery","deliveryType","createdBy","createdByName","createdByEmail","salesAdvisor","assignedRole","assignedName","assignedUid","assignedTo","assignedEmail","assignedUsers","assignedUserIds","visibleRoles","targetRoles","totalRequirements","priority","salesHold","noDelivery","noDeliveryStatus","returnToCash","isPartialShipment","hasPartialShipment","partialShipmentOpen","partialShipments","evidence","attachments","files","documentFlow","processStats","stateHistory"];
+  var out={};
+  keep.forEach(function(k){if(c[k]!==undefined)out[k]=c[k];});
+  if(Array.isArray(out.evidence)&&out.evidence.length>25)out.evidence=out.evidence.slice(-25);
+  if(Array.isArray(out.attachments)&&out.attachments.length>25)out.attachments=out.attachments.slice(-25);
+  if(Array.isArray(out.stateHistory)&&out.stateHistory.length>80)out.stateHistory=out.stateHistory.slice(-80);
+  return out;
+}
+function readSalesCasesCache(){
+  try{
+    var raw=localStorage.getItem(salesCacheKey());
+    if(!raw)return [];
+    var pack=JSON.parse(raw);
+    if(!pack||!Array.isArray(pack.items))return [];
+    state.salesLastRefreshAt=pack.at||0;
+    return pack.items.filter(Boolean);
+  }catch(e){return [];}
+}
+function writeSalesCasesCache(list){
+  try{
+    var items=sortByUpdated(uniqueById(list||[])).slice(0,260).map(compactSalesCaseForCache).filter(Boolean);
+    localStorage.setItem(salesCacheKey(),JSON.stringify({at:Date.now(),items:items}));
+    state.salesLastRefreshAt=Date.now();
+  }catch(e){}
+}
+function mergeSalesCasesIntoState(list){
+  var mine=sortByUpdated(uniqueById(list||[]));
+  var map={};
+  mine.forEach(function(c){if(c&&c.id)map[c.id]=c;});
+  (state.cases||[]).forEach(function(c){if(!c||!c.id||map[c.id])return; if(!caseBelongsToCurrentSalesUser(c))mine.push(c);});
+  return sortByUpdated(uniqueById(mine));
+}
+function loadSalesCasesFastOnline(){
   var keys=salesLoadIdentityKeys();
+  var name=String(state.user&&state.user.name||"").trim();
+  var email=String(state.user&&state.user.email||"").trim();
+  var uidValue=String(state.user&&state.user.uid||"").trim();
   var queries=[];
-  keys.forEach(function(id){
-    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdBy","==",id),260),"cases.sales.createdBy:"+id));
-    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByName","==",id),260),"cases.sales.createdByName:"+id));
-    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("salesAdvisor","==",id),260),"cases.sales.salesAdvisor:"+id));
-    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByEmail","==",id),260),"cases.sales.createdByEmail:"+id));
-  });
+  if(uidValue)queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdBy","==",uidValue),120),"cases.sales.createdBy.uid"));
+  if(email){
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByEmail","==",email),120),"cases.sales.createdByEmail"));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByEmail","==",email.toLowerCase()),120),"cases.sales.createdByEmail.lower"));
+  }
+  if(name){
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByName","==",name),120),"cases.sales.createdByName"));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("salesAdvisor","==",name),120),"cases.sales.salesAdvisor"));
+  }
+  var snake=keys.filter(function(x){return x.indexOf("_")>0 && x.indexOf("@")<0;})[0];
+  if(snake){
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByName","==",snake),80),"cases.sales.createdByName.alias"));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("salesAdvisor","==",snake),80),"cases.sales.salesAdvisor.alias"));
+  }
   return Promise.all(queries).then(function(snaps){
     var all=[];snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
-    all=sortByUpdated(uniqueById(all));
+    all=sortByUpdated(uniqueById(all)).filter(caseBelongsToCurrentSalesUser);
     if(all.length)return all;
-    // respaldo liviano: solo recientes, no bloquea la app si reglas o índice fallan
-    return db.collection("cases").orderBy("updatedAt","desc").limit(220).get().then(function(snap){
+    return db.collection("cases").orderBy("updatedAt","desc").limit(120).get().then(function(snap){
       return sortByUpdated(docsToList(snap).filter(caseBelongsToCurrentSalesUser));
     }).catch(function(){return [];});
   });
+}
+function refreshSalesCasesInBackground(reason){
+  if(!db||!state.user)return Promise.resolve([]);
+  if(state.salesRefreshPromise)return state.salesRefreshPromise;
+  state.salesLoading=true;
+  state.salesRefreshPromise=loadSalesCasesFastOnline().then(function(list){
+    writeSalesCasesCache(list);
+    state.cases=mergeSalesCasesIntoState(list);
+    state.salesLoading=false;
+    state.salesRefreshPromise=null;
+    if(state.route==="sales_reports"||state.route==="dashboard"||state.route==="cases")render();
+    return list;
+  }).catch(function(e){
+    console.warn("Ventas diaria: actualización en segundo plano falló",reason,e);
+    state.salesLoading=false;
+    state.salesRefreshPromise=null;
+    if(state.route==="sales_reports")renderSalesReports();
+    return [];
+  });
+  return state.salesRefreshPromise;
+}
+function loadSalesCasesFast(){
+  var cached=readSalesCasesCache();
+  refreshSalesCasesInBackground("loadCasesForRole");
+  return Promise.resolve(cached.length?cached:[]);
 }
 function loadingPedidosPanel(text){
   return '<section class="mobile-loading-orders card"><div class="loading-spinner-dot"></div><div><strong>Cargando pedidos</strong><span>'+esc(text||'Estamos trayendo solo la información necesaria para tu rol. Espere un momento.')+'</span></div></section>';
@@ -5633,7 +5709,10 @@ function renderSalesReports(){
   var processOpts='<option value="">Todos los procesos</option>'+activeProcessKeys().map(function(k){return '<option value="'+k+'" '+(f.process===k?'selected':'')+'>'+esc(processTitle(k))+'</option>';}).join('');
   var statusOpts=[['','Todos los estados'],['asignado','Asignado'],['en_proceso','En proceso'],['en_espera','En espera'],['espera_ventas','Ventas pendiente'],['espera_transportadora','Espera transportadora'],['no_entregado','No entregado'],['devolucion_caja','Devolución a Caja'],['cerrado_conforme','Cerrado conforme'],['cerrado_con_novedad','Cerrado con novedad'],['cancelado','Cancelado']].map(function(o){return '<option value="'+o[0]+'" '+(f.status===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join('');
   var rows=list.map(function(c){return '<tr><td><strong>'+esc(caseDisplayTitle(c))+'</strong><br><small>Factura: '+esc(c.invoiceNumber||c.factura||'—')+'</small></td><td>'+esc(c.client||'')+'</td><td>'+esc(salesAdvisorName(c))+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td>'+esc(caseResponsibleNames(c))+'</td><td><button class="btn btn-small btn-primary" data-action="salesCaseInfo" data-id="'+esc(c.id)+'">Ver anexos</button> <button class="btn btn-small btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">No entrega</button></td></tr>';}).join('');
-  layout(header('Ventas diaria','Pedidos por asesor, búsqueda y exportación.','<button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
+  var salesLoadingHtml=state.salesLoading?loadingPedidosPanel(state.salesLastRefreshAt?'Actualizando ventas diaria en segundo plano. Ya puedes revisar la información guardada mientras termina.':'Cargando ventas diaria por primera vez. Esto no bloquea el resto de la app.'):'';
+  var salesRefreshText=state.salesLoading?'Actualizando…':'Actualizar ahora';
+  layout(header('Ventas diaria','Pedidos por asesor, búsqueda y exportación.','<button class="btn btn-gold" data-action="refreshSalesReports">'+salesRefreshText+'</button> <button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
+    salesLoadingHtml+
     '<section class="card"><div class="grid grid-3"><label class="field"><span>Buscar</span><input class="input" id="salesSearch" value="'+esc(f.search||'')+'" placeholder="Pedido, OC, factura, cliente, asesor, estado"></label><label class="field"><span>Asesor</span><select class="select" id="salesAdvisor">'+advisorOpts+'</select></label><label class="field"><span>Proceso</span><select class="select" id="salesProcess">'+processOpts+'</select></label></div><div class="grid grid-3" style="margin-top:10px"><label class="field"><span>Desde</span><input class="input" type="date" id="salesFrom" value="'+esc(f.from||'')+'"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="salesTo" value="'+esc(f.to||'')+'"></label><label class="field"><span>Estado</span><select class="select" id="salesStatus">'+statusOpts+'</select></label></div></section>'+
     '<section class="grid grid-4" style="margin-top:16px"><article class="card kpi"><span>Total filtrado</span><strong>'+summary.total+'</strong><small>Pedidos</small></article><article class="card kpi"><span>Abiertos</span><strong>'+summary.abiertos+'</strong><small>En flujo</small></article><article class="card kpi"><span>Cerrados</span><strong>'+summary.cerrados+'</strong><small>Finalizados</small></article><article class="card kpi"><span>Req. / retenidos</span><strong>'+summary.requerimientos+' / '+summary.retenidos+'</strong><small>Gestión especial</small></article></section>'+
     '<section class="grid grid-3 sales-charts" style="margin-top:16px"><article class="card"><h3>Pedidos por asesor</h3>'+countBars(byAdvisor)+'</article><article class="card"><h3>Distribución por proceso</h3>'+countBars(byProcess)+'</article><article class="card"><h3>Distribución por estado</h3>'+countBars(byStatus)+'</article></section>'+
@@ -5673,6 +5752,7 @@ function bindActions(){
     if(a==="manageNoDelivery")openNoDeliveryManagement(id);
     if(a==="salesCaseInfo")openSalesCaseInfo(id);
     if(a==="exportSalesReport")exportSalesReport();
+    if(a==="refreshSalesReports"){state.salesLoading=true;renderSalesReports();refreshSalesCasesInBackground("manual");}
     if(a==="resendPending")resendPendingItems(id);
     if(a==="deliveryEvidence")openDeliveryEvidence(id,b.getAttribute("data-delivery-evidence"));
     if(a==="certificate")openCertificateModal();
