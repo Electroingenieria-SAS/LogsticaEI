@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v81_audio_checklist_solo_chequeo";
+var storageKey = "ei_trazabilidad_v82_mobile_simple_ventas_restore";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -712,6 +712,24 @@ function loadCasesForRole(){
   var nr=normalizeRole(state.user.role);
   var myIds=currentUserIdentityAliases();
 
+  // V82: Ventas necesita ver su tablero por asesor aunque los pedidos antiguos
+  // hayan quedado creados con nombre/correo y no con el UID actual de Auth.
+  // Se carga la base y luego salesBaseRows/caseVisibleForCurrentUser filtran por asesor.
+  if(nr==="ventas"){
+    return db.collection("cases").orderBy("updatedAt","desc").limit(900).get().then(docsToList).catch(function(){
+      var salesQueries=[];
+      myIds.forEach(function(id){
+        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("createdBy","==",id),"cases.sales.createdBy:"+id));
+        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("createdByName","==",id),"cases.sales.createdByName:"+id));
+        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("salesAdvisor","==",id),"cases.sales.salesAdvisor:"+id));
+      });
+      return Promise.all(salesQueries).then(function(snaps){
+        var all=[];snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
+        return sortByUpdated(uniqueById(all));
+      });
+    });
+  }
+
   if(nr==="auxiliar_corte"){
     queries.push(safeQuerySnapshot(db.collection("cases").where("hasCuts","==",true),"cases.hasCuts"));
   }
@@ -1094,6 +1112,14 @@ function createOrderGuidePanel(){
     "Agregue una observación corta y cree el pedido para iniciar trazabilidad."
   ];
   return '<section class="card process-guide-card"><div class="section-title"><div><h3>Crear pedido en 4 pasos</h3><p>La OC queda visible en el título para que Ventas pueda buscar y auditar el pedido fácilmente.</p></div><span class="chip primary">Ventas</span></div><ol class="process-steps">'+steps.map(function(step,i){return '<li><span>'+(i+1)+'</span><p>'+esc(step)+'</p></li>';}).join('')+'</ol></section>';
+}
+
+function mobileSimpleCasePanel(c){
+  if(!c)return "";
+  var pdf=casePdfUrl(c)?'<a class="btn btn-small" href="'+esc(casePdfUrl(c))+'" target="_blank" rel="noopener">PDF</a>':'';
+  var req=c.openRequirement?'<div class="mini-danger"><strong>Requerimiento:</strong> '+esc(c.openRequirement.reason||'Activo')+'</div>':'';
+  var assigned=assignedPeopleText(c)||c.assignedName||'';
+  return '<section class="card mobile-simple-card"><div class="mobile-simple-head"><div><h3>'+esc(caseDisplayTitle(c))+'</h3><p>'+esc(processTitle(c.currentProcess))+' · '+esc(statusText(c.status))+'</p></div>'+statusChip(c.status)+'</div><div class="mobile-simple-grid"><span><b>Cliente</b>'+esc(c.client||'—')+'</span><span><b>OC</b>'+esc(purchaseOrderValue(c)||'—')+'</span><span><b>Asignado</b>'+esc(assigned||'—')+'</span><span><b>Avance</b>'+progress(c)+'%</span></div><div class="mobile-simple-actions">'+pdf+'</div>'+req+'</section>';
 }
 
 function caseRelevantToCurrentUser(c){
@@ -1637,25 +1663,37 @@ function navBtn(r){
 
 function mobileItems(){
   var r=state.user?normalizeRole(state.user.role):"";
-  if(r==="auxiliar_corte")return [["corte_cable","Cortes","CT"],["reports","Reportes","RP"]];
-  if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["reports","Reportes","RP"],["dashboard","Inicio","⌂"]];
-  if(r==="proyectos")return [["projects","Proyectos","PR"],["reports","Reportes","RP"]];
-  if(r==="gerencia")return [["indicators","VSM","◉"],["approvals","Aprob.","✓"],["reports","Reportes","RP"],["users","Usuarios","US"],["dashboard","Inicio","⌂"]];
-  if(r==="ventas")return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["requirements","Req.","↗"]];
-  if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["reports","Reportes","RP"],["requirements","Req.","↗"],["approvals","Aprob.","✓"]];
-  if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["reports","Reportes","RP"],["admin","Admin","AD"]];
-  var rs=routes();return [["dashboard","Inicio","⌂"],[rs.processes[0]||"cases","Panel","▤"],[canCreate()?"create":"requirements",canCreate()?"Crear":"Req.",canCreate()?"+":"↗"],["requirements","Req.","↗"]];
+  if(r==="auxiliar_corte")return [["corte_cable","Cortes","CT"],["dashboard","Inicio","⌂"]];
+  if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["dashboard","Inicio","⌂"]];
+  if(r==="proyectos")return [["projects","Proyectos","PR"],["dashboard","Inicio","⌂"]];
+  if(r==="gerencia")return [["dashboard","Inicio","⌂"],["approvals","Aprob.","✓"],["requirements","Req.","↗"]];
+  if(r==="ventas")return [["create","Crear","+"],["sales_reports","Mis pedidos","VD"],["requirements","Req.","↗"],["dashboard","Inicio","⌂"]];
+  if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["requirements","Req.","↗"],["approvals","Aprob.","✓"]];
+  if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["cases","Casos","▤"]];
+  var rs=routes();return [["dashboard","Inicio","⌂"],[rs.processes[0]||"cases","Panel","▤"],["requirements","Req.","↗"]];
+}
+
+function mobileRouteAllowed(route){
+  var r=state.user?normalizeRole(state.user.role):"";
+  var always=["dashboard","cases","requirements","approvals"];
+  if(always.indexOf(route)>=0)return true;
+  if(route==="create"||route==="sales_reports")return r==="ventas"||isAdminRoleValue(r);
+  if(processes[route])return true;
+  // Módulos de configuración, reportes extensos, usuarios, VSM, proyectos y recepción de mercancía
+  // se mantienen para computador para no saturar la operación móvil.
+  return false;
 }
 
 function allMobileRoutes(){
   var rs=routes();
   var items=[];
   rs.main.forEach(function(r){
+    if(!mobileRouteAllowed(r))return;
     var info=routeInfo[r]||[r,"•"];
     items.push({route:r,label:info[0],icon:info[1],group:"Principal"});
   });
   rs.processes.forEach(function(r){
-    if(processes[r])items.push({route:r,label:processes[r].title,icon:processes[r].icon,group:"Macroprocesos"});
+    if(processes[r] && mobileRouteAllowed(r))items.push({route:r,label:processes[r].title,icon:processes[r].icon,group:"Macroprocesos"});
   });
   return items;
 }
@@ -1667,7 +1705,7 @@ function mobileFullMenuHtml(){
     groups[item.group]=groups[item.group]||[];
     groups[item.group].push(item);
   });
-  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú completo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado</button><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div>'+
+  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú operativo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div>'+
     Object.keys(groups).map(function(group){
       return '<div class="mobile-menu-group"><h3>'+esc(group)+'</h3><div class="mobile-menu-grid">'+groups[group].map(function(item){
         return '<button class="'+(state.route===item.route?'active':'')+'" data-route="'+item.route+'"><b>'+esc(item.icon)+'</b><span>'+esc(item.label)+'</span></button>';
@@ -1736,6 +1774,7 @@ function caseVisibleForCurrentUser(c){
   if(!state.user || !c)return false;
   if(canSeeAll())return true;
   if(c.createdBy===state.user.uid)return true;
+  if(normalizeRole(state.user.role)==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
   if(currentUserIsAssignedToCase(c))return true;
   if(currentUserBlockedByAssignment(c))return false;
   if(normalizeRole(c.assignedRole)===normalizeRole(state.user.role))return true;
@@ -2978,10 +3017,10 @@ function renderDetail(id){
   var checklistPanel=checklistPanelHtml(c,def);
   var deliveryMismatchPanel=c.deliveryRouteMismatchWarning?'<section class="notice" style="margin-top:16px"><strong>Revisión de ruta:</strong> '+esc(c.deliveryRouteMismatchWarning)+'</section>':'';
   var cutAlertPanel=(c.cutReturnAlerts||[]).length?'<section class="card" style="margin-top:16px"><h3>Carretos disponibles para empaletar</h3><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Metros</th><th>Hora</th><th>Acción</th></tr></thead><tbody>'+(c.cutReturnAlerts||[]).slice().reverse().map(function(a){return '<tr><td>'+esc(a.cutCode||a.cutId||'')+'</td><td>'+esc(a.reference||'')+'</td><td>'+esc(a.meters||'')+'</td><td>'+esc(fmtDate(a.returnedAt))+'</td><td>'+esc(a.detail||'Recoger en corte y empaletar para facturación.')+'</td></tr>';}).join('')+'</tbody></table></div></section>':'';
-  var caseDataPanel='<article class="card"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+flowTracePanel(c)+'<h3 style="margin-top:18px">Eventos recientes</h3>'+eventList(c.id)+'</article>';
-  var detailPanels=checklistPanel?'<section class="grid grid-2" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section style="margin-top:16px">'+caseDataPanel+'</section>';
+  var caseDataPanel='<article class="card case-data-panel mobile-desktop-extra"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+flowTracePanel(c)+'<h3 style="margin-top:18px">Eventos recientes</h3>'+eventList(c.id)+'</article>';
+  var detailPanels=checklistPanel?'<section class="grid grid-2 detail-panels" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section class="mobile-desktop-extra" style="margin-top:16px">'+caseDataPanel+'</section>';
   var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+processGuidePanel(c)+'<section class="grid grid-4"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+pdfDocumentCard(c,false)+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+cutsPanel(c)+deliveryEvidencePanel(c)+evidencePanel(c)+detailPanels);
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+mobileSimpleCasePanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
 }
 
 function nextActionButtons(c){
@@ -5526,10 +5565,10 @@ function renderSalesReports(){
   var processOpts='<option value="">Todos los procesos</option>'+activeProcessKeys().map(function(k){return '<option value="'+k+'" '+(f.process===k?'selected':'')+'>'+esc(processTitle(k))+'</option>';}).join('');
   var statusOpts=[['','Todos los estados'],['asignado','Asignado'],['en_proceso','En proceso'],['en_espera','En espera'],['espera_ventas','Ventas pendiente'],['espera_transportadora','Espera transportadora'],['no_entregado','No entregado'],['devolucion_caja','Devolución a Caja'],['cerrado_conforme','Cerrado conforme'],['cerrado_con_novedad','Cerrado con novedad'],['cancelado','Cancelado']].map(function(o){return '<option value="'+o[0]+'" '+(f.status===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join('');
   var rows=list.map(function(c){return '<tr><td><strong>'+esc(caseDisplayTitle(c))+'</strong><br><small>Factura: '+esc(c.invoiceNumber||c.factura||'—')+'</small></td><td>'+esc(c.client||'')+'</td><td>'+esc(salesAdvisorName(c))+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td>'+esc(caseResponsibleNames(c))+'</td><td><button class="btn btn-small btn-primary" data-action="salesCaseInfo" data-id="'+esc(c.id)+'">Ver anexos</button> <button class="btn btn-small btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">No entrega</button></td></tr>';}).join('');
-  layout(header('Ventas diaria','Seguimiento individual de pedidos creados por asesor, con filtros y exportación tipo dashboard.','<button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
+  layout(header('Ventas diaria','Pedidos por asesor, búsqueda y exportación.','<button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
     '<section class="card"><div class="grid grid-3"><label class="field"><span>Buscar</span><input class="input" id="salesSearch" value="'+esc(f.search||'')+'" placeholder="Pedido, OC, factura, cliente, asesor, estado"></label><label class="field"><span>Asesor</span><select class="select" id="salesAdvisor">'+advisorOpts+'</select></label><label class="field"><span>Proceso</span><select class="select" id="salesProcess">'+processOpts+'</select></label></div><div class="grid grid-3" style="margin-top:10px"><label class="field"><span>Desde</span><input class="input" type="date" id="salesFrom" value="'+esc(f.from||'')+'"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="salesTo" value="'+esc(f.to||'')+'"></label><label class="field"><span>Estado</span><select class="select" id="salesStatus">'+statusOpts+'</select></label></div></section>'+
     '<section class="grid grid-4" style="margin-top:16px"><article class="card kpi"><span>Total filtrado</span><strong>'+summary.total+'</strong><small>Pedidos</small></article><article class="card kpi"><span>Abiertos</span><strong>'+summary.abiertos+'</strong><small>En flujo</small></article><article class="card kpi"><span>Cerrados</span><strong>'+summary.cerrados+'</strong><small>Finalizados</small></article><article class="card kpi"><span>Req. / retenidos</span><strong>'+summary.requerimientos+' / '+summary.retenidos+'</strong><small>Gestión especial</small></article></section>'+
-    '<section class="grid grid-3" style="margin-top:16px"><article class="card"><h3>Pedidos por asesor</h3>'+countBars(byAdvisor)+'</article><article class="card"><h3>Distribución por proceso</h3>'+countBars(byProcess)+'</article><article class="card"><h3>Distribución por estado</h3>'+countBars(byStatus)+'</article></section>'+
+    '<section class="grid grid-3 sales-charts" style="margin-top:16px"><article class="card"><h3>Pedidos por asesor</h3>'+countBars(byAdvisor)+'</article><article class="card"><h3>Distribución por proceso</h3>'+countBars(byProcess)+'</article><article class="card"><h3>Distribución por estado</h3>'+countBars(byStatus)+'</article></section>'+
     '<section class="card" style="margin-top:16px"><h3>Listado trazable por asesor</h3><div class="table-wrap"><table><thead><tr><th>Pedido / OC</th><th>Cliente</th><th>Asesor</th><th>Proceso</th><th>Estado</th><th>Fecha</th><th>Intervinieron</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin pedidos para los filtros seleccionados.</td></tr>')+'</tbody></table></div></section>');
   ['salesSearch','salesAdvisor','salesProcess','salesFrom','salesTo','salesStatus'].forEach(function(id){var el=qs('#'+id);if(!el)return;el.oninput=el.onchange=function(){state.salesFilters.search=qs('#salesSearch').value;state.salesFilters.advisor=qs('#salesAdvisor').value;state.salesFilters.process=qs('#salesProcess').value;state.salesFilters.from=qs('#salesFrom').value;state.salesFilters.to=qs('#salesTo').value;state.salesFilters.status=qs('#salesStatus').value;renderSalesReports();};});
 }
