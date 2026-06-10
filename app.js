@@ -4597,11 +4597,32 @@ function stopWait(c){
   c.waitStartedAt=null;
 }
 function normalizeAssignmentUsers(users){
-  return uniqueArray((users||[]).map(function(u){
+  var seen={}, out=[];
+  (users||[]).forEach(function(raw){
+    var u=raw;
+    if(typeof raw==="string"){
+      var txt=String(raw||"").trim();
+      if(!txt)return;
+      if(txt.charAt(0)==="{"){
+        try{u=JSON.parse(txt);}catch(e){u={uid:txt};}
+      }else{
+        u=(state.users||[]).filter(function(x){return String(x.uid||x.id||"")===txt;})[0]||{uid:txt,id:txt};
+      }
+    }
+    if(!u || typeof u!=="object")return;
     var uidValue=String(u.uid||u.id||u.userId||"").trim();
-    if(!uidValue)return null;
-    return {uid:uidValue,name:u.name||u.displayName||u.email||"Usuario",email:u.email||"",role:normalizeRole(u.role||"aux_logistica")};
-  }).filter(Boolean).map(function(u){return JSON.stringify(u);})).map(function(x){return JSON.parse(x);});
+    if(!uidValue && typeof raw==="string")uidValue=String(raw||"").trim();
+    if(!uidValue || seen[uidValue])return;
+    seen[uidValue]=1;
+    var profile=(state.users||[]).filter(function(x){return String(x.uid||x.id||"")===uidValue;})[0]||{};
+    out.push({
+      uid:uidValue,
+      name:u.name||u.displayName||profile.name||profile.displayName||u.email||profile.email||uidValue,
+      email:u.email||profile.email||"",
+      role:normalizeRole(u.role||profile.role||"aux_logistica")
+    });
+  });
+  return out;
 }
 function applyPersonalAssignment(c,next,assignmentUsers){
   var users=normalizeAssignmentUsers(assignmentUsers);
@@ -4655,7 +4676,7 @@ function openAlistamientoAssignment(id){
     var ids=qsa('input[name="alistamientoUser"]:checked',e.target).map(function(x){return x.value;});
     if(users.length && !ids.length){alert('Seleccione al menos un auxiliar de alistamiento.');return;}
     if(ids.length>3){alert('Seleccione máximo 3 personas para evitar reprocesos y confusión.');return;}
-    var picked=users.filter(function(u){return ids.indexOf(u.uid||u.id)>=0;});
+    var picked=users.filter(function(u){return ids.indexOf(String(u.uid||u.id||""))>=0;});
     if(c.currentProcess==="recepcion_pedidos"){
       assignToProcess(c,'alistamiento',fd.get('detail')||'Recepción envía a alistamiento con responsable definido.',picked).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
     }else{
