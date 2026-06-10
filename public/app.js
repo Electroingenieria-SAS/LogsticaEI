@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v86_soporte_sellado_facturado_entregado";
+var storageKey = "ei_trazabilidad_v87_sellos_inferior_izquierda";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -2352,41 +2352,43 @@ function downloadBlobFile(blob,name){
   }catch(e){}
 }
 function stampDateLabel(){
-  try{return new Date().toLocaleString("es-CO",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
-  catch(e){return new Date().toLocaleString();}
+  try{return new Date().toLocaleDateString("es-CO",{year:"numeric",month:"long",day:"numeric"});}
+  catch(e){return new Date().toLocaleDateString();}
 }
-function loadStampLogo(pdfDoc){
-  return fetch(logoPath,{cache:"force-cache"}).then(function(r){return r.ok?r.arrayBuffer():Promise.reject(new Error("Sin logo"));}).then(function(buf){
-    var lower=String(logoPath||"").toLowerCase();
-    if(lower.indexOf(".png")>=0 || lower.indexOf("image/png")>=0)return pdfDoc.embedPng(buf);
-    return pdfDoc.embedJpg(buf).catch(function(){return pdfDoc.embedPng(buf);});
+function stampUserLabel(){
+  return "Usuario: "+String((state.user&&state.user.name)||"Electroingeniería").slice(0,60);
+}
+function loadStampImage(pdfDoc,src){
+  return fetch(src,{cache:"force-cache"}).then(function(r){return r.ok?r.arrayBuffer():Promise.reject(new Error("Sin sello"));}).then(function(buf){
+    return pdfDoc.embedPng(buf).catch(function(){return pdfDoc.embedJpg(buf);});
   }).catch(function(){return null;});
 }
-function drawEiStampBox(page,logo,font,bold,label,x,y,w,h,colors,meta){
-  page.drawRectangle({x:x,y:y,width:w,height:h,color:colors.fill,borderColor:colors.border,borderWidth:1.4,opacity:0.92,borderOpacity:0.95});
-  if(logo){
-    var lw=Math.min(44,w*0.32), lh=18;
-    page.drawImage(logo,{x:x+8,y:y+h-24,width:lw,height:lh,opacity:0.92});
-  }
-  page.drawText(label,{x:x+8,y:y+h-43,size:15,font:bold,color:colors.text});
-  page.drawText(meta.date,{x:x+8,y:y+16,size:6.6,font:font,color:colors.soft});
-  page.drawText(meta.user,{x:x+8,y:y+7,size:6.2,font:font,color:colors.soft});
+function sealTextWidth(font,text,size){
+  try{return font.widthOfTextAtSize(text,size);}catch(e){return String(text||"").length*size*0.52;}
 }
-function drawDoubleEiStamps(pdfDoc,page,logo,font,bold,c){
+function drawSealWithMeta(page,sealImage,font,bold,x,y,size,meta){
   var rgb=window.PDFLib.rgb;
-  var size=page.getSize();
-  var width=size.width,height=size.height;
-  var w=Math.min(155,Math.max(126,width*0.25));
-  var h=60,gap=8;
-  var total=(w*2)+gap;
-  var x=Math.max(18,width-total-24);
-  var y=Math.max(18,height-h-22);
-  var meta={
-    date:"Fecha: "+stampDateLabel(),
-    user:"Usuario: "+String((state.user&&state.user.name)||"EI").slice(0,40)
-  };
-  drawEiStampBox(page,logo,font,bold,"FACTURADO",x,y,w,h,{fill:rgb(1,0.97,0.74),border:rgb(0.91,0.65,0.02),text:rgb(0.05,0.17,0.42),soft:rgb(0.25,0.28,0.34)},meta);
-  drawEiStampBox(page,logo,font,bold,"ENTREGADO",x+w+gap,y,w,h,{fill:rgb(0.86,0.93,1),border:rgb(0.03,0.23,0.61),text:rgb(0.03,0.23,0.61),soft:rgb(0.25,0.28,0.34)},meta);
+  if(sealImage)page.drawImage(sealImage,{x:x,y:y,width:size,height:size,opacity:0.98});
+  var scaleX=size/1254, scaleY=size/1254;
+  var textColor=rgb(0.0,0.24,0.65);
+  var userText=meta.user||"";
+  var dateText=meta.date||"";
+  var userX=x+(627*scaleX), userY=y+(1254-935)*scaleY;
+  var dateX=x+(627*scaleX), dateY=y+(1254-990)*scaleY;
+  var userSize=Math.max(7.5,34*scaleY), dateSize=Math.max(7.1,34*scaleY);
+  page.drawText(userText,{x:userX-(sealTextWidth(bold,userText,userSize)/2),y:userY,size:userSize,font:bold,color:textColor});
+  page.drawText(dateText,{x:dateX-(sealTextWidth(bold,dateText,dateSize)/2),y:dateY,size:dateSize,font:bold,color:textColor});
+}
+function drawDoubleEiStamps(pdfDoc,page,facturadoSeal,entregadoSeal,font,bold,c){
+  var sizeData=page.getSize();
+  var width=sizeData.width;
+  var sealSize=Math.min(158,Math.max(124,width*0.23));
+  var gap=Math.max(10,sealSize*0.08);
+  var x=18;
+  var y=18;
+  var meta={user:stampUserLabel(),date:"Fecha: "+stampDateLabel()};
+  drawSealWithMeta(page,facturadoSeal,font,bold,x,y,sealSize,meta);
+  drawSealWithMeta(page,entregadoSeal,font,bold,x+sealSize+gap,y,sealSize,meta);
 }
 function imageFileToStampedPdf(file,c,PDFLib){
   return fileToArrayBufferPayload(file).then(function(buf){
@@ -2400,8 +2402,8 @@ function imageFileToStampedPdf(file,c,PDFLib){
         var scale=Math.min(maxW/iw,maxH/ih,1);
         var drawW=iw*scale,drawH=ih*scale;
         page.drawImage(img,{x:(612-drawW)/2,y:90,width:drawW,height:drawH});
-        return Promise.all([loadStampLogo(pdfDoc),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
-          drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],c);
+        return Promise.all([loadStampImage(pdfDoc,"./assets/stamps/facturado.png"),loadStampImage(pdfDoc,"./assets/stamps/entregado.png"),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
+          drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],parts[3],c);
           return pdfDoc.save();
         });
       });
@@ -2411,9 +2413,9 @@ function imageFileToStampedPdf(file,c,PDFLib){
 function pdfFileToStampedPdf(file,c,PDFLib){
   return fileToArrayBufferPayload(file).then(function(buf){
     return PDFLib.PDFDocument.load(buf,{ignoreEncryption:true}).then(function(pdfDoc){
-      return Promise.all([loadStampLogo(pdfDoc),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
+      return Promise.all([loadStampImage(pdfDoc,"./assets/stamps/facturado.png"),loadStampImage(pdfDoc,"./assets/stamps/entregado.png"),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
         var pages=pdfDoc.getPages();
-        pages.forEach(function(page){drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],c);});
+        pages.forEach(function(page){drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],parts[3],c);});
         return pdfDoc.save();
       });
     });
