@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v88_marca_agua_sellos";
+var storageKey = "ei_trazabilidad_v89_marca_agua_centrada_footer";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -2356,7 +2356,7 @@ function stampDateLabel(){
   catch(e){return new Date().toLocaleDateString();}
 }
 function stampUserLabel(){
-  return "Usuario: "+String((state.user&&state.user.name)||"Electroingeniería").slice(0,60);
+  return String((state.user&&state.user.name)||"Electroingeniería").slice(0,60);
 }
 function loadStampImage(pdfDoc,src){
   return fetch(src,{cache:"force-cache"}).then(function(r){return r.ok?r.arrayBuffer():Promise.reject(new Error("Sin sello"));}).then(function(buf){
@@ -2366,28 +2366,27 @@ function loadStampImage(pdfDoc,src){
 function sealTextWidth(font,text,size){
   try{return font.widthOfTextAtSize(text,size);}catch(e){return String(text||"").length*size*0.52;}
 }
-function drawSealWithMeta(page,sealImage,font,bold,x,y,size,meta){
-  var rgb=window.PDFLib.rgb;
-  if(sealImage)page.drawImage(sealImage,{x:x,y:y,width:size,height:size,opacity:0.16});
-  var textColor=rgb(0.0,0.24,0.65);
-  var userText=meta.user||"";
-  var dateText=meta.date||"";
-  var captionSize=Math.max(7.5,size*0.075);
-  var maxWidth=size*2+18;
-  page.drawText(userText,{x:x,y:Math.max(6,y-14),size:captionSize,font:bold,color:textColor,opacity:0.68,maxWidth:maxWidth});
-  page.drawText(dateText,{x:x,y:Math.max(0,y-28),size:captionSize-0.2,font:bold,color:textColor,opacity:0.62,maxWidth:maxWidth});
+function drawSealWithMeta(page,sealImage,x,y,size){
+  if(sealImage)page.drawImage(sealImage,{x:x,y:y,width:size,height:size,opacity:0.12});
 }
 function drawDoubleEiStamps(pdfDoc,page,facturadoSeal,entregadoSeal,font,bold,c){
+  var rgb=window.PDFLib.rgb;
   var sizeData=page.getSize();
   var width=sizeData.width;
   var height=sizeData.height;
-  var sealSize=Math.min(118,Math.max(86,width*0.16));
-  var gap=Math.max(10,sealSize*0.1);
-  var x=18;
-  var y=Math.max(42,height*0.08);
-  var meta={user:stampUserLabel(),date:"Fecha: "+stampDateLabel()};
-  drawSealWithMeta(page,facturadoSeal,font,bold,x,y,sealSize,meta);
-  if(entregadoSeal)page.drawImage(entregadoSeal,{x:x+sealSize+gap,y:y,width:sealSize,height:sealSize,opacity:0.16});
+  var sealSize=Math.min(170,Math.max(118,width*0.22));
+  var gap=Math.max(16,sealSize*0.12);
+  var totalWidth=(sealSize*2)+gap;
+  var x=Math.max(20,(width-totalWidth)/2);
+  var y=Math.max(48,(height-sealSize)/2);
+  drawSealWithMeta(page,facturadoSeal,x,y,sealSize);
+  drawSealWithMeta(page,entregadoSeal,x+sealSize+gap,y,sealSize);
+  var footerText='Facturado y entregado por '+stampUserLabel()+' en la fecha '+stampDateLabel();
+  var fontSize=Math.max(8.5,Math.min(11,width*0.015));
+  var textWidth=sealTextWidth(bold,footerText,fontSize);
+  var footerX=Math.max(12,(width-textWidth)/2);
+  var footerY=8;
+  page.drawText(footerText,{x:footerX,y:footerY,size:fontSize,font:bold,color:rgb(0.0,0.24,0.65),opacity:0.66});
 }
 function imageFileToStampedPdf(file,c,PDFLib){
   return fileToArrayBufferPayload(file).then(function(buf){
@@ -2421,9 +2420,9 @@ function pdfFileToStampedPdf(file,c,PDFLib){
   });
 }
 function buildStampedDispatchSupportFile(file,c,def,statusEl){
-  if(!def || def.key!=="supportPdf")return Promise.resolve({file:file,stamped:false});
+  if(!def || ["supportPdf","mercanciaRotulada","guiaTransportadora"].indexOf(def.key)<0)return Promise.resolve({file:file,stamped:false});
   if(!(fileIsPdf(file)||fileIsImage(file)))return Promise.resolve({file:file,stamped:false,unsupported:true});
-  if(statusEl)statusEl.textContent="Generando PDF sellado con FACTURADO y ENTREGADO...";
+  if(statusEl)statusEl.textContent="Generando PDF con marca de agua FACTURADO y ENTREGADO...";
   return loadPdfLibForStamp().then(function(PDFLib){
     var p=fileIsPdf(file)?pdfFileToStampedPdf(file,c,PDFLib):imageFileToStampedPdf(file,c,PDFLib);
     return p.then(function(bytes){
@@ -5287,15 +5286,15 @@ function openDeliveryEvidence(id,key){
         setTimeout(function(){downloadBlobFile(stampInfo.file,stampInfo.downloadName||stampInfo.file.name);},350);
       }
       c.deliveryEvidence=c.deliveryEvidence||{};
-      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||(stampInfo&&stampInfo.file&&stampInfo.file.name)||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint,stamped:!!(stampInfo&&stampInfo.stamped),stampLabels:(stampInfo&&stampInfo.stamped)?["FACTURADO","ENTREGADO"]:[],originalFileName:(stampInfo&&stampInfo.originalName)||file.name};
+      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||(stampInfo&&stampInfo.file&&stampInfo.file.name)||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint,stamped:!!(stampInfo&&stampInfo.stamped),stampLabels:(stampInfo&&stampInfo.stamped)?["FACTURADO","ENTREGADO"]:[],stampStyle:(stampInfo&&stampInfo.stamped)?"marca_agua":"",originalFileName:(stampInfo&&stampInfo.originalName)||file.name};
       c.checklist=c.checklist||{};
       c.checklist[def.checklist]="ok";
       c.deliveryFlow=c.deliveryFlow||{};
       var eventType="DELIVERY_EVIDENCE_UPLOADED";
       var eventDetail=def.title+" · "+(fd.get("detail")||"");
-      if(def.key==="supportPdf" && stampInfo && stampInfo.stamped){
+      if(stampInfo && stampInfo.stamped){
         eventType="DISPATCH_SUPPORT_STAMPED";
-        eventDetail="PDF/soporte de despacho sellado automáticamente con FACTURADO y ENTREGADO. Se descargó copia sellada.";
+        eventDetail=def.title+" marcado automáticamente con FACTURADO y ENTREGADO. Se descargó copia sellada.";
       }
       if(def.key==="mercanciaRotulada"){
         stopActive(c);
@@ -5324,8 +5323,8 @@ function openDeliveryEvidence(id,key){
         eventType="CASE_CLOSED";
         eventDetail="Despacho cerrado con guía/soporte final obligatorio.";
       }
-      appendEvidence(c,up,fd.get("detail")||(def.key==="supportPdf"&&stampInfo&&stampInfo.stamped?"PDF sellado FACTURADO + ENTREGADO":def.title));
-      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||(def.key==="supportPdf"&&stampInfo&&stampInfo.stamped?"PDF sellado FACTURADO + ENTREGADO":def.title));});
+      appendEvidence(c,up,fd.get("detail")||((stampInfo&&stampInfo.stamped)?(def.title+" con marca de agua FACTURADO + ENTREGADO"):def.title));
+      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||((stampInfo&&stampInfo.stamped)?(def.title+" con marca de agua FACTURADO + ENTREGADO"):def.title));});
     }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
