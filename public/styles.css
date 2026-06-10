@@ -367,3 +367,28 @@ button,input,select,textarea{font:inherit} button{border:0;cursor:pointer} texta
   font-weight:750;
 }
 .ei-upload-feedback.success{background:rgba(6,27,70,.22);}
+
+
+/* V80 · Popups más compactos y responsivos */
+.drawer{padding:clamp(8px,2vw,18px);}
+.drawer.open{place-items:center;}
+.modal{width:min(760px,calc(100vw - 28px));max-height:min(84dvh,760px);border-radius:24px;padding:18px;}
+.modal-head{position:sticky;top:0;background:#fff;z-index:2;padding-bottom:10px;border-bottom:1px solid rgba(148,163,184,.18);}
+.modal .form{gap:10px;}
+.ei-upload-feedback{padding:16px;}
+.ei-upload-feedback-card{width:min(310px,88vw);border-radius:24px;padding:18px 18px 17px;}
+.ei-upload-feedback-card img{width:92px;height:92px;margin-bottom:8px;}
+.ei-upload-feedback-card strong{font-size:1rem;}
+.ei-upload-feedback-card span{font-size:.84rem;}
+@media(max-width:680px){
+  .drawer{align-items:end;padding:8px 8px calc(8px + var(--safe-bottom));}
+  .drawer.open{place-items:end center;}
+  .modal{width:100%;max-height:84dvh;border-radius:22px 22px 0 0;padding:14px 13px;}
+  .modal-head{margin-bottom:12px;}
+  .modal-head h3{font-size:1rem;}
+}
+@media(max-width:430px){
+  .modal{max-height:82dvh;padding:13px 12px;}
+  .ei-upload-feedback-card{width:min(290px,90vw);}
+  .ei-upload-feedback-card img{width:82px;height:82px;}
+}

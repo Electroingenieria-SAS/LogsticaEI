@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v79_asignacion_alias_usuario";
+var storageKey = "ei_trazabilidad_v80_estetica_asignados_checklist";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -24,7 +24,8 @@ var notificationAssets = {
   logisticsClosed:"./assets/sounds/haz-cerrado-el-caso.mp3",
   createdRequirement:"./assets/sounds/haz-creado-un-requerimiento.mp3",
   createdOrder:"./assets/sounds/haz-creado-pedido.mp3",
-  createdReport:"./assets/sounds/novedad-creada.mp3"
+  createdReport:"./assets/sounds/novedad-creada.mp3",
+  checklistClosed:"./assets/sounds/chequeo.mp3"
 };
 var feedbackAssets = {
   loading:"./assets/feedback/art-spinning-sticker.gif",
@@ -349,8 +350,49 @@ function caseAssignedUsers(c){
   });
   return out;
 }
+function technicalAssignedLabel(value){
+  var v=String(value||"").trim();
+  if(!v)return true;
+  if(v.indexOf("@")>=0)return true;
+  if(/^uid[_-]/i.test(v))return true;
+  if(/^[a-z0-9]{18,}$/i.test(v))return true;
+  if(/_ei_com_co$/i.test(v))return true;
+  if(/^[a-z]_[a-z0-9_]+_com_co$/i.test(v))return true;
+  if((v.match(/_/g)||[]).length>=3)return true;
+  return false;
+}
+function prettyAssignedName(value){
+  var v=String(value||"").trim();
+  if(!v || technicalAssignedLabel(v))return "";
+  v=v.replace(/[._-]+/g," ").replace(/\s+/g," ").trim();
+  if(!v)return "";
+  return v.split(" ").map(function(w){
+    if(w.length<=2)return w.toUpperCase();
+    return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+  }).join(" ");
+}
 function assignedPeopleText(c){
-  var names=caseAssignedUsers(c).map(function(u){return u.name||u.email||u.uid;});
+  var names=[];
+  if(c && Array.isArray(c.assignedUsers)){
+    c.assignedUsers.forEach(function(u){
+      var profile=findUserByAnyIdentifier((u&& (u.uid||u.id||u.userId||u.email||u.name))||"")||{};
+      var display=(u&&(u.name||u.displayName))||(profile&&(profile.name||profile.displayName))||"";
+      var clean=prettyAssignedName(display);
+      if(clean)names.push(clean);
+    });
+  }
+  if(!names.length && c && c.assignedName){
+    String(c.assignedName).split(/\s*[·/]\s*/).forEach(function(part){
+      var clean=prettyAssignedName(part);
+      if(clean)names.push(clean);
+    });
+  }
+  if(!names.length){
+    caseAssignedUsers(c).forEach(function(u){
+      var clean=prettyAssignedName(u.name||u.displayName||"");
+      if(clean)names.push(clean);
+    });
+  }
   return uniqueArray(names).join(" · ");
 }
 function caseHasPersonalAssignees(c){return caseAssignedUserIds(c).length>0;}
@@ -5172,7 +5214,7 @@ function closeChecklist(id){
   });
   if(blocked.length){alert("Algunos puntos no se guardaron porque son automáticos: "+blocked.join(", "));}
   if(!changed.length){alert("No hay cambios nuevos para guardar.");return;}
-  persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){playAudioAsset(notificationAssets.checklistClosed,0.9);renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function discardChecklistChanges(id){
   renderDetail(id);
