@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v72_asignacion_recepcion_lider";
+var storageKey = "ei_trazabilidad_v74_logistica_unificada_puede_asignar";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -58,6 +58,7 @@ var roles = {
   jefe_logistica:"Jefe de logística",
   lider_logistico:"Logística / despacho (unificado)",
   coordinador_logistico:"Logística / despacho (unificado)",
+  lider_logistica:"Logística / despacho (unificado)",
   aux_logistica:"Auxiliar logística",
   auxiliar_corte:"Auxiliar de corte",
   caja:"Caja",
@@ -237,12 +238,15 @@ function avgMs(sum,count){return count?Math.max(0,Number(sum||0)/count):0;}
 function toDayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x;}
 function daysBetweenInclusive(a,b){var ms=toDayStart(b)-toDayStart(a);return Math.max(1,Math.floor(ms/86400000)+1);}
 function normalizeRole(r){
-  var x=stripAccents(String(r||"").trim().toLowerCase()).replace(/[\s\-]+/g,"_");
+  var raw=stripAccents(String(r||"").trim().toLowerCase());
+  var x=raw.replace(/[^a-z0-9_]+/g,"_").replace(/^_+|_+$/g,"").replace(/_+/g,"_");
   if(x==="superadmin"||x==="super_admin"||x==="super_administrador"||x==="superadministrador"||x==="super_administracion")return "super_admin";
   if(x==="administrador")return "admin";
   if(x==="jefe_logistico")return "jefe_logistica";
   if(x==="auxiliar_de_corte"||x==="operario_corte"||x==="operario_de_corte")return "auxiliar_corte";
-  if(x==="lider_logistica"||x==="lider_logistico"||x==="lider_de_logistica"||x==="lider_despacho"||x==="coordinador_logistica")return "coordinador_logistico";
+  if(x==="auxiliar_logistica"||x==="auxiliar_de_logistica"||x==="aux_logistico"||x==="auxiliar_despacho")return "aux_logistica";
+  if(x==="lider_logistica"||x==="lider_logistico"||x==="lider_de_logistica"||x==="lider_despacho"||x==="coordinador_logistica"||x==="coordinador_logistico"||x==="logistica_despacho_unificado"||x==="logistica_despacho_unificada"||x==="logistica_despacho"||x==="logistica_y_despacho"||x==="despacho_logistica"||x==="despacho_logistico"||x==="logistica"||x==="despacho")return "coordinador_logistico";
+  if((x.indexOf("logistica")>=0||x.indexOf("logistico")>=0) && (x.indexOf("despacho")>=0||x.indexOf("unificado")>=0||x.indexOf("unificada")>=0))return "coordinador_logistico";
   if(x==="lider_de_recepcion"||x==="recepcion_mercancia"||x==="recepcionista"||x==="mendoza")return "lider_recepcion";
   if(x==="proyecto"||x==="proyectos"||x==="rol_proyectos"||x==="area_proyectos"||x==="modulo_proyectos"||x==="projects")return "proyectos";
   return x;
@@ -351,7 +355,7 @@ function currentUserDirectlyAssigned(c){
 function canAssignAlistamientoFromReception(c){
   if(!state.user || !c || c.closedAt || c.currentProcess!=="recepcion_pedidos")return false;
   var r=normalizeRole(state.user.role);
-  if(isAdminRoleValue(r) || r==="jefe_logistica" || r==="gerencia")return true;
+  if(isAdminRoleValue(r) || r==="jefe_logistica" || r==="gerencia" || r==="coordinador_logistico")return true;
   if(canAccessProcess(r,"recepcion_pedidos"))return true;
   if(normalizeRole(c.assignedRole)===r)return true;
   if(currentUserDirectlyAssigned(c))return true;
@@ -407,8 +411,18 @@ function resolveNoDeliveryRequirements(c,answer){
     }
   });
 }
+function alistamientoAssignableRoles(){
+  return ["aux_logistica","coordinador_logistico","lider_logistico","lider_logistica"];
+}
+function isAlistamientoAssignableRole(roleValue){
+  return alistamientoAssignableRoles().indexOf(normalizeRole(roleValue))>=0;
+}
 function alistamientoAssignableUsers(){
-  return (state.users||[]).filter(function(u){return u && u.isActive!==false && normalizeRole(u.role)==="aux_logistica";}).sort(function(a,b){return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));});
+  return (state.users||[]).filter(function(u){return u && u.isActive!==false && isAlistamientoAssignableRole(u.role);}).sort(function(a,b){
+    var ar=alistamientoAssignableRoles().indexOf(normalizeRole(a.role)), br=alistamientoAssignableRoles().indexOf(normalizeRole(b.role));
+    if(ar!==br)return ar-br;
+    return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));
+  });
 }
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
@@ -611,6 +625,9 @@ function loadCasesForRole(){
   }else{
     queries.push(db.collection("cases").where("assignedRole","==",state.user.role).get());
     queries.push(db.collection("cases").where("createdBy","==",state.user.uid).get());
+    queries.push(db.collection("cases").where("assignedUserIds","array-contains",state.user.uid).get());
+    queries.push(db.collection("cases").where("visibleRoles","array-contains",normalizeRole(state.user.role)).get());
+    queries.push(db.collection("cases").where("targetRoles","array-contains",normalizeRole(state.user.role)).get());
   }
 
   return Promise.all(queries).then(function(snaps){
@@ -629,7 +646,7 @@ function loadEventsForRole(){
 function loadUsersForRole(){
   if(!state.user)return Promise.resolve([]);
   var r=normalizeRole(state.user.role);
-  if(!canSeeAll() && !canManageUsers() && r!=="coordinador_logistico" && r!=="lider_logistico")return Promise.resolve([]);
+  if(!canSeeAll() && !canManageUsers() && r!=="coordinador_logistico" && r!=="lider_logistico" && r!=="lider_logistica")return Promise.resolve([]);
   return db.collection("users").get().then(docsToList).catch(function(){return [];});
 }
 
@@ -4592,13 +4609,13 @@ function openAlistamientoAssignment(id){
     var idu=u.uid||u.id, checked=selected.indexOf(idu)>=0?'checked':'';
     return '<label class="check-card"><input type="checkbox" name="alistamientoUser" value="'+esc(idu)+'" '+checked+'> <strong>'+esc(u.name||u.email||idu)+'</strong><br><small>'+esc(roleTitle(u.role||"aux_logistica"))+(u.email?' · '+esc(u.email):'')+'</small></label>';
   }).join('');
-  if(!rows)rows='<div class="notice warning"><strong>No encontré usuarios activos con rol Auxiliar logística.</strong><br>Puede enviar el pedido a la bandeja general de Alistamiento, pero para asignación individual primero cree o active usuarios con ese rol.</div>';
-  drawer(modal('Asignar solicitud de alistamiento','<form class="form" id="alistAssignForm"><div class="notice"><strong>Recepción/Líder logístico define quién alista:</strong> seleccione de 1 a 3 auxiliares. El pedido quedará visible para los usuarios seleccionados y el VSM guardará la asignación individual.</div>'+rows+'<label class="field"><span>Observación de asignación</span><textarea class="textarea" name="detail" placeholder="Ej.: pedido grande, asignar a dos auxiliares; pedido urgente; separar por referencias."></textarea></label><button class="btn btn-primary" type="submit">'+(c.currentProcess==="recepcion_pedidos"?'Enviar a alistamiento':'Guardar asignación')+'</button></form>'));
+  if(!rows)rows='<div class="notice warning"><strong>No encontré usuarios activos para asignar alistamiento.</strong><br>El rol Logística/despacho unificado sí puede asignar, pero debe poder leer usuarios activos y existir al menos un usuario con rol Auxiliar logística. Revise Firebase Rules y que los auxiliares estén activos.</div>';
+  drawer(modal('Asignar solicitud de alistamiento','<form class="form" id="alistAssignForm"><div class="notice"><strong>Recepción o Logística/despacho unificado define quién alista:</strong> seleccione de 1 a 3 auxiliares/responsables logísticos. El pedido quedará visible para los usuarios seleccionados y el VSM guardará la asignación individual.</div>'+rows+'<label class="field"><span>Observación de asignación</span><textarea class="textarea" name="detail" placeholder="Ej.: pedido grande, asignar a dos auxiliares; pedido urgente; separar por referencias."></textarea></label><button class="btn btn-primary" type="submit">'+(c.currentProcess==="recepcion_pedidos"?'Enviar a alistamiento':'Guardar asignación')+'</button></form>'));
   qs('#alistAssignForm').onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target);
     var ids=qsa('input[name="alistamientoUser"]:checked',e.target).map(function(x){return x.value;});
-    if(users.length && !ids.length){alert('Seleccione al menos un auxiliar de alistamiento.');return;}
+    if(users.length && !ids.length){alert('Seleccione al menos un responsable de alistamiento.');return;}
     if(ids.length>3){alert('Seleccione máximo 3 personas para evitar reprocesos y confusión.');return;}
     var picked=users.filter(function(u){return ids.indexOf(u.uid||u.id)>=0;});
     if(c.currentProcess==="recepcion_pedidos"){
