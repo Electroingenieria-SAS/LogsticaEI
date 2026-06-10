@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v82_mobile_simple_ventas_restore";
+var storageKey = "ei_trazabilidad_v83_mobile_feed_names_clean";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -353,6 +353,22 @@ function caseAssignedUsers(c){
 function technicalAssignedLabel(value){
   var v=String(value||"").trim();
   if(!v)return true;
+  var n=normalizeRole(v);
+  var blockedRoles=[
+    "admin","super_admin","gerencia","ventas","proyectos","jefe_logistica",
+    "coordinador_logistico","aux_logistica","auxiliar_corte","caja",
+    "inventarios","lider_recepcion","auditoria"
+  ];
+  if(blockedRoles.indexOf(n)>=0)return true;
+  var labelNorm=normalizePersonText(v);
+  var generic=[
+    "logistica despacho","logística despacho","logistica despacho unificado",
+    "logística despacho unificado","logistica","logística","despacho",
+    "coordinador logistico","coordinador logístico","lider logistico",
+    "líder logístico","jefe logistica","jefe logística","caja",
+    "ventas","gerencia","administrador desarrollador"
+  ];
+  if(generic.indexOf(labelNorm)>=0)return true;
   if(v.indexOf("@")>=0)return true;
   if(/^uid[_-]/i.test(v))return true;
   if(/^[a-z0-9]{18,}$/i.test(v))return true;
@@ -365,11 +381,17 @@ function prettyAssignedName(value){
   var v=String(value||"").trim();
   if(!v || technicalAssignedLabel(v))return "";
   v=v.replace(/[._-]+/g," ").replace(/\s+/g," ").trim();
-  if(!v)return "";
+  if(!v || technicalAssignedLabel(v))return "";
   return v.split(" ").map(function(w){
     if(w.length<=2)return w.toUpperCase();
     return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
   }).join(" ");
+}
+function cleanVisiblePersonName(value){
+  return prettyAssignedName(value);
+}
+function splitPossiblePeopleText(value){
+  return String(value||"").split(/\s*[·;,|/]\s*/).map(function(x){return x.trim();}).filter(Boolean);
 }
 function assignedPeopleText(c){
   var names=[];
@@ -857,7 +879,9 @@ function personKey(uidValue,name,email){
   return nm?"name:"+nm:"";
 }
 function addPersonToMap(map,uidValue,name,email,role,processKey){
-  var label=String(name||email||uidValue||"").trim();
+  var rawLabel=String(name||email||uidValue||"").trim();
+  if(!rawLabel)return;
+  var label=cleanVisiblePersonName(rawLabel);
   if(!label)return;
   var generic=[roleTitle(role),processOwnerTitle(processKey),processTitle(processKey),"Caja","Gerencia","Ventas","Logística / despacho","Administrador / Desarrollador"];
   var labelNorm=normalizePersonText(label);
@@ -899,7 +923,7 @@ function caseParticipantList(c){
   return Object.keys(map).map(function(k){return map[k];}).sort(function(a,b){return a.label.localeCompare(b.label);});
 }
 function caseResponsibleNames(c){
-  var names=caseParticipantList(c).map(function(x){return x.label;});
+  var names=caseParticipantList(c).map(function(x){return cleanVisiblePersonName(x.label);}).filter(Boolean);
   return uniqueArray(names).join(" · ") || "Sin responsable individual registrado";
 }
 function personMatchesSelected(person,userKey){
@@ -1118,7 +1142,7 @@ function mobileSimpleCasePanel(c){
   if(!c)return "";
   var pdf=casePdfUrl(c)?'<a class="btn btn-small" href="'+esc(casePdfUrl(c))+'" target="_blank" rel="noopener">PDF</a>':'';
   var req=c.openRequirement?'<div class="mini-danger"><strong>Requerimiento:</strong> '+esc(c.openRequirement.reason||'Activo')+'</div>':'';
-  var assigned=assignedPeopleText(c)||c.assignedName||'';
+  var assigned=assignedPeopleText(c)||'';
   return '<section class="card mobile-simple-card"><div class="mobile-simple-head"><div><h3>'+esc(caseDisplayTitle(c))+'</h3><p>'+esc(processTitle(c.currentProcess))+' · '+esc(statusText(c.status))+'</p></div>'+statusChip(c.status)+'</div><div class="mobile-simple-grid"><span><b>Cliente</b>'+esc(c.client||'—')+'</span><span><b>OC</b>'+esc(purchaseOrderValue(c)||'—')+'</span><span><b>Asignado</b>'+esc(assigned||'—')+'</span><span><b>Avance</b>'+progress(c)+'%</span></div><div class="mobile-simple-actions">'+pdf+'</div>'+req+'</section>';
 }
 
@@ -1806,7 +1830,8 @@ function caseList(list){
   return'<div class="case-list">'+list.map(function(c){
     var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
     var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
-    return'<article class="case-card"><div><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedPeopleText(c)?'<span class="chip success">Asignado: '+esc(assignedPeopleText(c))+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
+    var assignedLabel=assignedPeopleText(c);
+    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
   }).join("")+'</div>';
 }
 
@@ -5547,8 +5572,8 @@ function caseProcessFlowWithNames(c){
   FLOW.forEach(function(p){
     var st=c.processStats&&c.processStats[p];
     var names=[];
-    if(st&&st.responsibles){names=(st.responsibles||[]).map(function(r){return r.name||r.userName||r.email||'';}).filter(Boolean);}
-    if(c.currentProcess===p && c.assignedName)names.push(c.assignedName);
+    if(st&&st.responsibles){names=(st.responsibles||[]).map(function(r){return cleanVisiblePersonName(r.name||r.userName||r.email||'');}).filter(Boolean);}
+    if(c.currentProcess===p && c.assignedName){splitPossiblePeopleText(c.assignedName).forEach(function(n){var clean=cleanVisiblePersonName(n);if(clean)names.push(clean);});}
     names=uniqueArray(names).filter(function(n){return normalizePersonText(n)!==normalizePersonText(processOwnerTitle(p));});
     if(st || c.currentProcess===p)parts.push(processTitle(p)+': '+(names.length?names.join(', '):'sin responsable individual registrado'));
   });
