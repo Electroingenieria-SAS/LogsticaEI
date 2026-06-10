@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v87_sellos_inferior_izquierda";
+var storageKey = "ei_trazabilidad_v88_marca_agua_sellos";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -2368,27 +2368,26 @@ function sealTextWidth(font,text,size){
 }
 function drawSealWithMeta(page,sealImage,font,bold,x,y,size,meta){
   var rgb=window.PDFLib.rgb;
-  if(sealImage)page.drawImage(sealImage,{x:x,y:y,width:size,height:size,opacity:0.98});
-  var scaleX=size/1254, scaleY=size/1254;
+  if(sealImage)page.drawImage(sealImage,{x:x,y:y,width:size,height:size,opacity:0.16});
   var textColor=rgb(0.0,0.24,0.65);
   var userText=meta.user||"";
   var dateText=meta.date||"";
-  var userX=x+(627*scaleX), userY=y+(1254-935)*scaleY;
-  var dateX=x+(627*scaleX), dateY=y+(1254-990)*scaleY;
-  var userSize=Math.max(7.5,34*scaleY), dateSize=Math.max(7.1,34*scaleY);
-  page.drawText(userText,{x:userX-(sealTextWidth(bold,userText,userSize)/2),y:userY,size:userSize,font:bold,color:textColor});
-  page.drawText(dateText,{x:dateX-(sealTextWidth(bold,dateText,dateSize)/2),y:dateY,size:dateSize,font:bold,color:textColor});
+  var captionSize=Math.max(7.5,size*0.075);
+  var maxWidth=size*2+18;
+  page.drawText(userText,{x:x,y:Math.max(6,y-14),size:captionSize,font:bold,color:textColor,opacity:0.68,maxWidth:maxWidth});
+  page.drawText(dateText,{x:x,y:Math.max(0,y-28),size:captionSize-0.2,font:bold,color:textColor,opacity:0.62,maxWidth:maxWidth});
 }
 function drawDoubleEiStamps(pdfDoc,page,facturadoSeal,entregadoSeal,font,bold,c){
   var sizeData=page.getSize();
   var width=sizeData.width;
-  var sealSize=Math.min(158,Math.max(124,width*0.23));
-  var gap=Math.max(10,sealSize*0.08);
+  var height=sizeData.height;
+  var sealSize=Math.min(118,Math.max(86,width*0.16));
+  var gap=Math.max(10,sealSize*0.1);
   var x=18;
-  var y=18;
+  var y=Math.max(42,height*0.08);
   var meta={user:stampUserLabel(),date:"Fecha: "+stampDateLabel()};
   drawSealWithMeta(page,facturadoSeal,font,bold,x,y,sealSize,meta);
-  drawSealWithMeta(page,entregadoSeal,font,bold,x+sealSize+gap,y,sealSize,meta);
+  if(entregadoSeal)page.drawImage(entregadoSeal,{x:x+sealSize+gap,y:y,width:sealSize,height:sealSize,opacity:0.16});
 }
 function imageFileToStampedPdf(file,c,PDFLib){
   return fileToArrayBufferPayload(file).then(function(buf){
