@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v83_mobile_feed_names_clean";
+var storageKey = "ei_trazabilidad_v84_ios_feed_fast_sales";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -41,6 +41,7 @@ var state = {
   receptions: [],
   projectOrders: [],
   reports: [],
+  dataLoading: false,
   filters: { search:"", status:"", process:"" },
   salesFilters: { search:"", advisor:"", from:"", to:"", process:"", status:"" },
   kpiFilters: { from:"", to:"", process:"", user:"" },
@@ -398,7 +399,7 @@ function assignedPeopleText(c){
   if(c && Array.isArray(c.assignedUsers)){
     c.assignedUsers.forEach(function(u){
       var profile=findUserByAnyIdentifier((u&& (u.uid||u.id||u.userId||u.email||u.name))||"")||{};
-      var display=(u&&(u.name||u.displayName))||(profile&&(profile.name||profile.displayName))||"";
+      var display=(profile&&(profile.name||profile.displayName))||(u&&(u.name||u.displayName))||"";
       var clean=prettyAssignedName(display);
       if(clean)names.push(clean);
     });
@@ -724,6 +725,49 @@ function safeQuerySnapshot(q,label){
   });
 }
 
+
+function limitedQuery(q,amount){
+  try{return q.limit(amount||260);}catch(e){return q;}
+}
+function salesLoadIdentityKeys(){
+  if(!state.user)return [];
+  var name=String(state.user.name||"").trim();
+  var email=String(state.user.email||"").trim();
+  var base=[state.user.uid,state.user.id,state.user.profileUid,state.user.userId,email,name];
+  if(name){
+    base.push(name.toUpperCase());
+    base.push(name.toLowerCase());
+    base.push(stripAccents(name).toLowerCase().replace(/\s+/g,"_"));
+    base.push(stripAccents(name).toLowerCase().replace(/\s+/g," "));
+  }
+  if(email){
+    base.push(email.toLowerCase());
+    base.push(email.toLowerCase().replace(/[@.\-]+/g,"_"));
+  }
+  return uniqueArray(base.map(function(x){return String(x||"").trim();}).filter(Boolean)).slice(0,10);
+}
+function loadSalesCasesFast(){
+  var keys=salesLoadIdentityKeys();
+  var queries=[];
+  keys.forEach(function(id){
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdBy","==",id),260),"cases.sales.createdBy:"+id));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByName","==",id),260),"cases.sales.createdByName:"+id));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("salesAdvisor","==",id),260),"cases.sales.salesAdvisor:"+id));
+    queries.push(safeQuerySnapshot(limitedQuery(db.collection("cases").where("createdByEmail","==",id),260),"cases.sales.createdByEmail:"+id));
+  });
+  return Promise.all(queries).then(function(snaps){
+    var all=[];snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
+    all=sortByUpdated(uniqueById(all));
+    if(all.length)return all;
+    // respaldo liviano: solo recientes, no bloquea la app si reglas o índice fallan
+    return db.collection("cases").orderBy("updatedAt","desc").limit(220).get().then(function(snap){
+      return sortByUpdated(docsToList(snap).filter(caseBelongsToCurrentSalesUser));
+    }).catch(function(){return [];});
+  });
+}
+function loadingPedidosPanel(text){
+  return '<section class="mobile-loading-orders card"><div class="loading-spinner-dot"></div><div><strong>Cargando pedidos</strong><span>'+esc(text||'Estamos trayendo solo la información necesaria para tu rol. Espere un momento.')+'</span></div></section>';
+}
 function loadCasesForRole(){
   if(canSeeAll()){
     return db.collection("cases").orderBy("updatedAt","desc").get().then(docsToList);
@@ -734,22 +778,10 @@ function loadCasesForRole(){
   var nr=normalizeRole(state.user.role);
   var myIds=currentUserIdentityAliases();
 
-  // V82: Ventas necesita ver su tablero por asesor aunque los pedidos antiguos
-  // hayan quedado creados con nombre/correo y no con el UID actual de Auth.
-  // Se carga la base y luego salesBaseRows/caseVisibleForCurrentUser filtran por asesor.
+  // V84: para asesores de ventas no se descarga toda la colección.
+  // Se consultan solo los pedidos asociados al UID, correo o nombre del asesor.
   if(nr==="ventas"){
-    return db.collection("cases").orderBy("updatedAt","desc").limit(900).get().then(docsToList).catch(function(){
-      var salesQueries=[];
-      myIds.forEach(function(id){
-        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("createdBy","==",id),"cases.sales.createdBy:"+id));
-        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("createdByName","==",id),"cases.sales.createdByName:"+id));
-        salesQueries.push(safeQuerySnapshot(db.collection("cases").where("salesAdvisor","==",id),"cases.sales.salesAdvisor:"+id));
-      });
-      return Promise.all(salesQueries).then(function(snaps){
-        var all=[];snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
-        return sortByUpdated(uniqueById(all));
-      });
-    });
+    return loadSalesCasesFast();
   }
 
   if(nr==="auxiliar_corte"){
@@ -831,7 +863,11 @@ function loadData(){
     state.receptions=res[3]||[];
     state.projectOrders=res[4]||[];
     state.reports=res[5]||[];
+    state.dataLoading=false;
     autoMigrateLegacyProcesses();
+  }).catch(function(e){
+    state.dataLoading=false;
+    throw e;
   });
 }
 
@@ -1780,10 +1816,15 @@ function loadProfileAndRender(fbUser){
   showLoading("Sesión detectada. Cargando perfil y módulo asignado...");
   return db.collection("users").doc(fbUser.uid).get().then(function(doc){
     applyProfileFromDoc(fbUser,doc);
+    state.dataLoading=true;
+    render();
     return loadData();
   }).then(function(){
     startRealtimeSync();
     render();
+  }).catch(function(e){
+    state.dataLoading=false;
+    showError((e&&e.message)||e||"No se pudo cargar la sesión.");
   });
 }
 
@@ -1822,7 +1863,8 @@ function renderDashboard(){
   if(isExecutive())return renderIndicators();
   var list=visibleCases();var open=list.filter(function(c){return !c.closedAt;});
   var waits=open.filter(function(c){return c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja";});
-  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="grid grid-4"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja";}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section><section class="card" style="margin-top:16px"><h3>Casos recientes</h3>'+caseList(list.slice(0,10))+'</section>');
+  var loadingHtml=state.dataLoading?loadingPedidosPanel('Cargando pedidos y bandeja del usuario...'):'';
+  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja";}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section><section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
 }
 
 function caseList(list){
@@ -1836,7 +1878,8 @@ function caseList(list){
 }
 
 function renderCases(){
-  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_transportadora">Espera transportadora</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="no_entregado">No entregado</option><option value="devolucion_caja">Devolución a Caja</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+activeProcessKeys().map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+caseList(visibleCases());
+  var casesHtml=state.dataLoading?loadingPedidosPanel('Cargando casos visibles para este perfil...')+ '<div class="case-skeleton-list"><span></span><span></span><span></span></div>' : caseList(visibleCases());
+  var content=header("Casos","Consulta y gestión por macroproceso.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+'<section class="filters"><input class="input" id="fSearch" placeholder="Buscar"><select class="select" id="fStatus"><option value="">Todos los estados</option><option value="asignado">Asignado</option><option value="en_proceso">En proceso</option><option value="espera_transportadora">Espera transportadora</option><option value="espera_ventas">Ventas pendiente</option><option value="pendiente_gerencia">Gerencia pendiente</option><option value="no_entregado">No entregado</option><option value="devolucion_caja">Devolución a Caja</option><option value="cerrado_conforme">Cerrado</option></select><select class="select" id="fProcess"><option value="">Todos los macroprocesos</option>'+activeProcessKeys().map(function(k){return'<option value="'+k+'">'+esc(processes[k].title)+'</option>';}).join("")+'</select></section>'+casesHtml;
   layout(content);
   qs("#fSearch").value=state.filters.search;qs("#fStatus").value=state.filters.status;qs("#fProcess").value=state.filters.process;
   ["fSearch","fStatus","fProcess"].forEach(function(id){qs("#"+id).oninput=function(){state.filters.search=qs("#fSearch").value;state.filters.status=qs("#fStatus").value;state.filters.process=qs("#fProcess").value;renderCases();};});
