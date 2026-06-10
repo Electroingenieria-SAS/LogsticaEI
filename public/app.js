@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v90_factura_contado_caja";
+var storageKey = "ei_trazabilidad_v91_rutas_duvan_javier";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -187,6 +187,86 @@ function deliveryRouteOptions(selected){
     ["despacho_nacional","Despacho nacional · Logística / despacho"]
   ];
   return opts.map(function(o){return '<option value="'+o[0]+'" '+(selected===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join("");
+}
+var deliveryRouteOwnerRules=[
+  {key:"duvan",label:"Duvan",tokens:["duvan"],routes:["cliente_punto","cliente_recoge","despacho_local"]},
+  {key:"javier",label:"Javier",tokens:["javier"],routes:["despacho_nacional","cierre_despacho_nacional"]}
+];
+function routeKeyForCase(c){
+  if(!c)return "";
+  return expectedDeliveryTypeForProcess(c.currentProcess)||normalizedDeliveryRoute(c.deliveryType)||normalizedDeliveryRoute(c.pendingDeliveryType)||normalizedDeliveryRoute(c.requestedDelivery)||"";
+}
+function deliveryOwnerRuleForRoute(route){
+  route=routeKeyForCase({currentProcess:route,deliveryType:route,requestedDelivery:route});
+  return deliveryRouteOwnerRules.filter(function(rule){return rule.routes.indexOf(route)>=0;})[0]||null;
+}
+function userMatchesDeliveryOwnerRule(u,rule){
+  if(!u||!rule)return false;
+  var pieces=userIdentityAliases(u).concat([u.name,u.displayName,u.email,u.uid,u.id,u.userId]);
+  var hay=stripAccents(pieces.join(" ").toLowerCase());
+  return rule.tokens.some(function(t){return hay.indexOf(stripAccents(String(t).toLowerCase()))>=0;});
+}
+function deliveryOwnerRuleForUser(u){
+  if(!u)return null;
+  return deliveryRouteOwnerRules.filter(function(rule){return userMatchesDeliveryOwnerRule(u,rule);})[0]||null;
+}
+function currentUserDeliveryOwnerRule(){
+  if(!state.user)return null;
+  if(canSeeAll() || isAdminRoleValue(state.user.role))return null;
+  var role=normalizeRole(state.user.role);
+  if(["coordinador_logistico","aux_logistica"].indexOf(role)<0)return null;
+  return deliveryOwnerRuleForUser(state.user);
+}
+function currentUserAllowedByDeliveryRoute(c){
+  var rule=currentUserDeliveryOwnerRule();
+  if(!rule)return true;
+  var route=routeKeyForCase(c);
+  if(!route || !isDeliveryProcess(route))return true;
+  return rule.routes.indexOf(route)>=0;
+}
+function currentUserAllowedByDeliveryProcess(processKey){
+  return currentUserAllowedByDeliveryRoute({currentProcess:processKey,deliveryType:processKey,requestedDelivery:processKey});
+}
+function deliveryRouteAssignableUsers(processKey){
+  var rule=deliveryOwnerRuleForRoute(processKey);
+  if(!rule)return [];
+  var users=(state.users||[]).filter(function(u){return u && u.isActive!==false && userMatchesDeliveryOwnerRule(u,rule);});
+  users.sort(function(a,b){
+    var ar=normalizeRole(a.role)==="coordinador_logistico"?0:1;
+    var br=normalizeRole(b.role)==="coordinador_logistico"?0:1;
+    if(ar!==br)return ar-br;
+    return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));
+  });
+  return users.slice(0,1).map(function(u){
+    var x=Object.assign({},u);
+    x.uid=String(u.id||u.uid||u.userId||u.authUid||u.profileUid||"").trim();
+    x.id=x.uid||String(u.id||u.uid||u.email||u.name||"").trim();
+    x.name=u.name||u.displayName||u.email||x.id;
+    x.email=u.email||"";
+    x.role=normalizeRole(u.role||"coordinador_logistico");
+    return x;
+  });
+}
+function applyDeliveryRouteAssignment(c,next){
+  var rule=deliveryOwnerRuleForRoute(next);
+  if(!rule)return false;
+  var users=normalizeAssignmentUsers(deliveryRouteAssignableUsers(next));
+  c.deliveryRouteOwner=rule.key;
+  c.deliveryRouteOwnerName=rule.label;
+  c.deliveryRouteOwnerRoutes=rule.routes.slice();
+  c.assignedRole="coordinador_logistico";
+  c.assignedUsers=[];c.assignedUserIds=[];c.assignedUid="";c.assignedTo="";c.assignedEmail="";
+  if(users.length){
+    c.assignedUsers=users;
+    c.assignedUserIds=uniqueArray(users.reduce(function(acc,u){return acc.concat(userIdentityAliases(u));},[]));
+    c.assignedTo=users[0].uid||users[0].id||"";
+    c.assignedUid=c.assignedTo;
+    c.assignedEmail=users[0].email||"";
+    c.assignedName=users.map(function(u){return u.name||u.email||u.uid;}).join(" / ");
+  }else{
+    c.assignedName=rule.label;
+  }
+  return true;
 }
 function expectedDeliveryTypeForProcess(processKey){
   if(processKey==="cierre_despacho_nacional")return "despacho_nacional";
@@ -429,12 +509,16 @@ function currentUserIsAssignedToCase(c){
 }
 function isRestrictedAlistamientoCase(c){return !!(c && c.currentProcess==="alistamiento" && caseHasPersonalAssignees(c));}
 function currentUserBlockedByAssignment(c){
-  if(!state.user || !isRestrictedAlistamientoCase(c))return false;
-  return normalizeRole(state.user.role)==="aux_logistica" && !currentUserIsAssignedToCase(c);
+  if(!state.user || !c)return false;
+  var restricted=isRestrictedAlistamientoCase(c) || (isDeliveryProcess(c.currentProcess) && caseHasPersonalAssignees(c));
+  if(!restricted)return false;
+  var r=normalizeRole(state.user.role);
+  return (r==="aux_logistica"||r==="coordinador_logistico") && !currentUserIsAssignedToCase(c);
 }
 function canOperateCurrentProcess(c){
   if(!state.user || !c)return false;
   if(isAdminRoleValue(state.user.role))return true;
+  if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(currentUserBlockedByAssignment(c))return false;
   if(currentUserIsAssignedToCase(c))return true;
   return canAccessProcess(state.user.role,c.currentProcess);
@@ -541,6 +625,7 @@ function canSeeKpis(){return state.user && isPrivilegedKpiRole(state.user.role);
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
   if(canSeeAll())return true;
+  if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(currentUserBlockedByAssignment(c))return false;
   if(currentUserIsAssignedToCase(c))return true;
   if(normalizeRole(c.assignedRole)===normalizeRole(state.user.role))return true;
@@ -1261,6 +1346,8 @@ function mobileSimpleCasePanel(c){
 function caseRelevantToCurrentUser(c){
   if(!state.user || !c)return false;
   if(canSeeAll())return true;
+  if(!currentUserAllowedByDeliveryRoute(c))return false;
+  if(currentUserBlockedByAssignment(c))return false;
   var r=normalizeRole(state.user.role);
   var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
   if(normalizeRole(c.assignedRole)===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
@@ -1460,6 +1547,9 @@ function eventHash(list){
 function eventRelevantToCurrentUser(e){
   if(!state.user || !e)return false;
   if(canSeeAll())return true;
+  var relatedCase=e.caseId?caseById(e.caseId):null;
+  if(relatedCase && (!currentUserAllowedByDeliveryRoute(relatedCase)||currentUserBlockedByAssignment(relatedCase)))return false;
+  if(!relatedCase && e.process && isDeliveryProcess(e.process) && !currentUserAllowedByDeliveryProcess(e.process))return false;
   var r=normalizeRole(state.user.role);
   var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
   if(e.userId===state.user.uid || e.createdBy===state.user.uid || e.assignedTo===state.user.uid || e.assignedUid===state.user.uid)return true;
@@ -1467,7 +1557,7 @@ function eventRelevantToCurrentUser(e){
   if(normalizeRole(e.targetRole)===r || normalizeRole(e.assignedRole)===r || normalizeRole(e.sourceRole)===r || normalizeRole(e.role)===r)return true;
   if(Array.isArray(e.visibleRoles) && e.visibleRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
   if(Array.isArray(e.targetRoles) && e.targetRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
-  var c=e.caseId?caseById(e.caseId):null;
+  var c=relatedCase||null;
   return c?caseRelevantToCurrentUser(c):false;
 }
 
@@ -1789,6 +1879,10 @@ function routes(){
     return{main:["dashboard","cases","requirements","approvals","reports","indicators","admin"],processes:activeProcessKeys().filter(function(k){return k!=="caja";})};
   }
   var own=activeProcessKeys().filter(function(k){return canAccessProcess(r,k);});
+  var routeRule=currentUserDeliveryOwnerRule();
+  if(routeRule){
+    own=own.filter(function(k){return !isDeliveryProcess(k) || routeRule.routes.indexOf(k)>=0;});
+  }
   return{main:["dashboard"].concat(canCreate()?["create","sales_reports"]:[]).concat(canAccessProjectsModule()?["projects"]:[]).concat(["reports","requirements"]),processes:own};
 }
 
@@ -1914,6 +2008,7 @@ function login(fd){
 function caseVisibleForCurrentUser(c){
   if(!state.user || !c)return false;
   if(canSeeAll())return true;
+  if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(c.createdBy===state.user.uid)return true;
   if(normalizeRole(state.user.role)==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
   if(currentUserIsAssignedToCase(c))return true;
@@ -5114,7 +5209,10 @@ function normalizeAssignmentUsers(users){
 }
 function applyPersonalAssignment(c,next,assignmentUsers){
   var users=normalizeAssignmentUsers(assignmentUsers);
-  c.assignedUsers=[];c.assignedUserIds=[];c.assignedUid="";
+  c.assignedUsers=[];c.assignedUserIds=[];c.assignedUid="";c.assignedEmail="";
+  if(isDeliveryProcess(next) && applyDeliveryRouteAssignment(c,next)){
+    return;
+  }
   if(next==="alistamiento" && users.length){
     c.assignedUsers=users;
     c.assignedUserIds=uniqueArray(users.reduce(function(acc,u){return acc.concat(userIdentityAliases(u));},[]));
@@ -5125,6 +5223,7 @@ function applyPersonalAssignment(c,next,assignmentUsers){
     c.assignedRole="aux_logistica";
   }else{
     c.assignedTo="";
+    c.assignedEmail="";
     c.assignedName=processOwnerTitle(next);
     c.assignedRole=primaryOwnerRole(next);
   }
