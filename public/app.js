@@ -602,28 +602,56 @@ function sortByUpdated(list){
   return list.sort(function(a,b){return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0);});
 }
 
+function roleQueryAliases(roleValue){
+  var raw=String(roleValue||"").trim();
+  var normalized=normalizeRole(raw);
+  var aliases=[raw,normalized];
+  if(normalized==="coordinador_logistico"){
+    aliases=aliases.concat(["coordinador_logistico","lider_logistico","lider_logistica","logistica_despacho_unificado","logistica_despacho","logistica","despacho","Logística / despacho (unificado)","Logistica / despacho (unificado)","Logística / despacho","Logistica / despacho"]);
+  }
+  if(normalized==="aux_logistica"){
+    aliases=aliases.concat(["aux_logistica","auxiliar_logistica","auxiliar_de_logistica","aux_logistico","auxiliar_despacho","Auxiliar logística","Auxiliar logistica","Auxiliar de logística","Auxiliar de logistica"]);
+  }
+  if(normalized==="auxiliar_corte"){
+    aliases=aliases.concat(["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte"]);
+  }
+  return uniqueArray(aliases.map(function(x){return String(x||"").trim();}).filter(Boolean));
+}
+
+function safeQuerySnapshot(q,label){
+  return q.get().catch(function(e){
+    console.warn("Consulta omitida por permisos o índice pendiente:", label, e);
+    return null;
+  });
+}
+
 function loadCasesForRole(){
   if(canSeeAll()){
     return db.collection("cases").orderBy("updatedAt","desc").get().then(docsToList);
   }
 
   var queries=[];
+  var aliases=roleQueryAliases(state.user.role);
+  var nr=normalizeRole(state.user.role);
 
-  if(state.user.role==="auxiliar_corte"){
-    queries.push(db.collection("cases").where("hasCuts","==",true).get());
-  }else{
-    queries.push(db.collection("cases").where("assignedRole","==",state.user.role).get());
-    var normalizedUserRole=normalizeRole(state.user.role);
-    if(normalizedUserRole!==state.user.role)queries.push(db.collection("cases").where("assignedRole","==",normalizedUserRole).get());
-    queries.push(db.collection("cases").where("createdBy","==",state.user.uid).get());
-    queries.push(db.collection("cases").where("assignedUserIds","array-contains",state.user.uid).get());
-    queries.push(db.collection("cases").where("visibleRoles","array-contains",normalizedUserRole).get());
-    queries.push(db.collection("cases").where("targetRoles","array-contains",normalizedUserRole).get());
+  if(nr==="auxiliar_corte"){
+    queries.push(safeQuerySnapshot(db.collection("cases").where("hasCuts","==",true),"cases.hasCuts"));
   }
+
+  queries.push(safeQuerySnapshot(db.collection("cases").where("createdBy","==",state.user.uid),"cases.createdBy"));
+  queries.push(safeQuerySnapshot(db.collection("cases").where("assignedUid","==",state.user.uid),"cases.assignedUid"));
+  queries.push(safeQuerySnapshot(db.collection("cases").where("assignedTo","==",state.user.uid),"cases.assignedTo"));
+  queries.push(safeQuerySnapshot(db.collection("cases").where("assignedUserIds","array-contains",state.user.uid),"cases.assignedUserIds"));
+
+  aliases.forEach(function(a){
+    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==",a),"cases.assignedRole:"+a));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("visibleRoles","array-contains",a),"cases.visibleRoles:"+a));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("targetRoles","array-contains",a),"cases.targetRoles:"+a));
+  });
 
   return Promise.all(queries).then(function(snaps){
     var all=[];
-    snaps.forEach(function(snap){all=all.concat(docsToList(snap));});
+    snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
     return sortByUpdated(uniqueById(all));
   });
 }
@@ -992,7 +1020,11 @@ function caseRelevantToCurrentUser(c){
   if(!state.user || !c)return false;
   if(canSeeAll())return true;
   var r=normalizeRole(state.user.role);
+  var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
   if(normalizeRole(c.assignedRole)===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
+  if(Array.isArray(c.assignedUserIds) && c.assignedUserIds.indexOf(state.user.uid)>=0)return true;
+  if(Array.isArray(c.visibleRoles) && c.visibleRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
+  if(Array.isArray(c.targetRoles) && c.targetRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
   if(r==="auxiliar_corte" && c.hasCuts===true)return true;
   return canAccessProcess(r,c.currentProcess);
 }
@@ -1174,9 +1206,12 @@ function eventRelevantToCurrentUser(e){
   if(!state.user || !e)return false;
   if(canSeeAll())return true;
   var r=normalizeRole(state.user.role);
+  var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
   if(e.userId===state.user.uid || e.createdBy===state.user.uid || e.assignedTo===state.user.uid || e.assignedUid===state.user.uid)return true;
+  if(Array.isArray(e.assignedUserIds) && e.assignedUserIds.indexOf(state.user.uid)>=0)return true;
   if(normalizeRole(e.targetRole)===r || normalizeRole(e.assignedRole)===r || normalizeRole(e.sourceRole)===r || normalizeRole(e.role)===r)return true;
-  if(Array.isArray(e.visibleRoles) && e.visibleRoles.map(normalizeRole).indexOf(r)>=0)return true;
+  if(Array.isArray(e.visibleRoles) && e.visibleRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
+  if(Array.isArray(e.targetRoles) && e.targetRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
   var c=e.caseId?caseById(e.caseId):null;
   return c?caseRelevantToCurrentUser(c):false;
 }
@@ -1298,16 +1333,18 @@ function addEventRealtimeListener(key,query){
 
 function startNotificationListeners(){
   if(!db || !state.user)return;
-  var r=normalizeRole(state.user.role);
   if(canSeeAll()){
     addEventRealtimeListener("events_all",db.collection("case_events").orderBy("timestamp","desc").limit(200));
     return;
   }
   addEventRealtimeListener("events_user",db.collection("case_events").where("userId","==",state.user.uid).limit(100));
   addEventRealtimeListener("events_created",db.collection("case_events").where("createdBy","==",state.user.uid).limit(100));
-  addEventRealtimeListener("events_target",db.collection("case_events").where("targetRole","==",r).limit(100));
-  addEventRealtimeListener("events_assigned",db.collection("case_events").where("assignedRole","==",r).limit(100));
-  addEventRealtimeListener("events_visible",db.collection("case_events").where("visibleRoles","array-contains",r).limit(100));
+  addEventRealtimeListener("events_assigned_uid",db.collection("case_events").where("assignedUid","==",state.user.uid).limit(100));
+  roleQueryAliases(state.user.role).forEach(function(r){
+    addEventRealtimeListener("events_target_"+r,db.collection("case_events").where("targetRole","==",r).limit(100));
+    addEventRealtimeListener("events_assigned_"+r,db.collection("case_events").where("assignedRole","==",r).limit(100));
+    addEventRealtimeListener("events_visible_"+r,db.collection("case_events").where("visibleRoles","array-contains",r).limit(100));
+  });
 }
 
 function notifyRealtimeChanges(newList, oldList){
@@ -1394,14 +1431,20 @@ function startRealtimeSync(){
   if(!firebaseReady || !db || !state.user)return;
   stopRealtimeSync();
   state.realtime.startedAt=Date.now();
-  var r=state.user.role;
+  var nr=normalizeRole(state.user.role);
   if(canSeeAll()){
     addCaseRealtimeListener("all",db.collection("cases").orderBy("updatedAt","desc"));
-  }else if(r==="auxiliar_corte"){
-    addCaseRealtimeListener("cuts",db.collection("cases").where("hasCuts","==",true));
   }else{
-    addCaseRealtimeListener("assigned",db.collection("cases").where("assignedRole","==",r));
+    if(nr==="auxiliar_corte")addCaseRealtimeListener("cuts",db.collection("cases").where("hasCuts","==",true));
     addCaseRealtimeListener("created",db.collection("cases").where("createdBy","==",state.user.uid));
+    addCaseRealtimeListener("assigned_uid",db.collection("cases").where("assignedUid","==",state.user.uid));
+    addCaseRealtimeListener("assigned_to",db.collection("cases").where("assignedTo","==",state.user.uid));
+    addCaseRealtimeListener("assigned_userids",db.collection("cases").where("assignedUserIds","array-contains",state.user.uid));
+    roleQueryAliases(state.user.role).forEach(function(r){
+      addCaseRealtimeListener("assigned_"+r,db.collection("cases").where("assignedRole","==",r));
+      addCaseRealtimeListener("visible_"+r,db.collection("cases").where("visibleRoles","array-contains",r));
+      addCaseRealtimeListener("target_"+r,db.collection("cases").where("targetRoles","array-contains",r));
+    });
   }
   startNotificationListeners();
   if(canSeeAll()){

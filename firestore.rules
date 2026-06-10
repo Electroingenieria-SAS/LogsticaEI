@@ -32,52 +32,7 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return activeUser() && role() in ['super_admin', 'super_administrador', 'super admin', 'superadmin', 'super-administrador', 'Super Admin', 'Super administrador', 'Super Administrador', 'SUPER_ADMIN', 'SUPER ADMIN', 'super administrador', 'super_administracion', 'superadministrador', 'super_administrador'];
-    }
-
-    function isAdminOrSuper() {
-      return isAdmin() || isSuperAdmin();
-    }
-
-    function isManager() {
-      return activeUser() && role() == 'gerencia';
-    }
-
-    function isChiefLogistics() {
-      return activeUser() && role() == 'jefe_logistica';
-    }
-
-    function isReceptionLeader() {
-      return activeUser() && role() == 'lider_recepcion';
-    }
-
-    function isProjectsRole() {
-      return activeUser() && role() == 'proyectos';
-    }
-
-    function canManageReports() {
-      return isAdminOrSuper() || isManager() || isChiefLogistics();
-    }
-
-    function isUnifiedLogisticsRole(value) {
-      return value in ['lider_logistico', 'coordinador_logistico'];
-    }
-
-    function sameOperationalRole(a, b) {
-      return a == b || (isUnifiedLogisticsRole(a) && isUnifiedLogisticsRole(b));
-    }
-
-    function canSeeAll() {
-      return isAdminOrSuper() || isManager() || isChiefLogistics();
-    }
-
-    function canManageUsers() {
-      return isAdminOrSuper() || isManager();
-    }
-
-    function validRoleValue(value) {
-      return value in [
-        'admin',
+      return activeUser() && role() in [
         'super_admin',
         'super_administrador',
         'super admin',
@@ -90,39 +45,90 @@ service cloud.firestore {
         'SUPER ADMIN',
         'super administrador',
         'super_administracion',
-        'administrador',
-        'gerencia',
-        'ventas',
-        'proyectos',
-        'proyecto',
-        'rol_proyectos',
-        'jefe_logistica',
-        'lider_logistico',
-        'coordinador_logistico',
-        'aux_logistica',
-        'auxiliar_corte',
-        'caja',
-        'inventarios',
-        'lider_recepcion',
-        'auditoria'
+        'superadministrador',
+        'super_administrador'
       ];
     }
 
-    function validUserPayload() {
-      return request.resource.data.name is string
-      && request.resource.data.email is string
-      && request.resource.data.role is string
-      && request.resource.data.isActive is bool
-      && validRoleValue(request.resource.data.role);
+    function isAdminOrSuper() {
+      return isAdmin() || isSuperAdmin();
+    }
+
+    function isManager() {
+      return activeUser() && role() in ['gerencia', 'gerente', 'Gerencia', 'Gerente'];
+    }
+
+    function isChiefLogistics() {
+      return activeUser() && role() in ['jefe_logistica', 'jefe_logistico', 'Jefe logística', 'Jefe logistica'];
+    }
+
+    function canSeeAll() {
+      return isAdminOrSuper() || isManager() || isChiefLogistics();
+    }
+
+    function canManageUsers() {
+      return isAdminOrSuper() || isManager();
     }
 
     function validCasePayload() {
       return request.resource.data.keys().hasAny([
         'currentProcess',
         'assignedRole',
+        'assignedUid',
+        'assignedTo',
+        'assignedName',
+        'assignedUsers',
+        'assignedUserIds',
+        'visibleRoles',
+        'targetRoles',
         'status',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
+        'requirementType',
+        'noDelivery',
+        'noDeliveryStatus',
+        'returnToCash',
+        'history',
+        'flowTrace',
+        'requirements',
+        'openRequirement',
+        'closedAt',
+        'closedBy',
+        'closedByName',
+        'lastAction',
+        'lastActionBy',
+        'lastActionByName',
+        'documentFlow',
+        'checklist'
+      ]);
+    }
+
+    function validUserPayload() {
+      return request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.role is string
+        && request.resource.data.isActive is bool;
+    }
+
+    function validRequirementPayload() {
+      return request.resource.data.keys().hasAny([
+        'caseId',
+        'targetRole',
+        'targetRoles',
+        'visibleRoles',
+        'sourceRole',
+        'sourceProcess',
+        'status',
+        'type',
+        'requirementType',
+        'category',
+        'createdBy',
+        'createdAt',
+        'updatedAt',
+        'detail',
+        'description',
+        'assignedUid',
+        'assignedTo'
       ]);
     }
 
@@ -157,118 +163,36 @@ service cloud.firestore {
       ]);
     }
 
-    function isOwnCase() {
-      return resource.data.createdBy == request.auth.uid;
-    }
-
-    function isAssignedRoleCase() {
-      return sameOperationalRole(resource.data.assignedRole, role());
-    }
-
-    function isAssignedUidCase() {
-      return resource.data.assignedUid == request.auth.uid || resource.data.assignedTo == request.auth.uid;
-    }
-
-    function isCutCase() {
-      return role() == 'auxiliar_corte' && resource.data.hasCuts == true;
-    }
-
-    function canReadCase() {
-      return activeUser() && (
-        canSeeAll() ||
-        isOwnCase() ||
-        isAssignedRoleCase() ||
-        isAssignedUidCase() ||
-        isCutCase()
-      );
-    }
-
-    function canOperateCase() {
-      return activeUser() && (
-        canSeeAll() ||
-        isAssignedRoleCase() ||
-        isAssignedUidCase() ||
-        isCutCase()
-      );
-    }
-
     match /users/{userId} {
-      allow read: if activeUser() && (
-        request.auth.uid == userId ||
-        canSeeAll() ||
-        canManageUsers()
-      );
-
-      allow create: if canManageUsers()
-        && validUserPayload();
-
-      allow update: if canManageUsers()
-        && validUserPayload();
-
+      allow read: if activeUser();
+      allow create: if canManageUsers() && validUserPayload();
+      allow update: if canManageUsers() && validUserPayload();
       allow delete: if isAdminOrSuper();
     }
 
     match /cases/{caseId} {
-      allow read: if canReadCase();
+      allow read: if activeUser();
       allow create: if activeUser() && validCasePayload();
-      allow update: if canOperateCase() && validCasePayload();
+      allow update: if activeUser() && validCasePayload();
       allow delete: if isAdminOrSuper();
     }
 
     match /case_events/{eventId} {
-      allow read: if activeUser() && (
-        canSeeAll() ||
-        resource.data.userId == request.auth.uid ||
-        resource.data.createdBy == request.auth.uid ||
-        resource.data.assignedTo == request.auth.uid ||
-        resource.data.assignedUid == request.auth.uid ||
-        sameOperationalRole(resource.data.targetRole, role()) ||
-        sameOperationalRole(resource.data.assignedRole, role()) ||
-        sameOperationalRole(resource.data.sourceRole, role()) ||
-        sameOperationalRole(resource.data.role, role()) ||
-        (resource.data.visibleRoles is list && role() in resource.data.visibleRoles)
-      );
-
+      allow read: if activeUser();
       allow create: if activeUser();
       allow update: if false;
       allow delete: if isAdminOrSuper();
     }
 
     match /requirements/{requirementId} {
-      allow read: if activeUser() && (
-        canSeeAll() ||
-        sameOperationalRole(resource.data.targetRole, role()) ||
-        sameOperationalRole(resource.data.sourceRole, role()) ||
-        resource.data.createdBy == request.auth.uid
-      );
-
-      allow create: if activeUser() && (
-        canSeeAll() ||
-        (
-          request.resource.data.targetRole == 'ventas'
-          && request.resource.data.sourceProcess == 'corte_cable'
-        ) ||
-        (
-          request.resource.data.targetRole == 'proyectos'
-          && request.resource.data.sourceProcess == 'proyectos'
-        )
-      );
-
-      allow update: if activeUser() && (
-        canSeeAll() ||
-        sameOperationalRole(resource.data.targetRole, role())
-      );
-
+      allow read: if activeUser();
+      allow create: if activeUser() && validRequirementPayload();
+      allow update: if activeUser() && validRequirementPayload();
       allow delete: if isAdminOrSuper();
     }
 
     match /evidences/{evidenceId} {
-      allow read: if activeUser() && (
-        canSeeAll() ||
-        resource.data.createdBy == request.auth.uid ||
-        sameOperationalRole(resource.data.responsibleRole, role())
-      );
-
+      allow read: if activeUser();
       allow create: if activeUser();
       allow update: if false;
       allow delete: if isAdminOrSuper();
@@ -280,42 +204,29 @@ service cloud.firestore {
     }
 
     match /siesa_exports/{exportId} {
-      allow read: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
-      allow create: if canSeeAll() || (activeUser() && role() == 'auxiliar_corte');
+      allow read: if activeUser();
+      allow create: if activeUser();
       allow update, delete: if isAdminOrSuper();
     }
 
     match /proyectos_pedidos/{projectId} {
-      allow read: if activeUser() && (
-        isAdminOrSuper() ||
-        isProjectsRole() ||
-        resource.data.createdBy == request.auth.uid
-      );
-
-      allow create: if activeUser() && (
-        isAdminOrSuper() ||
-        isProjectsRole()
-      );
-
-      allow update: if activeUser() && (
-        isAdminOrSuper() ||
-        isProjectsRole()
-      );
-
+      allow read: if activeUser();
+      allow create: if activeUser();
+      allow update: if activeUser();
       allow delete: if isAdminOrSuper();
     }
 
     match /recepciones_mercancia/{receptionId} {
-      allow read: if activeUser() && (isAdminOrSuper() || isReceptionLeader());
-      allow create: if activeUser() && (isAdminOrSuper() || isReceptionLeader()) && validReceptionPayload();
-      allow update: if activeUser() && (isAdminOrSuper() || isReceptionLeader()) && validReceptionPayload();
+      allow read: if activeUser();
+      allow create: if activeUser() && validReceptionPayload();
+      allow update: if activeUser() && validReceptionPayload();
       allow delete: if isSuperAdmin();
     }
 
     match /reportes_novedad/{reportId} {
       allow read: if activeUser();
       allow create: if activeUser() && validReportPayload();
-      allow update: if activeUser() && (canManageReports() || isReceptionLeader()) && validReportPayload();
+      allow update: if activeUser() && validReportPayload();
       allow delete: if isSuperAdmin();
     }
 
@@ -325,11 +236,13 @@ service cloud.firestore {
     }
 
     match /system_config/{configId} {
-      allow read: if canSeeAll();
+      allow read: if activeUser();
       allow create, update, delete: if isAdminOrSuper();
     }
 
     match /{document=**} {
+      allow read: if false;
+      allow write: if false;
       allow delete: if isAdminOrSuper();
     }
   }
