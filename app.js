@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v80_estetica_asignados_checklist";
+var storageKey = "ei_trazabilidad_v81_audio_checklist_solo_chequeo";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1179,13 +1179,21 @@ function eventTypeIsOrderCreated(t){
   return t==="CASE_CREATED" || t==="PROJECT_ORDER_TO_CASE" || t==="PENDING_ITEMS_RESENT";
 }
 
+function eventTypeIsChecklistClosed(t){
+  return t==="CHECKLIST_CLOSED" || t==="CHECK_CLOSED" || t==="CHECKLIST_COMPLETED";
+}
+
 function eventTypeIsClosed(t){
+  if(eventTypeIsChecklistClosed(t))return false;
   return t.indexOf("CASE_CLOSED")>=0 || t==="GOODS_RECEPTION_CLOSED" || t.indexOf("CLOSED")>=0 || t.indexOf("CERRADO")>=0;
 }
 
 function soundKeyForEvent(e){
   var t=String((e&&e.type)||"").toUpperCase();
   if(!t)return "general";
+
+  // Cerrar checklist no es cerrar caso. Debe sonar únicamente el audio de chequeo.
+  if(eventTypeIsChecklistClosed(t))return "checklistClosed";
 
   if(eventIsOwn(e)){
     if(eventTypeIsClosed(t) && eventIsDispatchProcess(e) && eventActorIsLogistics(e))return "logisticsClosed";
@@ -1214,6 +1222,11 @@ function playAudioAsset(src,volume){
 
 function playNotificationSound(kind){
   kind=kind||"general";
+  // El checklist tiene audio propio y no debe mezclar sonido general ni cierre de caso.
+  if(kind==="checklistClosed"){
+    playAudioAsset(notificationAssets.checklistClosed,0.92);
+    return;
+  }
   playAudioAsset(notificationAssets.general,0.58);
   if(kind && kind!=="general")setTimeout(function(){playAudioAsset(notificationAssets[kind],0.92);},260);
 }
@@ -5214,7 +5227,7 @@ function closeChecklist(id){
   });
   if(blocked.length){alert("Algunos puntos no se guardaron porque son automáticos: "+blocked.join(", "));}
   if(!changed.length){alert("No hay cambios nuevos para guardar.");return;}
-  persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){playAudioAsset(notificationAssets.checklistClosed,0.9);renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){playNotificationSound("checklistClosed");renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function discardChecklistChanges(id){
   renderDetail(id);
