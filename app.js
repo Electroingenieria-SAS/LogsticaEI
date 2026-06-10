@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v85_ventas_diarias_rapidas";
+var storageKey = "ei_trazabilidad_v86_soporte_sellado_facturado_entregado";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -2295,6 +2295,148 @@ function driveTryShare(fileId){
   if(!fileId)return Promise.resolve(false);
   return driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(fileId)+"/permissions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"anyone",role:"reader"})}).then(function(){return true;}).catch(function(){return false;});
 }
+
+function loadPdfLibForStamp(){
+  if(window.PDFLib && window.PDFLib.PDFDocument)return Promise.resolve(window.PDFLib);
+  return new Promise(function(resolve,reject){
+    var existing=document.querySelector('script[data-ei-pdf-lib="true"]');
+    if(existing){
+      var started=Date.now();
+      var t=setInterval(function(){
+        if(window.PDFLib && window.PDFLib.PDFDocument){clearInterval(t);resolve(window.PDFLib);return;}
+        if(Date.now()-started>12000){clearInterval(t);reject(new Error("No cargó el editor PDF para sellar el soporte."));}
+      },250);
+      return;
+    }
+    var s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+    s.defer=true;
+    s.setAttribute("data-ei-pdf-lib","true");
+    s.onload=function(){window.PDFLib?resolve(window.PDFLib):reject(new Error("No cargó el editor PDF para sellar el soporte."));};
+    s.onerror=function(){reject(new Error("No fue posible cargar el editor PDF para sellar el soporte."));};
+    document.head.appendChild(s);
+  });
+}
+function fileToArrayBufferPayload(file){
+  return new Promise(function(resolve,reject){
+    var r=new FileReader();
+    r.onload=function(){resolve(r.result);};
+    r.onerror=function(){reject(new Error("No fue posible leer el archivo para sellarlo."));};
+    r.readAsArrayBuffer(file);
+  });
+}
+function fileIsPdf(file){
+  return !!file && (/pdf/i.test(file.type||"") || /\.pdf$/i.test(file.name||""));
+}
+function fileIsImage(file){
+  return !!file && /^image\//i.test(file.type||"");
+}
+function stampedPdfFileName(file,c){
+  var base=safeDriveFileName((c.reference||c.pedido||c.id||"pedido")+"_FACTURADO_ENTREGADO.pdf");
+  return base.replace(/\.pdf$/i,"")+".pdf";
+}
+function blobToNamedFile(blob,name,type){
+  try{return new File([blob],name,{type:type||blob.type||"application/pdf",lastModified:Date.now()});}
+  catch(e){blob.name=name;return blob;}
+}
+function downloadBlobFile(blob,name){
+  try{
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");
+    a.href=url;
+    a.download=name||blob.name||"soporte_sellado.pdf";
+    a.target="_blank";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){try{URL.revokeObjectURL(url);a.remove();}catch(e){}},1500);
+  }catch(e){}
+}
+function stampDateLabel(){
+  try{return new Date().toLocaleString("es-CO",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});}
+  catch(e){return new Date().toLocaleString();}
+}
+function loadStampLogo(pdfDoc){
+  return fetch(logoPath,{cache:"force-cache"}).then(function(r){return r.ok?r.arrayBuffer():Promise.reject(new Error("Sin logo"));}).then(function(buf){
+    var lower=String(logoPath||"").toLowerCase();
+    if(lower.indexOf(".png")>=0 || lower.indexOf("image/png")>=0)return pdfDoc.embedPng(buf);
+    return pdfDoc.embedJpg(buf).catch(function(){return pdfDoc.embedPng(buf);});
+  }).catch(function(){return null;});
+}
+function drawEiStampBox(page,logo,font,bold,label,x,y,w,h,colors,meta){
+  page.drawRectangle({x:x,y:y,width:w,height:h,color:colors.fill,borderColor:colors.border,borderWidth:1.4,opacity:0.92,borderOpacity:0.95});
+  if(logo){
+    var lw=Math.min(44,w*0.32), lh=18;
+    page.drawImage(logo,{x:x+8,y:y+h-24,width:lw,height:lh,opacity:0.92});
+  }
+  page.drawText(label,{x:x+8,y:y+h-43,size:15,font:bold,color:colors.text});
+  page.drawText(meta.date,{x:x+8,y:y+16,size:6.6,font:font,color:colors.soft});
+  page.drawText(meta.user,{x:x+8,y:y+7,size:6.2,font:font,color:colors.soft});
+}
+function drawDoubleEiStamps(pdfDoc,page,logo,font,bold,c){
+  var rgb=window.PDFLib.rgb;
+  var size=page.getSize();
+  var width=size.width,height=size.height;
+  var w=Math.min(155,Math.max(126,width*0.25));
+  var h=60,gap=8;
+  var total=(w*2)+gap;
+  var x=Math.max(18,width-total-24);
+  var y=Math.max(18,height-h-22);
+  var meta={
+    date:"Fecha: "+stampDateLabel(),
+    user:"Usuario: "+String((state.user&&state.user.name)||"EI").slice(0,40)
+  };
+  drawEiStampBox(page,logo,font,bold,"FACTURADO",x,y,w,h,{fill:rgb(1,0.97,0.74),border:rgb(0.91,0.65,0.02),text:rgb(0.05,0.17,0.42),soft:rgb(0.25,0.28,0.34)},meta);
+  drawEiStampBox(page,logo,font,bold,"ENTREGADO",x+w+gap,y,w,h,{fill:rgb(0.86,0.93,1),border:rgb(0.03,0.23,0.61),text:rgb(0.03,0.23,0.61),soft:rgb(0.25,0.28,0.34)},meta);
+}
+function imageFileToStampedPdf(file,c,PDFLib){
+  return fileToArrayBufferPayload(file).then(function(buf){
+    return PDFLib.PDFDocument.create().then(function(pdfDoc){
+      var lower=String(file.name||"").toLowerCase();
+      var imagePromise=(/\.png$/i.test(lower)||/png/i.test(file.type||""))?pdfDoc.embedPng(buf):pdfDoc.embedJpg(buf).catch(function(){return pdfDoc.embedPng(buf);});
+      return imagePromise.then(function(img){
+        var page=pdfDoc.addPage([612,792]);
+        var maxW=540,maxH=640;
+        var iw=img.width,ih=img.height;
+        var scale=Math.min(maxW/iw,maxH/ih,1);
+        var drawW=iw*scale,drawH=ih*scale;
+        page.drawImage(img,{x:(612-drawW)/2,y:90,width:drawW,height:drawH});
+        return Promise.all([loadStampLogo(pdfDoc),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
+          drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],c);
+          return pdfDoc.save();
+        });
+      });
+    });
+  });
+}
+function pdfFileToStampedPdf(file,c,PDFLib){
+  return fileToArrayBufferPayload(file).then(function(buf){
+    return PDFLib.PDFDocument.load(buf,{ignoreEncryption:true}).then(function(pdfDoc){
+      return Promise.all([loadStampLogo(pdfDoc),pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica),pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold)]).then(function(parts){
+        var pages=pdfDoc.getPages();
+        pages.forEach(function(page){drawDoubleEiStamps(pdfDoc,page,parts[0],parts[1],parts[2],c);});
+        return pdfDoc.save();
+      });
+    });
+  });
+}
+function buildStampedDispatchSupportFile(file,c,def,statusEl){
+  if(!def || def.key!=="supportPdf")return Promise.resolve({file:file,stamped:false});
+  if(!(fileIsPdf(file)||fileIsImage(file)))return Promise.resolve({file:file,stamped:false,unsupported:true});
+  if(statusEl)statusEl.textContent="Generando PDF sellado con FACTURADO y ENTREGADO...";
+  return loadPdfLibForStamp().then(function(PDFLib){
+    var p=fileIsPdf(file)?pdfFileToStampedPdf(file,c,PDFLib):imageFileToStampedPdf(file,c,PDFLib);
+    return p.then(function(bytes){
+      var name=stampedPdfFileName(file,c);
+      var blob=new Blob([bytes],{type:"application/pdf"});
+      var stamped=blobToNamedFile(blob,name,"application/pdf");
+      return {file:stamped,stamped:true,downloadName:name,originalName:file.name};
+    });
+  }).catch(function(err){
+    if(statusEl)statusEl.textContent="No se pudo sellar automáticamente; se subirá el archivo original. " + (err.message||err);
+    return {file:file,stamped:false,stampError:(err&&err.message)||String(err)};
+  });
+}
+
 function uploadFileToDrive(file,c,processOrOptions,fileName){
   var opts=typeof processOrOptions==="object"?(processOrOptions||{}):{processName:processOrOptions,fileName:fileName};
   showUploadFeedback("loading","Subiendo soporte a Drive. Espere la confirmación antes de continuar.");
@@ -5129,16 +5271,31 @@ function openDeliveryEvidence(id,key){
     if(!file){alert("Seleccione el archivo o evidencia requerida.");return;}
     c.deliveryEvidence=c.deliveryEvidence||{};
     if(def.key==="guiaTransportadora" && !(c.deliveryEvidence.mercanciaRotulada&&c.deliveryEvidence.mercanciaRotulada.driveUrl)){alert("Primero debe subir la foto de mercancía rotulada. Esa evidencia marca el cierre operativo de logística y la espera de transportadora/entrega.");return;}
-    var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Subiendo evidencia a Drive...";
-    var safeName=(c.reference||"pedido")+"_"+def.type+"_"+file.name;
-    uploadFileToDrive(file,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:safeName,evidenceType:def.type}).then(function(up){
+    var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Preparando evidencia...";
+    var stampInfo=null;
+    buildStampedDispatchSupportFile(file,c,def,statusEl).then(function(info){
+      stampInfo=info||{file:file,stamped:false};
+      var uploadFile=stampInfo.file||file;
+      if(statusEl)statusEl.textContent=(stampInfo.stamped?"PDF sellado generado. Subiendo a Drive...":"Subiendo evidencia a Drive...");
+      var safeName=(c.reference||"pedido")+"_"+def.type+"_"+(uploadFile.name||file.name);
+      return uploadFileToDrive(uploadFile,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:safeName,evidenceType:def.type});
+    }).then(function(up){
+      if(stampInfo && stampInfo.stamped){
+        up.stamped=true;
+        up.originalFileName=stampInfo.originalName||file.name;
+        setTimeout(function(){downloadBlobFile(stampInfo.file,stampInfo.downloadName||stampInfo.file.name);},350);
+      }
       c.deliveryEvidence=c.deliveryEvidence||{};
-      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint};
+      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||(stampInfo&&stampInfo.file&&stampInfo.file.name)||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint,stamped:!!(stampInfo&&stampInfo.stamped),stampLabels:(stampInfo&&stampInfo.stamped)?["FACTURADO","ENTREGADO"]:[],originalFileName:(stampInfo&&stampInfo.originalName)||file.name};
       c.checklist=c.checklist||{};
       c.checklist[def.checklist]="ok";
       c.deliveryFlow=c.deliveryFlow||{};
       var eventType="DELIVERY_EVIDENCE_UPLOADED";
       var eventDetail=def.title+" · "+(fd.get("detail")||"");
+      if(def.key==="supportPdf" && stampInfo && stampInfo.stamped){
+        eventType="DISPATCH_SUPPORT_STAMPED";
+        eventDetail="PDF/soporte de despacho sellado automáticamente con FACTURADO y ENTREGADO. Se descargó copia sellada.";
+      }
       if(def.key==="mercanciaRotulada"){
         stopActive(c);
         if(!c.waitStartedAt)c.waitStartedAt=now();
@@ -5166,8 +5323,8 @@ function openDeliveryEvidence(id,key){
         eventType="CASE_CLOSED";
         eventDetail="Despacho cerrado con guía/soporte final obligatorio.";
       }
-      appendEvidence(c,up,fd.get("detail")||def.title);
-      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||def.title);});
+      appendEvidence(c,up,fd.get("detail")||(def.key==="supportPdf"&&stampInfo&&stampInfo.stamped?"PDF sellado FACTURADO + ENTREGADO":def.title));
+      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||(def.key==="supportPdf"&&stampInfo&&stampInfo.stamped?"PDF sellado FACTURADO + ENTREGADO":def.title));});
     }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
