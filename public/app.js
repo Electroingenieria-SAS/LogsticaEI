@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v92_lectura_lineas_edicion_segura";
+var storageKey = "ei_trazabilidad_v93_corte_drive_rapido";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1487,12 +1487,14 @@ function showUploadFeedback(mode,msg){
     box.id="ei-upload-feedback";
     document.body.appendChild(box);
   }
-  var isSuccess=mode==="success";
+  var isSuccess=mode==="success", isWarning=mode==="warning", isError=mode==="error";
   var img=isSuccess?feedbackAssets.success:feedbackAssets.loading;
-  box.className="ei-upload-feedback show "+(isSuccess?"success":"loading");
-  box.innerHTML='<div class="ei-upload-feedback-card"><img src="'+esc(img)+'" alt=""><strong>'+esc(isSuccess?"Carga completada":"Cargando archivo")+'</strong><span>'+esc(msg||(isSuccess?"La evidencia quedó guardada correctamente.":"Estamos subiendo el soporte. No cierre esta ventana."))+'</span></div>';
+  var title=isSuccess?"Carga completada":(isWarning?"Carga pendiente":(isError?"Carga no completada":"Cargando archivo"));
+  var text=msg||(isSuccess?"La evidencia quedó guardada correctamente.":(isWarning?"El flujo continúa y la evidencia queda pendiente de reintento.":(isError?"No fue posible cargar el archivo. Intente nuevamente.":"Estamos subiendo el soporte. No cierre esta ventana.")));
+  box.className="ei-upload-feedback show "+(isSuccess?"success":(isWarning?"warning":(isError?"error":"loading")));
+  box.innerHTML='<div class="ei-upload-feedback-card"><img src="'+esc(img)+'" alt=""><strong>'+esc(title)+'</strong><span>'+esc(text)+'</span></div>';
   clearTimeout(box.__timer);
-  if(isSuccess){box.__timer=setTimeout(hideUploadFeedback,1800);}
+  if(isSuccess||isWarning||isError){box.__timer=setTimeout(hideUploadFeedback,(isSuccess?1800:3600));}
 }
 
 function hideUploadFeedback(){
@@ -2248,10 +2250,13 @@ function fileToBase64Payload(file){
 function uploadReceptionPdfToDrive(file,c){
   return uploadFileToDrive(file,c,{processName:"Recepción de pedidos",processKey:"recepcion_pedidos",fileName:file&&file.name?file.name:"pedido.pdf",evidenceType:"PDF_PEDIDO"});
 }
-function prepareFileForDrive(file){
+function prepareFileForDrive(file,opts){
+  opts=opts||{};
   if(!file)return Promise.reject(new Error("No se seleccionó archivo."));
   if(/^image\//i.test(file.type||"")){
-    return compressImageForAudit(file,900,0.72).catch(function(){
+    var maxSide=opts.fastCutUpload?720:900;
+    var quality=opts.fastCutUpload?0.56:0.72;
+    return compressImageForAudit(file,maxSide,quality).catch(function(){
       return fileToBase64Payload(file).then(function(base64){return {base64:base64,mimeType:file.type||"image/jpeg",fileName:file.name,sizeBytes:file.size||0,compressed:false};});
     });
   }
@@ -2322,24 +2327,40 @@ function clearDriveFolderCache(){
     remove.forEach(function(k){localStorage.removeItem(k);});
   }catch(e){}
 }
+var driveFolderSessionCache = {};
 function driveFetch(url,options){
   return ensureDriveToken("").then(function(token){
     options=options||{};
-    var headers=new Headers(options.headers||{});
+    var timeoutMs=Number(options.timeoutMs||45000);
+    var clean=Object.assign({},options);
+    delete clean.timeoutMs;
+    var headers=new Headers(clean.headers||{});
     headers.set("Authorization","Bearer "+token);
-    return fetch(url,Object.assign({},options,{headers:headers})).then(function(res){
+    clean.headers=headers;
+    var controller=null,timer=null;
+    if(window.AbortController && timeoutMs>0){
+      controller=new AbortController();
+      clean.signal=controller.signal;
+      timer=setTimeout(function(){try{controller.abort();}catch(e){}},timeoutMs);
+    }
+    return fetch(url,clean).then(function(res){
+      if(timer)clearTimeout(timer);
       if(res.status===401 || res.status===403){
         driveAccessToken="";driveTokenExpiresAt=0;
         throw new Error("Google Drive requiere autorización nuevamente. Presione la acción otra vez y autorice el acceso.");
       }
       if(!res.ok){return res.text().catch(function(){return "";}).then(function(txt){
         if(res.status===404){
-          clearDriveFolderCache();
+          clearDriveFolderCache();driveFolderSessionCache={};
           throw new Error("Google Drive no encontró una carpeta o archivo usado como destino. Se limpió la referencia interna de carpetas; vuelva a intentar la carga con la misma cuenta de Drive. Detalle técnico: "+txt.slice(0,180));
         }
         throw new Error("Error Google Drive "+res.status+": "+txt.slice(0,220));
       });}
       return res;
+    }).catch(function(err){
+      if(timer)clearTimeout(timer);
+      if(err && err.name==="AbortError")throw new Error("La carga a Drive tardó demasiado. El flujo queda guardado y puede reintentarse sin salir de la app.");
+      throw err;
     });
   });
 }
@@ -2358,11 +2379,12 @@ function driveCreateFolder(name,parentId){
   return driveFetch("https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(meta)}).then(function(res){return res.json();});
 }
 function driveEnsureFolder(name,parentId){
-  // No se reutilizan IDs de carpetas guardados en localStorage porque pueden quedar obsoletos
-  // si la carpeta fue eliminada, movida, creada con otra cuenta o si el navegador conserva caché vieja.
+  // Caché solo en memoria de sesión: acelera cortes repetidos sin depender de IDs viejos guardados en navegador.
+  var key=String(parentId||"ROOT")+"/"+safeDrivePart(name);
+  if(driveFolderSessionCache[key])return Promise.resolve(driveFolderSessionCache[key]);
   return driveFindFolder(name,parentId).then(function(existing){
-    if(existing&&existing.id)return existing;
-    return driveCreateFolder(name,parentId);
+    if(existing&&existing.id){driveFolderSessionCache[key]=existing;return existing;}
+    return driveCreateFolder(name,parentId).then(function(created){driveFolderSessionCache[key]=created;return created;});
   });
 }
 function driveEnsurePath(parts){
@@ -2384,11 +2406,11 @@ function base64ToBlob(base64,mimeType){
 function driveUploadMultipart(blob,metadata){
   var boundary="eiDriveBoundary"+Date.now()+Math.random().toString(16).slice(2);
   var body=new Blob(["--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n",JSON.stringify(metadata),"\r\n--"+boundary+"\r\nContent-Type: "+(metadata.mimeType||"application/octet-stream")+"\r\n\r\n",blob,"\r\n--"+boundary+"--"],{type:"multipart/related; boundary="+boundary});
-  return driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,mimeType,size",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:body}).then(function(res){return res.json();});
+  return driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,mimeType,size",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:body,timeoutMs:70000}).then(function(res){return res.json();});
 }
 function driveTryShare(fileId){
   if(!fileId)return Promise.resolve(false);
-  return driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(fileId)+"/permissions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"anyone",role:"reader"})}).then(function(){return true;}).catch(function(){return false;});
+  return driveFetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(fileId)+"/permissions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:"anyone",role:"reader"}),timeoutMs:18000}).then(function(){return true;}).catch(function(){return false;});
 }
 
 function loadPdfLibForStamp(){
@@ -2551,8 +2573,8 @@ function buildStampedDispatchSupportFile(file,c,def,statusEl){
 
 function uploadFileToDrive(file,c,processOrOptions,fileName){
   var opts=typeof processOrOptions==="object"?(processOrOptions||{}):{processName:processOrOptions,fileName:fileName};
-  showUploadFeedback("loading","Subiendo soporte a Drive. Espere la confirmación antes de continuar.");
-  return ensureDriveToken("consent").then(function(){return prepareFileForDrive(file);}).then(function(prep){
+  showUploadFeedback("loading",opts.feedbackMessage||"Subiendo soporte a Drive. Espere la confirmación antes de continuar.");
+  return ensureDriveToken(opts.silentToken?"":"consent").then(function(){return prepareFileForDrive(file,opts);}).then(function(prep){
     var uploadedAt=now();
     var date=new Date(uploadedAt);
     var year=String(date.getFullYear());
@@ -2562,7 +2584,7 @@ function uploadFileToDrive(file,c,processOrOptions,fileName){
     var ownerName=state.user?state.user.name:"Responsable";
     var orderNumber=c.reference||c.pedido||"SIN_PEDIDO";
     var caseNumber=c.caseNumber||c.id||"SIN_CASO";
-    var path=[driveRootFolderName(),year,month,processName,ownerName,orderNumber,caseNumber,evidenceType];
+    var path=opts.fastCutUpload?[driveRootFolderName(),year,month,"Corte rapido",orderNumber,evidenceType]:[driveRootFolderName(),year,month,processName,ownerName,orderNumber,caseNumber,evidenceType];
     return driveEnsurePath(path).then(function(folderInfo){
       var name=safeDriveFileName(opts.fileName||prep.fileName||file.name||("evidencia_"+Date.now()));
       var blob=base64ToBlob(prep.base64,prep.mimeType);
@@ -2580,6 +2602,27 @@ function uploadFileToDrive(file,c,processOrOptions,fileName){
     hideUploadFeedback();
     throw err;
   });
+}
+function uploadCutPhotoToDrive(file,c,cut,phase,uploadedAt){
+  var isInitial=phase==="initial";
+  var label=isInitial?"foto inicial":"foto final";
+  var evidenceType=isInitial?"FOTO_INICIAL_CORTE":"FOTO_FINAL_CORTE";
+  var suffix=isInitial?"foto_inicial":"foto_final";
+  var name=(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_"+suffix+"_"+(file&&file.name?file.name:"foto.jpg");
+  return uploadFileToDrive(file,c,{processName:"Corte",processKey:"corte_cable",fileName:name,evidenceType:evidenceType,cutId:cut.id,fastCutUpload:true,silentToken:true,feedbackMessage:"Subiendo "+label+" de corte optimizada. El cronómetro y el flujo ya quedan guardados.",timeoutMs:70000});
+}
+var cutLocalUploadFiles = {};
+function cutLocalUploadKey(caseId,cutId,phase){return String(caseId||"")+"::"+String(cutId||"")+"::"+String(phase||"");}
+function setCutLocalFile(caseId,cutId,phase,file){try{if(file)cutLocalUploadFiles[cutLocalUploadKey(caseId,cutId,phase)]=file;}catch(e){}}
+function getCutLocalFile(caseId,cutId,phase){try{return cutLocalUploadFiles[cutLocalUploadKey(caseId,cutId,phase)]||null;}catch(e){return null;}}
+function clearCutLocalFile(caseId,cutId,phase){try{delete cutLocalUploadFiles[cutLocalUploadKey(caseId,cutId,phase)];}catch(e){}}
+function cutPendingUploadNotice(cut){
+  var pending=[];
+  if(cut&&cut.fotoInicioPendingUpload)pending.push("foto inicial");
+  if(cut&&cut.fotoFinalPendingUpload)pending.push("foto final");
+  if(!pending.length)return "";
+  var detail=[cut.fotoInicioUploadError,cut.fotoFinalUploadError].filter(Boolean).join(" · ");
+  return '<div class="notice warning" style="margin-top:10px"><strong>Drive pendiente:</strong> '+esc(pending.join(" y "))+'. Puede seguir operando el corte; use <b>Reintentar fotos pendientes</b> cuando tenga señal estable.'+(detail?'<br><small>'+esc(detail)+'</small>':'')+'</div>';
 }
 function appendEvidence(c,up,detail){
   c.evidence=c.evidence||[];
@@ -4278,7 +4321,7 @@ function openCutModule(id,cutId){
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar autorización de corte</button>';}
   if(canApproveNow){approvalActions+='<button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar autorización y enviar a Ventas</button>';}
-  var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+pdfDocumentCard(c,true);
+  var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+cutPendingUploadNotice(cut)+pdfDocumentCard(c,true);
   var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
     '<fieldset><legend>Datos del corte</legend><div class="cut-grid">'+
       '<label class="field"><span>Tipo de pedido *</span><select class="select" name="tipoPedido" '+(started||finished?'disabled':'')+'><option value="VENTAS" '+(cut.tipoPedido!=="ALUMBRADO"?'selected':'')+'>Ventas</option><option value="ALUMBRADO" '+(cut.tipoPedido==="ALUMBRADO"?'selected':'')+'>Alumbrado</option></select></label>'+
@@ -4308,9 +4351,9 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="tramoRotulado" '+(cut.tramoRotulado!==false?'checked':'')+'> Tramo rotulado</label>'+ 
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-2">'+
-      '<label class="field"><span>Foto inicial obligatoria</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" capture="environment" '+((started||finished)?'disabled':'')+'><small>'+(cut.fotoInicioUrl?'Foto inicial cargada: '+fmtDate(cut.fotoInicioAt)+(cut.fotoInicioUrl?' · Drive OK':''):'Seleccione o tome la foto y luego pulse Iniciar corte. No necesita guardar avance.')+'</small></label>'+ 
-      '<label class="field"><span>Foto final obligatoria</span><input class="input" type="file" id="cutFinalPhoto" accept="image/*" capture="environment" '+((!started||finished)?'disabled':'')+'><small>'+(cut.fotoFinalUrl?'Foto final cargada: '+fmtDate(cut.fotoFinalAt)+(cut.fotoFinalUrl?' · Drive OK':''):'Seleccione o tome la foto antes de finalizar el corte.')+'</small></label>'+ 
-    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button></div></fieldset>'+ 
+      '<label class="field"><span>Foto inicial obligatoria</span><input class="input" type="file" id="cutInitialPhoto" accept="image/*" capture="environment" '+(((started||finished)&&!cut.fotoInicioPendingUpload)?'disabled':'')+'><small>'+(cut.fotoInicioUrl?'Foto inicial cargada: '+fmtDate(cut.fotoInicioAt)+(cut.fotoInicioUrl?' · Drive OK':''):'Seleccione o tome la foto y luego pulse Iniciar corte. No necesita guardar avance.')+'</small></label>'+ 
+      '<label class="field"><span>Foto final obligatoria</span><input class="input" type="file" id="cutFinalPhoto" accept="image/*" capture="environment" '+(((!started||finished)&&!cut.fotoFinalPendingUpload)?'disabled':'')+'><small>'+(cut.fotoFinalUrl?'Foto final cargada: '+fmtDate(cut.fotoFinalAt)+(cut.fotoFinalUrl?' · Drive OK':''):'Seleccione o tome la foto antes de finalizar el corte.')+'</small></label>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.fotoInicioPendingUpload||cut.fotoFinalPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar fotos pendientes</button>':'')+'</div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · módulo completo",info+form));
   function refreshPreview(){
@@ -4368,6 +4411,18 @@ function handleCutAction(c,cut,action){
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
     return;
   }
+  if(action==="retryCutUploads"){
+    var retryTasks=[];
+    if(!cut.fotoInicioPendingUpload && !cut.fotoFinalPendingUpload){alert("No hay fotos pendientes por subir a Drive.");return;}
+    showUploadFeedback("loading","Reintentando evidencias pendientes de corte. No necesita salir de la app.");
+    var retryInitialFile=getCutLocalFile(c.id,cut.id,"initial")||((qs("#cutInitialPhoto")&&qs("#cutInitialPhoto").files&&qs("#cutInitialPhoto").files[0])||null);
+    if(cut.fotoInicioPendingUpload && retryInitialFile){retryTasks.push(uploadCutPhotoToDrive(retryInitialFile,c,cut,"initial",cut.fotoInicioAt||now()).then(function(up){cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.fotoInicioPendingUpload=false;clearCutLocalFile(c.id,cut.id,"initial");cut.fotoInicioUploadError="";appendEvidence(c,up,"Foto inicial obligatoria del corte "+(cut.code||cut.id)+". Reintento Drive: "+fmtDate(now()));}));}
+    var retryFinalFile=getCutLocalFile(c.id,cut.id,"final")||((qs("#cutFinalPhoto")&&qs("#cutFinalPhoto").files&&qs("#cutFinalPhoto").files[0])||null);
+    if(cut.fotoFinalPendingUpload && retryFinalFile){retryTasks.push(uploadCutPhotoToDrive(retryFinalFile,c,cut,"final",cut.fotoFinalAt||now()).then(function(up){cut.fotoFinalUrl=up.url;cut.fotoFinalDriveId=up.fileId;cut.fotoFinalFolder=up.folderPath||up.folder;cut.fotoFinalPendingUpload=false;clearCutLocalFile(c.id,cut.id,"final");cut.fotoFinalUploadError="";appendEvidence(c,up,"Foto final obligatoria del corte "+(cut.code||cut.id)+". Reintento Drive: "+fmtDate(now()));}));}
+    if(!retryTasks.length){alert("La app tiene marcado pendiente, pero el archivo local ya no está disponible en memoria. Vuelva a seleccionar la foto en el corte y guarde nuevamente.");return;}
+    Promise.all(retryTasks).then(function(){return persistCase(c,{type:"CUT_PENDING_PHOTOS_UPLOADED",detail:"Fotos pendientes de corte cargadas a Drive: "+(cut.code||cut.id)});}).then(function(){showUploadFeedback("success","Fotos pendientes cargadas correctamente.");closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showUploadFeedback("warning","No fue posible completar el reintento. El corte sigue guardado; intente de nuevo con mejor señal.");showError(e.message||e);});
+    return;
+  }
   if(action==="startCut"){
     cut.siesaBodega=cut.siesaBodega||((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"PENDIENTE_VALIDAR");
     if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente. Si el sobrante es mayor a 50 m, revise que los campos Metros disponibles y Metros a cortar estén diligenciados correctamente.");return;}
@@ -4378,6 +4433,7 @@ function handleCutAction(c,cut,action){
         cut.fotoInicioAt=cut.fotoInicioAt||uploadedAt;
         cut.fotoInicioByName=state.user.name;
         cut.initialPhotoName=file.name||"foto_inicial.jpg";
+        setCutLocalFile(c.id,cut.id,"initial",file);
         cut.fotoInicioPendingUpload=true;
       }else if(cut.fotoInicioAt){
         cut.fotoInicioPendingUpload=cut.fotoInicioPendingUpload||!cut.fotoInicioUrl;
@@ -4387,13 +4443,14 @@ function handleCutAction(c,cut,action){
     }
     function uploadInitialAsync(){
       if(!file)return Promise.resolve(null);
-      return uploadFileToDrive(file,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_inicial_"+file.name,evidenceType:"FOTO_INICIAL_CORTE",cutId:cut.id}).then(function(up){
-        cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.initialPhotoName=up.fileName||file.name;cut.fotoInicioAt=cut.fotoInicioAt||uploadedAt;cut.fotoInicioByName=state.user.name;cut.fotoInicioPendingUpload=false;
+      return uploadCutPhotoToDrive(file,c,cut,"initial",uploadedAt).then(function(up){
+        cut.fotoInicioUrl=up.url;cut.fotoInicioDriveId=up.fileId;cut.fotoInicioFolder=up.folderPath||up.folder;cut.initialPhotoName=up.fileName||file.name;cut.fotoInicioAt=cut.fotoInicioAt||uploadedAt;cut.fotoInicioByName=state.user.name;cut.fotoInicioPendingUpload=false;clearCutLocalFile(c.id,cut.id,"initial");
         appendEvidence(c,up,"Foto inicial obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt));
         return persistCase(c,{type:"CUT_INITIAL_PHOTO_UPLOADED",detail:"Foto inicial cargada a Drive: "+(cut.code||cut.id)});
       }).catch(function(err){
         cut.fotoInicioPendingUpload=true;
         cut.fotoInicioUploadError=String((err&&err.message)||err||"No fue posible cargar la foto inicial a Drive").slice(0,240);
+        showUploadFeedback("warning","El cronómetro inició. La foto inicial quedó pendiente de Drive y se puede reintentar sin salir de la app.");
         return persistCase(c,{type:"CUT_INITIAL_PHOTO_PENDING_UPLOAD",detail:"El cronómetro inició. La foto inicial quedó pendiente de Drive: "+cut.fotoInicioUploadError}).catch(function(){return null;});
       });
     }
@@ -4407,18 +4464,19 @@ function handleCutAction(c,cut,action){
     if(!file2){alert("Debe anexar foto final antes de finalizar.");return;}
     var uploadedAt2=now();
     function markFinished(){
-      var extra=cut.startedAt?msSince(cut.startedAt):0;cut.durationMs=Number(cut.durationMs||0)+extra;cut.durationText=fmt(cut.durationMs);cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;cut.finishedByName=state.user.name;cut.finalPhotoName=file2.name||"foto_final.jpg";cut.fotoFinalAt=uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=true;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
+      var extra=cut.startedAt?msSince(cut.startedAt):0;cut.durationMs=Number(cut.durationMs||0)+extra;cut.durationText=fmt(cut.durationMs);cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;cut.finishedByName=state.user.name;cut.finalPhotoName=file2.name||"foto_final.jpg";setCutLocalFile(c.id,cut.id,"final",file2);cut.fotoFinalAt=uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=true;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
       var dis=cutParseDecimal(cut.disponibleAntes), fin=cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados);if(Number.isFinite(dis)&&Number.isFinite(fin))cut.remanenteReal=cutNormalizeDecimal(dis-fin);
       return persistCase(c,{type:"CUT_FINISHED_PENDING_REGISTER",detail:"Foto final tomada. Pendiente registrar corte: "+(cut.code||cut.id)+" · "+cut.durationText});
     }
     function uploadFinalAsync(){
-      return uploadFileToDrive(file2,c,{processName:"Corte",processKey:"corte_cable",fileName:(c.reference||"pedido")+"_"+(cut.code||cut.id)+"_foto_final_"+file2.name,evidenceType:"FOTO_FINAL_CORTE",cutId:cut.id}).then(function(up){
-        cut.fotoFinalUrl=up.url;cut.fotoFinalDriveId=up.fileId;cut.fotoFinalFolder=up.folderPath||up.folder;cut.finalPhotoName=up.fileName||file2.name;cut.fotoFinalAt=cut.fotoFinalAt||uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=false;
+      return uploadCutPhotoToDrive(file2,c,cut,"final",uploadedAt2).then(function(up){
+        cut.fotoFinalUrl=up.url;cut.fotoFinalDriveId=up.fileId;cut.fotoFinalFolder=up.folderPath||up.folder;cut.finalPhotoName=up.fileName||file2.name;cut.fotoFinalAt=cut.fotoFinalAt||uploadedAt2;cut.fotoFinalByName=state.user.name;cut.fotoFinalPendingUpload=false;clearCutLocalFile(c.id,cut.id,"final");
         appendEvidence(c,up,"Foto final obligatoria del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(uploadedAt2));
         return persistCase(c,{type:"CUT_FINAL_PHOTO_UPLOADED",detail:"Foto final cargada a Drive: "+(cut.code||cut.id)});
       }).catch(function(err){
         cut.fotoFinalPendingUpload=true;
         cut.fotoFinalUploadError=String((err&&err.message)||err||"No fue posible cargar la foto final a Drive").slice(0,240);
+        showUploadFeedback("warning","El corte finalizó. La foto final quedó pendiente de Drive y se puede reintentar sin salir de la app.");
         return persistCase(c,{type:"CUT_FINAL_PHOTO_PENDING_UPLOAD",detail:"El corte finalizó. La foto final quedó pendiente de Drive: "+cut.fotoFinalUploadError}).catch(function(){return null;});
       });
     }
