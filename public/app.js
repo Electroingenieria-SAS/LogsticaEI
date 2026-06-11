@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v91_rutas_duvan_javier";
+var storageKey = "ei_trazabilidad_v92_lectura_lineas_edicion_segura";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -7711,6 +7711,382 @@ recalcReceptionItemFlags = function(it){
   it.decisionCorteRecepcion=decision;
   it.detectionReason=it.detectionReason || (it.manualEntry?'Línea agregada/corregida manualmente en recepción':'Línea detectada y validada en recepción');
   return it;
+};
+
+
+
+
+/* ============================================================
+   V92 - Lectura exhaustiva de líneas + edición segura Recepción
+   - Refuerza PDFs SIESA donde PDF.js entrega filas desordenadas.
+   - Permite agregar, editar, guardar edición y eliminar materiales.
+   - No cambia reglas ni flujo; solo normaliza líneas antes de subir/guardar.
+============================================================ */
+var eiV92LegacyReadPdfFile = readPdfFile;
+var eiV92LegacyExtractPedido = extractPedido;
+var eiV92LegacyExtractPedidoItems = extractPedidoItems;
+var eiV92LegacyOrderItemsPanel = orderItemsPanel;
+var eiV92LegacyBindActions = bindActions;
+
+function eiV92CleanText(v){return cleanPdfValue(String(v||'').normalize('NFKC').replace(/\s+/g,' '));}
+function eiV92Norm(v){return stripAccents ? stripAccents(eiV92CleanText(v)).toUpperCase() : eiV92CleanText(v).toUpperCase();}
+function eiV92UnitList(){return ['UND','UN','M','MT','KG','G','LB','CM','MM','M2','M3','ROLLO','CAJA','PAQ','PAR','JGO','BOLSA','GAL','L'];}
+function eiV92UnitOptions(value){
+  var val=normalizePdfUnit(value||'UND')||'UND';
+  var list=eiV92UnitList();
+  if(list.indexOf(val)<0)list.unshift(val);
+  return list.map(function(u){return '<option value="'+esc(u)+'" '+(u===val?'selected':'')+'>'+esc(u)+'</option>';}).join('');
+}
+function receptionUnitSelect(name,idx,value){
+  return '<select class="select input-sm" name="'+name+'_'+idx+'">'+eiV92UnitOptions(value)+'</select>';
+}
+function eiV92WordsFromPdfItems(items,pageHeight){
+  var out=[];
+  (items||[]).forEach(function(item){
+    var text=eiV92CleanText(item && item.str); if(!text)return;
+    var tr=item.transform||[0,0,0,0,0,0];
+    var x0=Number(tr[4]||0), y=Number(tr[5]||0);
+    var width=Math.abs(Number(item.width||Math.max(text.length*4,1)));
+    var height=Math.abs(Number(item.height||8));
+    var top=pageHeight-y-height, bottom=pageHeight-y;
+    var parts=text.split(/\s+/).filter(Boolean);
+    if(parts.length<=1){out.push({text:text,x0:x0,x1:x0+width,top:top,bottom:bottom});return;}
+    var cursor=x0, charW=width/Math.max(text.length,1);
+    parts.forEach(function(part){
+      var w=Math.max(part.length*charW,1);
+      out.push({text:part,x0:cursor,x1:cursor+w,top:top,bottom:bottom});
+      cursor += w + charW;
+    });
+  });
+  return out.sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+}
+function eiV92GroupLines(words,tol){
+  tol=tol||5;
+  var lines=[];
+  words.slice().sort(function(a,b){return a.top-b.top || a.x0-b.x0;}).forEach(function(w){
+    var found=null;
+    for(var i=lines.length-1;i>=0;i--){
+      if(Math.abs(lines[i].top-w.top)<=tol){found=lines[i];break;}
+      if(lines[i].top < w.top-tol)break;
+    }
+    if(!found){found={top:w.top,words:[]};lines.push(found);}
+    found.words.push(w);
+    found.top=found.words.reduce(function(s,x){return s+x.top;},0)/found.words.length;
+  });
+  return lines.map(function(l){l.words.sort(function(a,b){return a.x0-b.x0;});l.text=eiV92CleanText(l.words.map(function(w){return w.text;}).join(' '));return l;}).sort(function(a,b){return a.top-b.top;});
+}
+function eiV92LineTextInRange(line,xMin,xMax){
+  return eiV92CleanText((line.words||[]).filter(function(w){var mid=(w.x0+w.x1)/2;return mid>=xMin && mid<xMax;}).sort(function(a,b){return a.x0-b.x0;}).map(function(w){return w.text;}).join(' '));
+}
+function eiV92FirstInRange(line,xMin,xMax,rx){
+  var selected=(line.words||[]).filter(function(w){var mid=(w.x0+w.x1)/2;return mid>=xMin && mid<xMax && (!rx || rx.test(eiV92CleanText(w.text)));}).sort(function(a,b){return a.x0-b.x0;});
+  return selected.length?eiV92CleanText(selected[0].text):'';
+}
+function eiV92ReferenceOk(ref){
+  ref=eiV92CleanText(ref);
+  if(!ref || /^(REFER|REF|DESCRIP|CANT|COMP|U\.?M\.?|BODEGA|UBIC|VALOR|PARCIAL)$/i.test(ref))return false;
+  return /^\d{5,}$/.test(ref) || /^[A-Z][A-Z0-9._\-/]{3,}$/i.test(ref);
+}
+function eiV92FindHeaderLine(lines){
+  var best=null, score=0;
+  (lines||[]).forEach(function(l){
+    var t=eiV92Norm(l.text);
+    var s=(/REFER|REF/.test(t)?1:0)+(/DESCRIP/.test(t)?1:0)+(/UBIC/.test(t)?1:0)+(/CANT/.test(t)?1:0)+(/U\.?M/.test(t)?1:0);
+    if(s>score){score=s;best=l;}
+  });
+  return score>=3?best:null;
+}
+function eiV92IsFooterLine(line){
+  var t=eiV92Norm(line.text);
+  return /\b(NOTAS|TOTALES|SUBTOTAL|TOTAL|ELABORADO|APROBADO|RECIBIDO|PAGINA)\b/.test(t);
+}
+function eiV92MaterialKey(m){
+  return [m.referencia,m.descripcion,m.cantidad,m.unidad||m.unidad_medida,m.ubicacion].map(function(x){return eiV92CleanText(x).toUpperCase();}).join('|');
+}
+function eiV92DedupeItems(items){
+  var out=[], seen={};
+  (items||[]).forEach(function(m){
+    if(!m)return;
+    var key=eiV92MaterialKey(m);
+    if(!key || seen[key])return;
+    seen[key]=1; out.push(m);
+  });
+  return out;
+}
+function eiV92MaterialToApp(m,index,mode){
+  var item={
+    id:uid('LIN'),
+    referencia:eiV92CleanText(m.referencia),
+    descripcion:cleanDesc ? cleanDesc(eiV92CleanText(m.descripcion)) : eiV92CleanText(m.descripcion),
+    cantidad:normalizePdfNumber(m.cantidad),
+    unidad:normalizePdfUnit(m.unidad||m.unidad_medida),
+    ubicacion:eiV92CleanText(m.ubicacion),
+    pagina:m.pagina||1,
+    requiereCorte:false,
+    posibleCorte:false,
+    esCable:false,
+    decisionCorteRecepcion:'NO_APLICA',
+    estado:'PENDIENTE_ALISTAMIENTO',
+    rawLine:'PDFJS_V92_'+(index+1),
+    detectionReason:'Lectura PDF.js V92 exhaustiva por filas y columnas SIESA. Modo: '+(mode||'GEOMETRIA')
+  };
+  return recalcReceptionItemFlags(item);
+}
+function eiV92ParseSiesaRows(words,pageNum,pageWidth,pageHeight){
+  var lines=eiV92GroupLines(words,5);
+  var header=eiV92FindHeaderLine(lines);
+  var bodyStart=header?header.top+7:0;
+  var footer=lines.filter(function(l){return l.top>bodyStart+20 && eiV92IsFooterLine(l);}).sort(function(a,b){return a.top-b.top;})[0];
+  var bodyEnd=footer?footer.top-2:pageHeight-30;
+  // Rangos de columna proporcionales para la plantilla de Orden de Entrega SIESA.
+  var refMin=0, refMax=pageWidth*0.12;
+  var descMin=pageWidth*0.08, descMax=pageWidth*0.53;
+  var ubicMin=pageWidth*0.60, ubicMax=pageWidth*0.70;
+  var qtyMin=pageWidth*0.69, qtyMax=pageWidth*0.77;
+  var unitMin=pageWidth*0.75, unitMax=pageWidth*0.82;
+  var qtyRx=/^\d+(?:[.,]\d+)?$/;
+  var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
+  var rows=[];
+  lines.forEach(function(line){
+    if(line.top<=bodyStart || line.top>=bodyEnd)return;
+    var ref=eiV92FirstInRange(line,refMin,refMax,null);
+    if(!eiV92ReferenceOk(ref))return;
+    var qty=eiV92FirstInRange(line,qtyMin,qtyMax,qtyRx);
+    var unit=eiV92FirstInRange(line,unitMin,unitMax,unitRx);
+    // Si Cant. o U.M. vienen corridos algunos puntos, ampliar lectura sin tomar valores monetarios.
+    if(!qty)qty=eiV92FirstInRange(line,pageWidth*0.66,pageWidth*0.78,qtyRx);
+    if(!unit)unit=eiV92FirstInRange(line,pageWidth*0.73,pageWidth*0.84,unitRx);
+    if(!qty || !unit)return;
+    var desc=eiV92LineTextInRange(line,descMin,descMax)
+      .replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ')
+      .replace(/\bPARQUE\b/ig,' ')
+      .replace(/\bINDUSTRIAL\b/ig,' ');
+    desc=cleanDesc ? cleanDesc(desc) : eiV92CleanText(desc);
+    var ubic=eiV92LineTextInRange(line,ubicMin,ubicMax);
+    if(!desc)return;
+    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum});
+  });
+  return rows;
+}
+function eiV92ReadPdfRowsExhaustive(file){
+  if(!file || !window.pdfjsLib)return Promise.resolve({items:[],audit:[]});
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var arr=new Uint8Array(reader.result);
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjsLib.getDocument({data:arr,isEvalSupported:false}).promise.then(function(pdf){
+        var all=[], audit=[], chain=Promise.resolve();
+        for(var i=1;i<=pdf.numPages;i++)(function(pageNo){
+          chain=chain.then(function(){return pdf.getPage(pageNo);}).then(function(page){
+            var viewport=page.getViewport({scale:1});
+            return page.getTextContent({includeMarkedContent:false,disableNormalization:false}).then(function(content){
+              var words=eiV92WordsFromPdfItems(content.items,viewport.height);
+              var rows=eiV92ParseSiesaRows(words,pageNo,viewport.width,viewport.height);
+              all=all.concat(rows);
+              audit.push({pagina:pageNo,materialesExtraidos:rows.length,modo:'V92_FILAS_COLUMNAS'});
+            });
+          });
+        })(i);
+        chain.then(function(){resolve({items:eiV92DedupeItems(all),audit:audit});}).catch(reject);
+      }).catch(reject);
+    };
+    reader.onerror=function(){reject(new Error('No fue posible leer el PDF en modo exhaustivo.'));};
+    reader.readAsArrayBuffer(file);
+  });
+}
+readPdfFile = function(file){
+  var legacyPromise=eiV92LegacyReadPdfFile(file).catch(function(err){return '__EI_V92_LEGACY_ERROR__'+((err&&err.message)||err);});
+  var v92Promise=eiV92ReadPdfRowsExhaustive(file).catch(function(){return {items:[],audit:[]};});
+  return Promise.all([legacyPromise,v92Promise]).then(function(parts){
+    var legacyText=String(parts[0]||''), v92=parts[1]||{items:[],audit:[]};
+    var legacyItems=[];
+    if(legacyText.indexOf('__EI_V92_LEGACY_ERROR__')!==0){try{legacyItems=eiV92LegacyExtractPedidoItems(legacyText)||[];}catch(e){legacyItems=[];}}
+    var merged=eiV92DedupeItems((v92.items||[]).map(function(m,i){return eiV92MaterialToApp(m,i,'V92');}).concat(legacyItems||[]));
+    if(merged.length){
+      var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V92_MERGE'));}).join('\n');
+      var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V92',materialesExtraidos:merged.length,paginas:v92.audit||[],legacyDetectados:legacyItems.length});
+      var cleanLegacy=legacyText.replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
+      return markers+'\n'+audit+'\n'+cleanLegacy;
+    }
+    if(legacyText.indexOf('__EI_V92_LEGACY_ERROR__')===0)throw new Error(legacyText.replace('__EI_V92_LEGACY_ERROR__','')||'No se detectaron líneas de pedido.');
+    return legacyText;
+  });
+};
+extractPedidoItems = function(text){
+  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV92CleanText(x);}).filter(Boolean);
+  var items=[];
+  lines.forEach(function(line){
+    if(line.indexOf('__EI_V92_ROW__')===0){
+      try{var it=JSON.parse(line.slice('__EI_V92_ROW__'.length));if(it&&it.referencia&&it.descripcion&&it.cantidad&&it.unidad)items.push(recalcReceptionItemFlags(it));}
+      catch(e){console.warn('No se pudo interpretar fila V92',e,line);}
+    }
+  });
+  if(items.length)return eiV92DedupeItems(items).map(function(it){return recalcReceptionItemFlags(it);});
+  try{return eiV92LegacyExtractPedidoItems(text)||[];}catch(e){return [];}
+};
+extractPedido = function(text){
+  var raw=String(text||'');
+  var cleanText=raw.replace(/^__EI_V92_ROW__.*$/gm,'').replace(/^__EI_V92_AUDIT__.*$/gm,'');
+  var parsed={};
+  try{parsed=eiV92LegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
+  parsed.items=extractPedidoItems(raw);
+  parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
+  parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || parsed.pages || 1;
+  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V92_AUDIT__')===0;});
+  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V92_AUDIT__'.length));}catch(e){}}
+  parsed.extractionMode='PDFJS_V92_EXHAUSTIVO_FILAS_COLUMNAS';
+  return parsed;
+};
+
+function receptionItemEditedChip(it){
+  if(it.manualEdited||it.receptionEditedAt)return '<span class="chip success">Editado</span>';
+  if(it.manualEntry)return '<span class="chip primary">Manual</span>';
+  return '<span class="chip info">Leído PDF</span>';
+}
+receptionItemRowHtml = function(it,idx){
+  it=recalcReceptionItemFlags(Object.assign({},it||{}));
+  var edit=!!it._editing || !!it.manualEntry;
+  var idVal=it.id||uid('LIN');
+  var hidden='<input type="hidden" name="itemUse_'+idx+'" value="1"><input type="hidden" name="itemId_'+idx+'" value="'+esc(idVal)+'"><input type="hidden" name="itemManual_'+idx+'" value="'+(it.manualEntry?'1':'')+'"><input type="hidden" name="itemEdited_'+idx+'" value="'+(it.manualEdited||it.receptionEditedAt?'1':'')+'">';
+  var decision=it.posibleCorte || edit ? '<select class="select" name="itemDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.decisionCorteRecepcion!=='CARRETO_COMPLETO'&&it.decisionCorteRecepcion!=='NO_APLICA'?'selected':'')+'>Enviar a corte si aplica</option><option value="CARRETO_COMPLETO" '+(it.decisionCorteRecepcion==='CARRETO_COMPLETO'?'selected':'')+'>No cortar · carreto completo</option><option value="NO_APLICA" '+(it.decisionCorteRecepcion==='NO_APLICA'?'selected':'')+'>No aplica</option></select>' : '<span class="chip info">Alistamiento</span><input type="hidden" name="itemDecision_'+idx+'" value="NO_APLICA">';
+  var cells='';
+  cells+='<td>'+hidden+(idx+1)+'</td>';
+  if(edit){
+    cells+='<td>'+receptionEditCell('itemRef',idx,it.referencia,'Referencia')+'</td>';
+    cells+='<td>'+receptionEditCell('itemDesc',idx,it.descripcion,'Descripción completa del material','input-desc')+'</td>';
+    cells+='<td>'+receptionEditCell('itemQty',idx,it.cantidad,'Cantidad')+'</td>';
+    cells+='<td>'+receptionUnitSelect('itemUnit',idx,it.unidad)+'</td>';
+    cells+='<td>'+receptionEditCell('itemLoc',idx,it.ubicacion,'Ubicación')+'</td>';
+    cells+='<td>'+decision+'</td>';
+    cells+='<td>'+receptionEditCell('itemObs',idx,it.receptionObservation,'Observación')+'</td>';
+    cells+='<td><div class="row-actions"><button class="btn btn-small btn-success" type="button" data-reception-save="'+idx+'">Guardar edición</button><button class="btn btn-small btn-danger" type="button" data-reception-delete="'+idx+'">Eliminar</button></div></td>';
+  }else{
+    cells+='<td>'+receptionReadCell('itemRef',idx,it.referencia,'ref-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemDesc',idx,it.descripcion,'desc-cell')+(it.manualEdited||it.receptionEditedAt?'<br><small>Editado por recepción</small>':'')+'</td>';
+    cells+='<td>'+receptionReadCell('itemQty',idx,it.cantidad,'qty-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemUnit',idx,it.unidad,'unit-cell')+'</td>';
+    cells+='<td>'+receptionReadCell('itemLoc',idx,it.ubicacion,'loc-cell')+'</td>';
+    cells+='<td>'+decision+'</td>';
+    cells+='<td>'+receptionReadCell('itemObs',idx,it.receptionObservation,'obs-cell')+'</td>';
+    cells+='<td><div class="row-actions">'+receptionItemEditedChip(it)+'<button class="btn btn-small" type="button" data-reception-edit="'+idx+'">Editar</button><button class="btn btn-small btn-danger" type="button" data-reception-delete="'+idx+'">Eliminar</button></div></td>';
+  }
+  return '<tr data-reception-item-row="'+idx+'">'+cells+'</tr>';
+};
+renderReceptionItemsEditor = function(parsed,c){
+  var items=(parsed.items||[]);
+  var auto=items.filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
+  var rows=items.map(function(it,idx){return receptionItemRowHtml(it,idx);}).join('');
+  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura reforzada V92:</strong> se valida <strong>Referencia, Descripción completa, Cantidad, U.M. y Ubicación</strong>. Puede editar, guardar la edición, agregar líneas manuales o eliminar materiales repetidos antes de subir el PDF.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Líneas / cortes</small><strong>'+items.length+' / '+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table clean-lines-table"><thead><tr><th>#</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th><th>Acción</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="9">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px" class="row-actions"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
+};
+bindReceptionItemsEditor = function(parsed,c){
+  function reloadWith(items){parsed.items=items;qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);bindReceptionItemsEditor(parsed,c);}
+  qsa('[data-reception-edit]').forEach(function(btn){btn.onclick=function(){var fd=new FormData(qs('#recPdfForm'));var items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});var idx=Number(btn.getAttribute('data-reception-edit'));if(items[idx])items[idx]._editing=true;reloadWith(items);};});
+  qsa('[data-reception-save]').forEach(function(btn){btn.onclick=function(){var fd=new FormData(qs('#recPdfForm'));var items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});var idx=Number(btn.getAttribute('data-reception-save'));if(items[idx]){items[idx].manualEdited=true;items[idx].receptionEditedAt=now();items[idx].receptionEditedBy=state.user?state.user.name:'';}reloadWith(items);};});
+  qsa('[data-reception-delete]').forEach(function(btn){btn.onclick=function(){var idx=Number(btn.getAttribute('data-reception-delete'));if(!confirm('¿Eliminar esta línea del pedido?'))return;var fd=new FormData(qs('#recPdfForm'));var items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});items.splice(idx,1);reloadWith(items);};});
+  var add=qs('#addReceptionItemBtn');
+  if(add)add.onclick=function(){var fd=new FormData(qs('#recPdfForm'));var items=collectReceptionItemsFromForm(fd,true).map(function(x){x._editing=false;return x;});items.push({id:uid('LIN'),referencia:'',descripcion:'',cantidad:'',unidad:'UND',ubicacion:'',requiereCorte:false,posibleCorte:false,decisionCorteRecepcion:'NO_APLICA',manualEntry:true,_editing:true,estado:'PENDIENTE_ALISTAMIENTO',detectionReason:'Línea agregada manualmente por recepción'});reloadWith(items);};
+};
+collectReceptionItemsFromForm = function(fd,keepBlank){
+  var count=Number(fd.get('itemCount')||0), out=[];
+  for(var i=0;i<count;i++){
+    if(!fd.get('itemUse_'+i))continue;
+    var it={
+      id:fd.get('itemId_'+i)||uid('LIN'),
+      referencia:fd.get('itemRef_'+i)||'',
+      descripcion:fd.get('itemDesc_'+i)||'',
+      cantidad:fd.get('itemQty_'+i)||'',
+      unidad:fd.get('itemUnit_'+i)||'',
+      ubicacion:fd.get('itemLoc_'+i)||'',
+      decisionCorteRecepcion:fd.get('itemDecision_'+i)||'NO_APLICA',
+      receptionObservation:fd.get('itemObs_'+i)||'',
+      manualEntry:!!fd.get('itemManual_'+i),
+      manualEdited:!!fd.get('itemEdited_'+i),
+      origen:'PDF_RECEPCION_VALIDADO',
+      detectionReason:'Línea validada/editada manualmente desde recepción'
+    };
+    recalcReceptionItemFlags(it);
+    if(!keepBlank && (!it.referencia || !it.descripcion || !it.cantidad || !it.unidad))continue;
+    out.push(it);
+  }
+  return out;
+};
+function canEditReceptionOrderLines(c){
+  return !!(c && c.currentProcess==='recepcion_pedidos' && (canOperateCurrentProcess(c)||isAdminRoleValue(state.user&&state.user.role)||isJefeLogistica()));
+}
+function savedOrderItemRow(c,it,i,canEdit){
+  var decision=it.posibleCorte?(it.requiereCorte?'Enviar a corte':'No cortar · carreto completo'):'No aplica';
+  var actions=canEdit?'<td><div class="row-actions"><button class="btn btn-small" data-action="editOrderItem" data-id="'+esc(c.id)+'" data-line="'+i+'">Editar</button><button class="btn btn-small btn-danger" data-action="deleteOrderItem" data-id="'+esc(c.id)+'" data-line="'+i+'">Eliminar</button></div></td>':'';
+  return '<tr><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+(it.manualEdited||it.receptionEditedAt?'<br><span class="chip success">Editado</span>':'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?'Corte de cable':'Alistamiento')+'</td>'+actions+'</tr>';
+}
+orderItemsPanel = function(c){
+  var items=c.orderItems||[];
+  var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
+  var canEdit=canEditReceptionOrderLines(c);
+  if(!items.length)return c.currentProcess==='recepcion_pedidos'?'<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></div>'+(canEdit?'<button class="btn btn-small btn-secondary" data-action="addOrderItem" data-id="'+esc(c.id)+'">Agregar línea manual</button>':'')+'</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':'');
+  var actionHead=canEdit?'<th>Acción</th>':'';
+  var addBtn=canEdit?'<button class="btn btn-small btn-secondary" data-action="addOrderItem" data-id="'+esc(c.id)+'">Agregar línea</button>':'';
+  var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas del pedido validadas</h3><p>Vista limpia de las líneas extraídas del PDF. Si una línea no se leyó o quedó repetida, Recepción puede agregar, editar o eliminar antes de enviar a alistamiento.</p></div><div class="row-actions">'+pdfLink+addBtn+'</div></div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión recepción</th><th>Destino</th>'+actionHead+'</tr></thead><tbody>'+items.map(function(it,i){return savedOrderItemRow(c,it,i,canEdit);}).join('')+'</tbody></table></div></section>';
+  if(c.currentProcess==='alistamiento')html+=alistamientoLineChecklistPanel(c,false);
+  return html;
+};
+function orderItemModalFields(it){
+  it=it||{};
+  var decision=it.decisionCorteRecepcion||'NO_APLICA';
+  return '<label class="field"><span>Referencia *</span><input class="input" name="referencia" required value="'+esc(it.referencia||'')+'"></label><label class="field"><span>Descripción *</span><textarea class="textarea" name="descripcion" required>'+esc(it.descripcion||'')+'</textarea></label><section class="grid grid-3"><label class="field"><span>Cantidad *</span><input class="input" name="cantidad" required value="'+esc(it.cantidad||'')+'"></label><label class="field"><span>Unidad de medida *</span><select class="select" name="unidad" required>'+eiV92UnitOptions(it.unidad||'UND')+'</select></label><label class="field"><span>Ubicación</span><input class="input" name="ubicacion" value="'+esc(it.ubicacion||'')+'"></label></section><label class="field"><span>Decisión recepción</span><select class="select" name="decision"><option value="NO_APLICA" '+(decision==='NO_APLICA'?'selected':'')+'>No aplica / alistamiento</option><option value="MANDAR_CORTE" '+(decision==='MANDAR_CORTE'?'selected':'')+'>Enviar a corte si aplica</option><option value="CARRETO_COMPLETO" '+(decision==='CARRETO_COMPLETO'?'selected':'')+'>No cortar · carreto completo</option></select></label><label class="field"><span>Observación</span><textarea class="textarea" name="observacion">'+esc(it.receptionObservation||'')+'</textarea></label>';
+}
+function saveOrderItemFromForm(c,it,fd){
+  it=it||{id:uid('LIN')};
+  it.referencia=fd.get('referencia')||'';
+  it.descripcion=fd.get('descripcion')||'';
+  it.cantidad=fd.get('cantidad')||'';
+  it.unidad=fd.get('unidad')||'';
+  it.ubicacion=fd.get('ubicacion')||'';
+  it.decisionCorteRecepcion=fd.get('decision')||'NO_APLICA';
+  it.receptionObservation=fd.get('observacion')||'';
+  it.manualEntry=it.manualEntry||false;
+  it.manualEdited=true;
+  it.receptionEditedAt=now();
+  it.receptionEditedBy=state.user?state.user.name:'';
+  it.origen=it.origen||'RECEPCION_EDICION_MANUAL';
+  it.detectionReason='Línea agregada/editada manualmente desde Recepción';
+  recalcReceptionItemFlags(it);
+  return it;
+}
+function persistReceptionLinesChange(c,type,detail){
+  c.documentFlow=c.documentFlow||{};
+  c.documentFlow.linesEditedAt=now();
+  c.documentFlow.linesEditedBy=state.user?state.user.name:'';
+  c.documentFlow.extractedLines=(c.orderItems||[]).length;
+  c.documentFlow.extractedCuts=(c.orderItems||[]).filter(function(x){return x.requiereCorte;}).length;
+  autoCreateCutsFromItems(c,state.user?state.user.name:'Recepción');
+  applyReceptionChecklistFromPdf(c,c.pdfExtraction||{raw:'edicion_manual',items:c.orderItems||[]});
+  return persistCase(c,{type:type,process:'recepcion_pedidos',detail:detail||'Líneas de pedido ajustadas por Recepción'});
+}
+function openEditOrderItem(id,idx){
+  var c=caseById(id);if(!c)return;if(!canEditReceptionOrderLines(c)){alert('Solo Recepción puede editar líneas antes de enviar a alistamiento.');return;}
+  var items=c.orderItems||[];idx=Number(idx);var it=items[idx];if(!it)return;
+  drawer(modal('Editar línea del pedido','<form class="form" id="savedOrderItemForm"><div class="notice">Guarde la edición para que la línea quede marcada como editada antes de avanzar el flujo.</div>'+orderItemModalFields(it)+'<button class="btn btn-primary" type="submit">Guardar edición</button></form>'));
+  qs('#savedOrderItemForm').onsubmit=function(e){e.preventDefault();saveOrderItemFromForm(c,it,new FormData(e.target));persistReceptionLinesChange(c,'RECEPTION_LINE_EDITED','Recepción editó línea '+(it.referencia||'')).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){showError(err.message||err);});};
+}
+function openAddOrderItem(id){
+  var c=caseById(id);if(!c)return;if(!canEditReceptionOrderLines(c)){alert('Solo Recepción puede agregar líneas antes de enviar a alistamiento.');return;}
+  drawer(modal('Agregar línea manual','<form class="form" id="savedOrderItemForm"><div class="notice">Use esta opción cuando el PDF no lea una línea. La U.M. queda normalizada y la línea se marca como manual/editada.</div>'+orderItemModalFields({unidad:'UND',decisionCorteRecepcion:'NO_APLICA'})+'<button class="btn btn-primary" type="submit">Guardar línea</button></form>'));
+  qs('#savedOrderItemForm').onsubmit=function(e){e.preventDefault();var it=saveOrderItemFromForm(c,{id:uid('LIN'),manualEntry:true},new FormData(e.target));c.orderItems=c.orderItems||[];c.orderItems.push(it);persistReceptionLinesChange(c,'RECEPTION_LINE_ADDED','Recepción agregó línea manual '+(it.referencia||'')).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){showError(err.message||err);});};
+}
+function deleteOrderItem(id,idx){
+  var c=caseById(id);if(!c)return;if(!canEditReceptionOrderLines(c)){alert('Solo Recepción puede eliminar líneas antes de enviar a alistamiento.');return;}
+  idx=Number(idx);var items=c.orderItems||[];var it=items[idx];if(!it)return;
+  if(!confirm('¿Eliminar esta línea del pedido?\n\n'+(it.referencia||'')+' · '+(it.descripcion||'')))return;
+  var removed=items.splice(idx,1)[0];
+  c.cutRequests=(c.cutRequests||[]).filter(function(x){return !(removed && x.sourceLineId===removed.id && (x.generatedBy==='PDF_AUTO_CABLE_METROS'||x.generatedBy==='ALISTAMIENTO') && ['PENDIENTE_CORTE','REVISAR'].indexOf(x.status||'')>=0);});
+  persistReceptionLinesChange(c,'RECEPTION_LINE_DELETED','Recepción eliminó línea '+(removed.referencia||'')).then(function(){renderDetail(id);}).catch(function(err){showError(err.message||err);});
+}
+bindActions = function(){
+  eiV92LegacyBindActions();
+  qsa('[data-action="editOrderItem"]').forEach(function(b){b.onclick=function(){openEditOrderItem(b.getAttribute('data-id'),b.getAttribute('data-line'));};});
+  qsa('[data-action="addOrderItem"]').forEach(function(b){b.onclick=function(){openAddOrderItem(b.getAttribute('data-id'));};});
+  qsa('[data-action="deleteOrderItem"]').forEach(function(b){b.onclick=function(){deleteOrderItem(b.getAttribute('data-id'),b.getAttribute('data-line'));};});
 };
 
 
