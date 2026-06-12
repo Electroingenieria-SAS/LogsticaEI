@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v95_drive_cartera_seguro";
+var storageKey = "ei_trazabilidad_v96_javier_laverde_obligatorio";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -189,8 +189,8 @@ function deliveryRouteOptions(selected){
   return opts.map(function(o){return '<option value="'+o[0]+'" '+(selected===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join("");
 }
 var deliveryRouteOwnerRules=[
-  {key:"duvan",label:"Duvan",tokens:["duvan"],routes:["cliente_punto","cliente_recoge","despacho_local"]},
-  {key:"javier",label:"Javier",tokens:["javier"],routes:["despacho_nacional","cierre_despacho_nacional"]}
+  {key:"duvan",label:"Duvan",tokens:["duvan","duvan_"],fallbackUserIds:["duvan"],fallbackName:"Duvan",routes:["cliente_punto","cliente_recoge","despacho_local"]},
+  {key:"javier",label:"Javier Laverde",tokens:["javier_laverde","javier laverde","javier","laverde"],fallbackUserIds:["javier_laverde"],fallbackName:"Javier Laverde",routes:["despacho_nacional","cierre_despacho_nacional"]}
 ];
 function routeKeyForCase(c){
   if(!c)return "";
@@ -227,6 +227,13 @@ function currentUserAllowedByDeliveryRoute(c){
 function currentUserAllowedByDeliveryProcess(processKey){
   return currentUserAllowedByDeliveryRoute({currentProcess:processKey,deliveryType:processKey,requestedDelivery:processKey});
 }
+function currentUserIsDeliveryOwnerForCase(c){
+  var rule=currentUserDeliveryOwnerRule();
+  if(!rule || !c)return false;
+  var route=routeKeyForCase(c);
+  if(c.deliveryRouteOwner && String(c.deliveryRouteOwner)===rule.key)return true;
+  return !!(route && rule.routes.indexOf(route)>=0);
+}
 function deliveryRouteAssignableUsers(processKey){
   var rule=deliveryOwnerRuleForRoute(processKey);
   if(!rule)return [];
@@ -237,6 +244,9 @@ function deliveryRouteAssignableUsers(processKey){
     if(ar!==br)return ar-br;
     return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));
   });
+  if(!users.length && Array.isArray(rule.fallbackUserIds) && rule.fallbackUserIds.length){
+    users=rule.fallbackUserIds.map(function(id){return {id:id,uid:id,userId:id,name:rule.fallbackName||rule.label||id,email:"",role:"coordinador_logistico",uidAliases:[id,rule.key,rule.label,rule.fallbackName].filter(Boolean)};});
+  }
   return users.slice(0,1).map(function(u){
     var x=Object.assign({},u);
     x.uid=String(u.id||u.uid||u.userId||u.authUid||u.profileUid||"").trim();
@@ -244,6 +254,7 @@ function deliveryRouteAssignableUsers(processKey){
     x.name=u.name||u.displayName||u.email||x.id;
     x.email=u.email||"";
     x.role=normalizeRole(u.role||"coordinador_logistico");
+    x.uidAliases=uniqueArray((u.uidAliases||[]).concat([x.uid,x.id,u.userId,u.authUid,u.profileUid,u.email,u.name,u.displayName,rule.key,rule.label,rule.fallbackName]).map(function(v){return String(v||"").trim();}).filter(Boolean));
     return x;
   });
 }
@@ -504,12 +515,14 @@ function assignedPeopleText(c){
 function caseHasPersonalAssignees(c){return caseAssignedUserIds(c).length>0;}
 function currentUserIsAssignedToCase(c){
   if(!state.user || !c)return false;
+  if(currentUserIsDeliveryOwnerForCase(c))return true;
   var assigned=caseAssignedUserIds(c);
   return currentUserIdentityAliases().some(function(id){return assigned.indexOf(id)>=0;});
 }
 function isRestrictedAlistamientoCase(c){return !!(c && c.currentProcess==="alistamiento" && caseHasPersonalAssignees(c));}
 function currentUserBlockedByAssignment(c){
   if(!state.user || !c)return false;
+  if(currentUserIsDeliveryOwnerForCase(c))return false;
   var restricted=isRestrictedAlistamientoCase(c) || (isDeliveryProcess(c.currentProcess) && caseHasPersonalAssignees(c));
   if(!restricted)return false;
   var r=normalizeRole(state.user.role);
@@ -955,6 +968,15 @@ function loadCasesForRole(){
     queries.push(safeQuerySnapshot(db.collection("cases").where("assignedTo","==",id),"cases.assignedTo:"+id));
     queries.push(safeQuerySnapshot(db.collection("cases").where("assignedUserIds","array-contains",id),"cases.assignedUserIds:"+id));
   });
+
+  var ownerRule=currentUserDeliveryOwnerRule();
+  if(ownerRule){
+    queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryRouteOwner","==",ownerRule.key),"cases.deliveryRouteOwner:"+ownerRule.key));
+    ownerRule.routes.forEach(function(routeKey){
+      queries.push(safeQuerySnapshot(db.collection("cases").where("currentProcess","==",routeKey),"cases.deliveryRoute.currentProcess:"+routeKey));
+      queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryType","==",routeKey),"cases.deliveryRoute.deliveryType:"+routeKey));
+    });
+  }
 
   aliases.forEach(function(a){
     queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==",a),"cases.assignedRole:"+a));
