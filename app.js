@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v94_corte_sin_foto_inicio_final";
+var storageKey = "ei_trazabilidad_v95_drive_cartera_seguro";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -2328,6 +2328,17 @@ function clearDriveFolderCache(){
   }catch(e){}
 }
 var driveFolderSessionCache = {};
+function promiseWithTimeout(promise,ms,message){
+  ms=Number(ms||0);
+  if(!ms || ms<=0)return promise;
+  var timer=null;
+  return Promise.race([
+    promise,
+    new Promise(function(_,reject){
+      timer=setTimeout(function(){reject(new Error(message||"La operación tardó demasiado. Intente nuevamente sin salir de la app."));},ms);
+    })
+  ]).then(function(v){if(timer)clearTimeout(timer);return v;}).catch(function(e){if(timer)clearTimeout(timer);throw e;});
+}
 function driveFetch(url,options){
   return ensureDriveToken("").then(function(token){
     options=options||{};
@@ -2403,10 +2414,10 @@ function base64ToBlob(base64,mimeType){
   for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);
   return new Blob([bytes],{type:mimeType||"application/octet-stream"});
 }
-function driveUploadMultipart(blob,metadata){
+function driveUploadMultipart(blob,metadata,timeoutMs){
   var boundary="eiDriveBoundary"+Date.now()+Math.random().toString(16).slice(2);
   var body=new Blob(["--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n",JSON.stringify(metadata),"\r\n--"+boundary+"\r\nContent-Type: "+(metadata.mimeType||"application/octet-stream")+"\r\n\r\n",blob,"\r\n--"+boundary+"--"],{type:"multipart/related; boundary="+boundary});
-  return driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,mimeType,size",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:body,timeoutMs:70000}).then(function(res){return res.json();});
+  return driveFetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink,mimeType,size",{method:"POST",headers:{"Content-Type":"multipart/related; boundary="+boundary},body:body,timeoutMs:timeoutMs||70000}).then(function(res){return res.json();});
 }
 function driveTryShare(fileId){
   if(!fileId)return Promise.resolve(false);
@@ -2584,12 +2595,14 @@ function uploadFileToDrive(file,c,processOrOptions,fileName){
     var ownerName=state.user?state.user.name:"Responsable";
     var orderNumber=c.reference||c.pedido||"SIN_PEDIDO";
     var caseNumber=c.caseNumber||c.id||"SIN_CASO";
-    var path=opts.fastCutUpload?[driveRootFolderName(),year,month,"Corte rapido",orderNumber,evidenceType]:[driveRootFolderName(),year,month,processName,ownerName,orderNumber,caseNumber,evidenceType];
-    return driveEnsurePath(path).then(function(folderInfo){
+    var path=(opts.fastCutUpload||opts.fastCashUpload)?[driveRootFolderName(),year,month,(opts.fastCashUpload?"Caja rapido":"Corte rapido"),orderNumber,evidenceType]:[driveRootFolderName(),year,month,processName,ownerName,orderNumber,caseNumber,evidenceType];
+    var folderTimeout=Number(opts.folderTimeoutMs||(opts.fastCutUpload||opts.fastCashUpload?25000:45000));
+    var uploadTimeout=Number(opts.uploadTimeoutMs||opts.timeoutMs||(opts.fastCutUpload||opts.fastCashUpload?45000:70000));
+    return promiseWithTimeout(driveEnsurePath(path),folderTimeout,"Drive tardó demasiado creando o buscando carpetas. La app no quedó bloqueada; intente nuevamente.").then(function(folderInfo){
       var name=safeDriveFileName(opts.fileName||prep.fileName||file.name||("evidencia_"+Date.now()));
       var blob=base64ToBlob(prep.base64,prep.mimeType);
       var meta={name:name,mimeType:prep.mimeType||file.type||"application/octet-stream",parents:[folderInfo.folderId]};
-      return driveUploadMultipart(blob,meta).then(function(uploaded){
+      return promiseWithTimeout(driveUploadMultipart(blob,meta,uploadTimeout),uploadTimeout+5000,"Drive tardó demasiado subiendo el archivo. La app no quedó bloqueada; intente nuevamente.").then(function(uploaded){
         return driveTryShare(uploaded.id).then(function(){
           return {ok:true,fileId:uploaded.id,url:uploaded.webViewLink||uploaded.webContentLink||"",contentUrl:uploaded.webContentLink||"",name:uploaded.name,fileName:uploaded.name,mimeType:uploaded.mimeType||prep.mimeType,evidenceType:evidenceType,uploadedAt:uploadedAt,processKey:opts.processKey||c.currentProcess,processName:processName,cutId:opts.cutId||"",folderPath:folderInfo.folderPath,folder:folderInfo.folderId,sizeBytes:prep.sizeBytes||file.size||0,compressed:!!prep.compressed};
         });
@@ -5511,19 +5524,19 @@ function openCashInvoiceBox(id){
   var c=caseById(id);if(!c)return;
   if(c.currentProcess!=="caja"){alert("La factura de contado se carga únicamente desde Caja.");return;}
   if(!(canOperateCurrentProcess(c)||canSeeAll()||isAdminRoleValue(state.user.role))){alert("No tiene permiso para cargar la factura de este pedido contado.");return;}
-  drawer(modal("Factura de pedido contado",'<form class="form" id="cashInvoiceForm"><div class="notice"><strong>Pedido al contado:</strong> cargue la factura desde Caja. El archivo se marcará automáticamente con FACTURADO y ENTREGADO, se subirá a Drive, se descargará una copia y luego el pedido volverá a Logística con la factura disponible.</div><label class="field"><span>Factura / soporte de Caja *</span><input class="input" type="file" name="invoice" accept="application/pdf,image/*" required></label><label class="field"><span>Observación de Caja</span><textarea class="textarea" name="detail" placeholder="Ej.: factura cargada, pago confirmado, soporte validado."></textarea></label><div class="notice" id="cashInvoiceStatus">Seleccione el archivo y guarde. No se devuelve a logística hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Subir factura y devolver a logística</button></form>'));
+  drawer(modal("Factura de pedido contado",'<form class="form" id="cashInvoiceForm"><div class="notice"><strong>Pedido al contado:</strong> cargue la factura desde Caja. El archivo se marcará automáticamente con FACTURADO y ENTREGADO, se subirá a Drive, se descargará una copia y luego el pedido volverá a Logística con la factura disponible.</div><label class="field"><span>Factura / soporte de Caja *</span><input class="input" type="file" name="invoice" accept="application/pdf,image/*" required></label><label class="field"><span>Observación de Caja</span><textarea class="textarea" name="detail" placeholder="Ej.: factura cargada, pago confirmado, soporte validado."></textarea></label><div class="notice" id="cashInvoiceStatus">Seleccione el archivo y guarde. Si Drive se demora, la app cortará la espera y le permitirá intentar nuevamente sin salirse.</div><button class="btn btn-primary" id="cashInvoiceSubmitBtn" type="submit">Subir factura y devolver a logística</button></form>'));
   qs("#cashInvoiceForm").onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target), file=e.target.invoice.files&&e.target.invoice.files[0];
     if(!file){alert("Seleccione la factura o soporte de Caja.");return;}
-    var statusEl=qs("#cashInvoiceStatus");if(statusEl)statusEl.textContent="Preparando factura de contado...";
+    var statusEl=qs("#cashInvoiceStatus"), submitBtn=qs("#cashInvoiceSubmitBtn");if(submitBtn){submitBtn.disabled=true;submitBtn.textContent="Procesando factura...";}if(statusEl)statusEl.textContent="Preparando factura de contado...";
     var stampInfo=null;
-    buildStampedDispatchSupportFile(file,c,{key:"supportPdf",type:"FACTURA_CAJA_CONTADO",title:"Factura de Caja pedido contado"},statusEl).then(function(info){
+    promiseWithTimeout(buildStampedDispatchSupportFile(file,c,{key:"supportPdf",type:"FACTURA_CAJA_CONTADO",title:"Factura de Caja pedido contado"},statusEl),25000,"El sellado de la factura tardó demasiado. Se intentará subir el archivo original para no bloquear Caja.").catch(function(err){if(statusEl)statusEl.textContent="No se pudo marcar la factura a tiempo; se subirá el archivo original. "+(err.message||err);return {file:file,stamped:false,stampError:(err&&err.message)||String(err)};}).then(function(info){
       stampInfo=info||{file:file,stamped:false};
       var uploadFile=stampInfo.file||file;
       if(statusEl)statusEl.textContent=(stampInfo.stamped?"Factura marcada. Subiendo a Drive...":"Subiendo factura a Drive...");
       var safeName=(c.reference||"pedido")+"_FACTURA_CAJA_CONTADO_"+(uploadFile.name||file.name);
-      return uploadFileToDrive(uploadFile,c,{processName:"Caja - pedido contado",processKey:"caja",fileName:safeName,evidenceType:"FACTURA_CAJA_CONTADO"});
+      return uploadFileToDrive(uploadFile,c,{processName:"Caja - pedido contado",processKey:"caja",fileName:safeName,evidenceType:"FACTURA_CAJA_CONTADO",fastCashUpload:true,timeoutMs:45000,folderTimeoutMs:25000,uploadTimeoutMs:45000,feedbackMessage:"Subiendo factura de Caja a Drive. Si se demora, la app permitirá reintentar sin quedarse pegada."});
     }).then(function(up){
       if(stampInfo && stampInfo.stamped){
         up.stamped=true;
@@ -5542,7 +5555,7 @@ function openCashInvoiceBox(id){
       return assignToProcess(c,next,fd.get("detail")||"Caja cargó factura de pedido contado y devuelve a logística.").then(function(){
         return persistEvidenceDocument(c,up,fd.get("detail")||"Factura de Caja pedido contado con marca de agua FACTURADO + ENTREGADO");
       });
-    }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la factura: "+(err.message||err);showError(err.message||err);});
+    }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(submitBtn){submitBtn.disabled=false;submitBtn.textContent="Reintentar subir factura";}if(statusEl)statusEl.textContent="No fue posible cargar la factura. La app no quedó bloqueada; puede reintentar desde este mismo formulario. Detalle: "+(err.message||err);showError(err.message||err);});
   };
 }
 function openDelivery(id){
