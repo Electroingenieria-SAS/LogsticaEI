@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v96_javier_laverde_obligatorio";
+var storageKey = "ei_trazabilidad_v97_reasignacion_javier_laverde_backfill";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -189,8 +189,8 @@ function deliveryRouteOptions(selected){
   return opts.map(function(o){return '<option value="'+o[0]+'" '+(selected===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join("");
 }
 var deliveryRouteOwnerRules=[
-  {key:"duvan",label:"Duvan",tokens:["duvan","duvan_"],fallbackUserIds:["duvan"],fallbackName:"Duvan",routes:["cliente_punto","cliente_recoge","despacho_local"]},
-  {key:"javier",label:"Javier Laverde",tokens:["javier_laverde","javier laverde","javier","laverde"],fallbackUserIds:["javier_laverde"],fallbackName:"Javier Laverde",routes:["despacho_nacional","cierre_despacho_nacional"]}
+  {key:"duvan",label:"Duvan",tokens:["duvan","duvan_"],fallbackUserIds:["duvan"],fallbackName:"Duvan",routes:["cliente_punto","cliente_recoge","despacho_local"],legacyKeys:[]},
+  {key:"javier_laverde",label:"Javier Laverde",tokens:["javier_laverde","javier laverde","javier","laverde"],fallbackUserIds:["javier_laverde"],fallbackName:"javier_laverde",routes:["despacho_nacional","cierre_despacho_nacional"],legacyKeys:["javier"]}
 ];
 function routeKeyForCase(c){
   if(!c)return "";
@@ -231,7 +231,8 @@ function currentUserIsDeliveryOwnerForCase(c){
   var rule=currentUserDeliveryOwnerRule();
   if(!rule || !c)return false;
   var route=routeKeyForCase(c);
-  if(c.deliveryRouteOwner && String(c.deliveryRouteOwner)===rule.key)return true;
+  var owner=String(c.deliveryRouteOwner||"");
+  if(owner && (owner===rule.key || (Array.isArray(rule.legacyKeys) && rule.legacyKeys.indexOf(owner)>=0)))return true;
   return !!(route && rule.routes.indexOf(route)>=0);
 }
 function deliveryRouteAssignableUsers(processKey){
@@ -283,6 +284,24 @@ function expectedDeliveryTypeForProcess(processKey){
   if(processKey==="cierre_despacho_nacional")return "despacho_nacional";
   return isDeliveryProcess(processKey)?processKey:"";
 }
+function repairDeliveryRouteAssignmentInMemory(c, reason){
+  if(!c || !isDeliveryProcess(c.currentProcess))return false;
+  var route=expectedDeliveryTypeForProcess(c.currentProcess)||normalizedDeliveryRoute(c.deliveryType)||normalizedDeliveryRoute(c.requestedDelivery)||normalizedDeliveryRoute(c.pendingDeliveryType);
+  var rule=deliveryOwnerRuleForRoute(route);
+  if(!rule)return false;
+  var ids=caseAssignedUserIds(c).map(function(x){return stripAccents(String(x||"").toLowerCase());});
+  var required=(rule.fallbackUserIds||[rule.key]).map(function(x){return stripAccents(String(x||"").toLowerCase());});
+  var owner=String(c.deliveryRouteOwner||"");
+  var legacyOwner=owner && Array.isArray(rule.legacyKeys) && rule.legacyKeys.indexOf(owner)>=0;
+  var hasRequired=required.some(function(id){return ids.indexOf(id)>=0;});
+  var badAssigned=/^javier$/i.test(String(c.assignedName||c.assignedTo||c.assignedUid||"")) || /(^|[,\s])javier($|[,\s])/i.test(String((c.assignedUserIds||[]).join(" ")));
+  if(c.deliveryRouteOwner===rule.key && hasRequired && !badAssigned)return false;
+  applyDeliveryRouteAssignment(c,route);
+  c.deliveryRouteOwnerRepair={at:now(),by:(state.user&&state.user.name)||"Sistema",reason:reason||"Corrección de asignación por ruta",route:route,owner:rule.key};
+  addStateHistory(c,"asignacion","Corrección automática de asignación por ruta: "+processTitle(route)+" → "+(assignedPeopleText(c)||rule.label),{tipo_estado:"asignacion",assignedUserIds:c.assignedUserIds||[],legacyOwner:legacyOwner});
+  return true;
+}
+
 function repairDeliveryTypeInMemory(c, reason){
   if(!c || !isDeliveryProcess(c.currentProcess))return false;
   var expected=expectedDeliveryTypeForProcess(c.currentProcess);
@@ -972,9 +991,11 @@ function loadCasesForRole(){
   var ownerRule=currentUserDeliveryOwnerRule();
   if(ownerRule){
     queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryRouteOwner","==",ownerRule.key),"cases.deliveryRouteOwner:"+ownerRule.key));
+    (ownerRule.legacyKeys||[]).forEach(function(k){queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryRouteOwner","==",k),"cases.deliveryRouteOwnerLegacy:"+k));});
     ownerRule.routes.forEach(function(routeKey){
       queries.push(safeQuerySnapshot(db.collection("cases").where("currentProcess","==",routeKey),"cases.deliveryRoute.currentProcess:"+routeKey));
       queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryType","==",routeKey),"cases.deliveryRoute.deliveryType:"+routeKey));
+      queries.push(safeQuerySnapshot(db.collection("cases").where("requestedDelivery","==",routeKey),"cases.deliveryRoute.requestedDelivery:"+routeKey));
     });
   }
 
@@ -1816,6 +1837,15 @@ function startRealtimeSync(){
       addCaseRealtimeListener("visible_"+r,db.collection("cases").where("visibleRoles","array-contains",r));
       addCaseRealtimeListener("target_"+r,db.collection("cases").where("targetRoles","array-contains",r));
     });
+    var ownerRule=currentUserDeliveryOwnerRule();
+    if(ownerRule){
+      addCaseRealtimeListener("delivery_owner_"+ownerRule.key,db.collection("cases").where("deliveryRouteOwner","==",ownerRule.key));
+      (ownerRule.legacyKeys||[]).forEach(function(k){addCaseRealtimeListener("delivery_owner_legacy_"+k,db.collection("cases").where("deliveryRouteOwner","==",k));});
+      ownerRule.routes.forEach(function(routeKey){
+        addCaseRealtimeListener("delivery_current_"+routeKey,db.collection("cases").where("currentProcess","==",routeKey));
+        addCaseRealtimeListener("delivery_type_"+routeKey,db.collection("cases").where("deliveryType","==",routeKey));
+      });
+    }
   }
   startNotificationListeners();
   if(canSeeAll()){
@@ -1839,8 +1869,11 @@ function autoMigrateLegacyProcesses(){
   if(!state.cases || !state.cases.length)return;
   var migrated=[];
   state.cases.forEach(function(c){
-    if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))migrated.push(c);
-    if(repairDeliveryTypeInMemory(c,"Corrección automática al cargar la app"))migrated.push(c);
+    var changed=false;
+    if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))changed=true;
+    if(repairDeliveryTypeInMemory(c,"Corrección automática al cargar la app"))changed=true;
+    if(repairDeliveryRouteAssignmentInMemory(c,"Corrección automática de asignación Duvan/Javier al cargar la app"))changed=true;
+    if(changed)migrated.push(c);
   });
   if(!migrated.length || !db || !state.user)return;
   if(!(canSeeAll() || isAdminRoleValue(state.user.role)))return;
