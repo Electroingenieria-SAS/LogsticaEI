@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v100_detalle_estable_permisos";
+var storageKey = "ei_trazabilidad_v101_bloqueo_total_detalle";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1017,7 +1017,7 @@ function refreshSalesCasesInBackground(reason){
     state.cases=mergeSalesCasesIntoState(list);
     state.salesLoading=false;
     state.salesRefreshPromise=null;
-    if(state.route==="sales_reports"||state.route==="dashboard"||state.route==="cases")render();
+    if(state.route==="sales_reports"||state.route==="dashboard"||state.route==="cases")renderAfterLiveChange();
     return list;
   }).catch(function(e){
     console.warn("Ventas diaria: actualización en segundo plano falló",reason,e);
@@ -1533,7 +1533,7 @@ function showLiveToast(title,msg,withButton){
   box.innerHTML='<div style="font-weight:900;font-size:14px;margin-bottom:4px">'+esc(title||"Movimiento detectado")+'</div><div style="font-size:12px;line-height:1.35;opacity:.9">'+esc(msg||"")+'</div>'+(withButton?'<button id="ei-live-refresh-btn" style="margin-top:10px;border:0;background:#ffda37;color:#061b46;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer">Actualizar vista</button>':'');
   box.style.display="block";
   var btn=document.getElementById("ei-live-refresh-btn");
-  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";try{if(state.detailId)renderDetail(state.detailId);else render();}catch(e){location.reload();}};}
+  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";state.__forceRenderOnce=true;try{if(state.detailId)renderDetail(state.detailId);else render();}catch(e){location.reload();}};}
   clearTimeout(box.__hideTimer);
   box.__hideTimer=setTimeout(function(){if(!withButton)box.style.display="none";},6500);
 }
@@ -2126,7 +2126,7 @@ function layout(content){
   injectExecutiveMinimalCss();
   var rs=routes();
   appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
-  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");state.detailId=null;closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
+  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");state.detailId=null;state.__forceRenderOnce=true;closeDrawer();closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
   bindActions();
 }
 
@@ -3614,7 +3614,13 @@ function checklistPanelHtml(c,def){
 function renderDetail(id){
   state.detailId=id;
   var c=caseById(id)||cachedDetailCase(id);
-  if(!c){state.detailId=null;renderCases();return;}
+  if(!c){
+    state.realtime.pendingRender=true;
+    layout(header("Pedido en actualización","La app no cerró Ver pedido. Puede ser una actualización de permisos o un cambio de asignación en vivo.",'<button class="btn" data-route="cases">Volver a bandeja</button>')+'<section class="card"><h3>Vista protegida</h3><p>El pedido está actualizándose o momentáneamente no llegó en la consulta del rol. La ventana se mantiene para evitar que se pierda lo que estás diligenciando.</p><div class="top-actions"><button class="btn btn-primary" id="retryProtectedDetail">Reintentar abrir pedido</button><button class="btn" data-route="cases">Volver a bandeja</button></div></section>');
+    var retry=qs("#retryProtectedDetail");
+    if(retry)retry.onclick=function(){renderDetail(id);};
+    return;
+  }
   cacheDetailCase(c);
   var correctedOnOpen=false;
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
@@ -6432,8 +6438,29 @@ function bindActions(){
   };});
 }
 
+function renderShouldStayLocked(){
+  if(state.detailId)return "detail";
+  var d=qs("#drawer");
+  if(d && d.classList.contains("open"))return "drawer";
+  var a=document.activeElement;
+  if(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName||""))return "form";
+  return "";
+}
+function protectedRenderBlocked(reason){
+  state.realtime.pendingRender=true;
+  if(reason==="detail")showLiveToast("Ver pedido protegido","Hubo una actualización, pero la app no cerró el pedido abierto. Cuando termines, pulsa Actualizar vista.",true);
+  else if(reason==="drawer")showLiveToast("Formulario protegido","Hubo una actualización, pero la app no cerró el cuadro abierto. Cuando termines, pulsa Actualizar vista.",true);
+  else showLiveToast("Edición protegida","Hubo una actualización, pero la app no interrumpió lo que estás escribiendo. Cuando termines, pulsa Actualizar vista.",true);
+}
+
 function render(){
+  var force=state.__forceRenderOnce===true;
+  state.__forceRenderOnce=false;
   if(!state.user){renderLogin();return;}
+  if(!force){
+    var lockReason=renderShouldStayLocked();
+    if(lockReason){protectedRenderBlocked(lockReason);return;}
+  }
   if(state.route==="vsm"||state.route==="kpis"||state.route==="indicadores")state.route="indicators";
   if(state.route==="administracion"||state.route==="administrador")state.route="admin";
   startReminderLoop();
@@ -6458,9 +6485,9 @@ function render(){
 window.addEventListener("message",function(event){
   var data=event.data||{};
   if(!data)return;
-  if(data.type==="EI_CUT_REQUIREMENT"){applyCutRequirementPayload(data.payload||data).then(function(){render();}).catch(function(e){showError(e.message||e);});return;}
+  if(data.type==="EI_CUT_REQUIREMENT"){applyCutRequirementPayload(data.payload||data).then(function(){renderAfterLiveChange();}).catch(function(e){showError(e.message||e);});return;}
   if(data.type!=="EI_CUT_SAVED")return;
-  applyCutBridgePayload(data.payload||data).then(function(){render();}).catch(function(e){showError(e.message||e);});
+  applyCutBridgePayload(data.payload||data).then(function(){renderAfterLiveChange();}).catch(function(e){showError(e.message||e);});
 });
 
 
