@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v99_fix_ver_pedido_ventas";
+var storageKey = "ei_trazabilidad_v100_detalle_estable_permisos";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -36,6 +36,7 @@ var state = {
   user: null,
   route: "dashboard",
   detailId: null,
+  detailCache: {},
   cases: [],
   events: [],
   users: [],
@@ -426,6 +427,45 @@ function userIdentityAliases(u){
 }
 function currentUserIdentityAliases(){
   return state.user ? userIdentityAliases(state.user) : [];
+}
+function cacheDetailCase(c){
+  if(!c||!c.id)return;
+  try{state.detailCache=state.detailCache||{};state.detailCache[c.id]=JSON.parse(JSON.stringify(c));}
+  catch(e){state.detailCache=state.detailCache||{};state.detailCache[c.id]=c;}
+}
+function cachedDetailCase(id){
+  state.detailCache=state.detailCache||{};
+  return state.detailCache[id]||null;
+}
+function cachedSessionForAuth(fbUser){
+  try{
+    var raw=sessionStorage.getItem(storageKey+"_session")||localStorage.getItem(storageKey+"_session")||"";
+    if(!raw)return null;
+    var u=JSON.parse(raw);
+    if(!u)return null;
+    var uid=String(fbUser&&fbUser.uid||"");
+    var email=String(fbUser&&fbUser.email||"").toLowerCase();
+    if((uid && String(u.uid||u.id||"")===uid) || (email && String(u.email||"").toLowerCase()===email))return u;
+  }catch(e){}
+  return null;
+}
+function applyProfileFallbackFromAuth(fbUser, err){
+  var cached=cachedSessionForAuth(fbUser);
+  if(cached){
+    cached.role=normalizeRole(cached.role||cached.rawRole||"ventas");
+    cached.uid=String(cached.uid||fbUser.uid||"");
+    cached.email=String(cached.email||fbUser.email||"");
+    cached.name=String(cached.name||cached.displayName||cached.email||"Usuario");
+    cached.uidAliases=uniqueArray(userIdentityAliases(cached).concat([fbUser.uid,fbUser.email,cached.name,cached.email]).map(function(x){return String(x||"").trim();}).filter(Boolean));
+    state.user=cached;
+    sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
+    state.route=defaultRoute(state.user.role);
+    state.loadWarnings=state.loadWarnings||[];
+    state.loadWarnings.push("Perfil: no se pudo leer users/"+(fbUser.uid||"")+" por permisos; se usó la sesión local guardada.");
+    console.warn("Perfil cargado desde sesión local por permiso insuficiente", err);
+    return true;
+  }
+  return false;
 }
 function userMatchesIdentifier(u,id){
   id=String(id||"").trim();
@@ -1103,7 +1143,7 @@ function loadData(){
     state.projectOrders=res[4]||[];
     state.reports=res[5]||[];
     state.dataLoading=false;
-    autoMigrateLegacyProcesses();
+    if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role))autoMigrateLegacyProcesses();
   }).catch(function(e){
     state.dataLoading=false;
     throw e;
@@ -1469,13 +1509,9 @@ function renderAfterLiveChange(){
   if(!state.user)return;
   if(state.detailId){
     var still=caseById(state.detailId);
-    if(!still){state.detailId=null;try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}return;}
-    if(shouldAutoRenderNow()){
-      try{renderDetail(state.detailId);}catch(e){console.warn("No se pudo mantener el detalle en vivo",e);}
-    }else{
-      state.realtime.pendingRender=true;
-      showLiveToast("Actualización disponible","El pedido tuvo movimiento. La app no te sacará de esta pantalla; presiona Actualizar vista cuando termines.",true);
-    }
+    if(still)cacheDetailCase(still);
+    state.realtime.pendingRender=true;
+    showLiveToast("Actualización disponible","El pedido tuvo movimiento. La app mantendrá abierta la ventana de Ver pedido; presiona Actualizar vista cuando termines.",true);
     return;
   }
   if(shouldAutoRenderNow()){
@@ -1842,16 +1878,18 @@ function applyRealtimeCases(list){
   var newHash=caseLiveHash(list);
   if(!state.realtime.initialCasesLoaded){
     state.cases=list;
+    if(state.detailId){var firstDetail=caseById(state.detailId);if(firstDetail)cacheDetailCase(firstDetail);}
     state.realtime.lastHash=newHash;
     state.realtime.initialCasesLoaded=true;
-    autoMigrateLegacyProcesses();
+    if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role))autoMigrateLegacyProcesses();
     return;
   }
   if(newHash===state.realtime.lastHash)return;
   var oldList=state.cases.slice();
   state.cases=list;
+  if(state.detailId){var liveDetail=caseById(state.detailId);if(liveDetail)cacheDetailCase(liveDetail);}
   state.realtime.lastHash=newHash;
-  autoMigrateLegacyProcesses();
+  if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role))autoMigrateLegacyProcesses();
   notifyRealtimeChanges(list,oldList);
   renderAfterLiveChange();
 }
@@ -2120,8 +2158,13 @@ function applyProfileFromDoc(fbUser,doc){
 
 function loadProfileAndRender(fbUser){
   showLoading("Sesión detectada. Cargando perfil y módulo asignado...");
-  return db.collection("users").doc(fbUser.uid).get().then(function(doc){
-    applyProfileFromDoc(fbUser,doc);
+  return db.collection("users").doc(fbUser.uid).get().catch(function(err){
+    if(applyProfileFallbackFromAuth(fbUser,err))return {exists:true,id:state.user.id||fbUser.uid,data:function(){return Object.assign({},state.user,{isActive:true,role:state.user.role});}};
+    throw err;
+  }).then(function(doc){
+    try{applyProfileFromDoc(fbUser,doc);}catch(profileErr){
+      if(!applyProfileFallbackFromAuth(fbUser,profileErr))throw profileErr;
+    }
     state.dataLoading=true;
     render();
     return loadData();
@@ -2130,7 +2173,12 @@ function loadProfileAndRender(fbUser){
     render();
   }).catch(function(e){
     state.dataLoading=false;
-    showError((e&&e.message)||e||"No se pudo cargar la sesión.");
+    var msg=(e&&e.message)||e||"No se pudo cargar la sesión.";
+    if(String(msg).toLowerCase().indexOf("permission")>=0 || String(msg).toLowerCase().indexOf("permis")>=0){
+      showError("Permisos insuficientes para leer el perfil o los pedidos de este usuario. Revise Firestore Rules: el usuario debe poder leer users/"+(fbUser&&fbUser.uid||"")+" y sus casos asignados. Detalle técnico: "+msg);
+    }else{
+      showError(msg);
+    }
   });
 }
 
@@ -3565,7 +3613,9 @@ function checklistPanelHtml(c,def){
 }
 function renderDetail(id){
   state.detailId=id;
-  var c=caseById(id);if(!c){state.detailId=null;renderCases();return;}
+  var c=caseById(id)||cachedDetailCase(id);
+  if(!c){state.detailId=null;renderCases();return;}
+  cacheDetailCase(c);
   var correctedOnOpen=false;
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
   if(repairDeliveryTypeInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
