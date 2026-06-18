@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v97_reasignacion_javier_laverde_backfill";
+var storageKey = "ei_trazabilidad_v98_separacion_ventas_minimal_fix";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -35,6 +35,7 @@ var feedbackAssets = {
 var state = {
   user: null,
   route: "dashboard",
+  detailId: null,
   cases: [],
   events: [],
   users: [],
@@ -555,6 +556,36 @@ function canOperateCurrentProcess(c){
   if(currentUserIsAssignedToCase(c))return true;
   return canAccessProcess(state.user.role,c.currentProcess);
 }
+
+function isSalesRole(){return state.user && normalizeRole(state.user.role)==="ventas";}
+function sameSalesOwner(c){
+  if(!state.user || !c)return false;
+  var aliases=currentUserIdentityAliases();
+  return aliases.indexOf(String(c.createdBy||""))>=0 || samePersonText(c.createdByName,state.user.name) || samePersonText(c.salesAdvisor,state.user.name) || samePersonText(c.createdByEmail,state.user.email);
+}
+function separationActive(c){return !!(c && c.separationRequest && c.separationRequest.active===true);}
+function canSalesRequestSeparation(c){
+  if(!isSalesRole() || !c || c.closedAt || separationActive(c))return false;
+  if(!sameSalesOwner(c))return false;
+  if(["cancelado","cerrado_conforme","cerrado_con_novedad"].indexOf(String(c.status||""))>=0)return false;
+  return true;
+}
+function separationNoticePanel(c){
+  if(!separationActive(c))return "";
+  var s=c.separationRequest||{};
+  return '<section class="notice danger separation-notice" style="margin-top:16px"><strong>SOLO SEPARACIÓN DE PEDIDO</strong><br>Este pedido fue enviado por Ventas únicamente para separar mercancía mientras se confirma el pago. <b>No debe avanzar a alistamiento, facturación ni despacho</b> hasta que Caja lo libere hacia Logística.<br><small>Solicita: '+esc(s.createdByName||'Ventas')+' · '+esc(fmtDate(s.createdAt))+(s.detail?' · '+esc(s.detail):'')+'</small></section>';
+}
+function closeSeparationIfCajaReleases(c,next){
+  if(!separationActive(c))return;
+  if(c.currentProcess==="caja" && next && next!=="caja" && next!=="ventas"){
+    c.separationRequest.active=false;
+    c.separationRequest.status="LIBERADA_POR_CAJA";
+    c.separationRequest.releasedAt=now();
+    c.separationRequest.releasedByName=(state.user&&state.user.name)||"Caja";
+    addStateHistory(c,"handoff","Caja liberó la solicitud de separación y el pedido continúa a logística",{tipo_estado:"handoff",toProcess:next});
+  }
+}
+
 function currentRoleInCaseList(c,field){
   if(!state.user || !c || !Array.isArray(c[field]))return false;
   var r=normalizeRole(state.user.role);
@@ -1411,6 +1442,17 @@ function shouldAutoRenderNow(){
 
 function renderAfterLiveChange(){
   if(!state.user)return;
+  if(state.detailId){
+    var still=caseById(state.detailId);
+    if(!still){state.detailId=null;try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}return;}
+    if(shouldAutoRenderNow()){
+      try{renderDetail(state.detailId);}catch(e){console.warn("No se pudo mantener el detalle en vivo",e);}
+    }else{
+      state.realtime.pendingRender=true;
+      showLiveToast("Actualización disponible","El pedido tuvo movimiento. La app no te sacará de esta pantalla; presiona Actualizar vista cuando termines.",true);
+    }
+    return;
+  }
   if(shouldAutoRenderNow()){
     try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}
   }else{
@@ -1430,7 +1472,7 @@ function showLiveToast(title,msg,withButton){
   box.innerHTML='<div style="font-weight:900;font-size:14px;margin-bottom:4px">'+esc(title||"Movimiento detectado")+'</div><div style="font-size:12px;line-height:1.35;opacity:.9">'+esc(msg||"")+'</div>'+(withButton?'<button id="ei-live-refresh-btn" style="margin-top:10px;border:0;background:#ffda37;color:#061b46;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer">Actualizar vista</button>':'');
   box.style.display="block";
   var btn=document.getElementById("ei-live-refresh-btn");
-  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";try{render();}catch(e){location.reload();}};}
+  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";try{if(state.detailId)renderDetail(state.detailId);else render();}catch(e){location.reload();}};}
   clearTimeout(box.__hideTimer);
   box.__hideTimer=setTimeout(function(){if(!withButton)box.style.display="none";},6500);
 }
@@ -2006,10 +2048,22 @@ function loadWarningsHtml(){
   return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique firestore.rules de esta versión en Firebase Console.</small></div>';
 }
 
+
+function injectExecutiveMinimalCss(){
+  if(document.getElementById('ei-v98-executive-css'))return;
+  var st=document.createElement('style');
+  st.id='ei-v98-executive-css';
+  st.textContent='\
+    .topbar{align-items:flex-start;gap:14px}.top-actions{gap:8px;align-items:flex-start}.executive-actions{position:relative}.executive-actions>summary{list-style:none;cursor:pointer;border:1px solid #dbe4f0;background:#fff;color:#0f1f3d;border-radius:14px;padding:9px 13px;font-weight:900;box-shadow:0 8px 22px rgba(15,31,61,.08)}.executive-actions>summary::-webkit-details-marker{display:none}.executive-actions-body{position:absolute;right:0;top:44px;z-index:30;min-width:280px;max-width:min(420px,calc(100vw - 30px));display:flex;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #dbe4f0;border-radius:18px;padding:12px;box-shadow:0 20px 55px rgba(15,31,61,.18)}.executive-actions-body .btn{flex:1 1 auto;justify-content:center}.separation-notice{border:2px solid #f59e0b;background:#fff7ed;color:#7c2d12}.process-guide-card{padding:14px}.process-guide-card .process-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.detail-metrics{display:none}.case-data-panel{border-style:dashed}.case-data-panel>h3:nth-of-type(n+2),.case-data-panel .timeline,.case-data-panel .flow-trace-panel{display:none}.main .card{border-radius:18px}.btn{border-radius:13px}.filters{border-radius:18px}\
+    @media(max-width:820px){.executive-actions{width:100%}.executive-actions>summary{width:100%;text-align:center}.executive-actions-body{position:static;box-shadow:none;margin-top:8px;min-width:0;max-width:none}.topbar{display:block}.top-actions{margin-top:10px}.process-guide-card{display:none}.case-data-panel{display:none}}';
+  document.head.appendChild(st);
+}
+
 function layout(content){
+  injectExecutiveMinimalCss();
   var rs=routes();
   appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
-  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
+  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");state.detailId=null;closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
   bindActions();
 }
 
@@ -3485,7 +3539,8 @@ function checklistPanelHtml(c,def){
   return '<article class="card"><h3>Checklist operativo</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article>';
 }
 function renderDetail(id){
-  var c=caseById(id);if(!c){renderCases();return;}
+  state.detailId=id;
+  var c=caseById(id);if(!c){state.detailId=null;renderCases();return;}
   var correctedOnOpen=false;
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
   if(repairDeliveryTypeInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
@@ -3498,6 +3553,7 @@ function renderDetail(id){
   if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);})){renderCutsQueue();return;}
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="", canOperate=canOperateCurrentProcess(c);
   if(!c.closedAt){
+    if(canSalesRequestSeparation(c))actions+='<button class="btn btn-gold" data-action="salesSeparation" data-id="'+c.id+'">Solicitud de separación de pedido</button>';
     if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
@@ -3531,10 +3587,19 @@ function renderDetail(id){
   var caseDataPanel='<article class="card case-data-panel mobile-desktop-extra"><h3>Datos del caso</h3>'+caseInfo(c)+'<h3 style="margin-top:18px">Secuencia y tiempos</h3>'+timeline(c)+flowTracePanel(c)+'<h3 style="margin-top:18px">Eventos recientes</h3>'+eventList(c.id)+'</article>';
   var detailPanels=checklistPanel?'<section class="grid grid-2 detail-panels" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section class="mobile-desktop-extra" style="margin-top:16px">'+caseDataPanel+'</section>';
   var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),'<button class="btn" data-route="cases">Volver</button>'+actions)+mobileSimpleCasePanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
+  var headerActions=compactDetailActions(actions);
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
+}
+
+
+function compactDetailActions(actions){
+  var back='<button class="btn" data-route="cases">Volver</button>';
+  if(!actions)return back;
+  return back+'<details class="executive-actions" open><summary>Acciones del pedido</summary><div class="executive-actions-body">'+actions+'</div></details>';
 }
 
 function nextActionButtons(c){
+  if(separationActive(c) && c.currentProcess==="recepcion_pedidos")return '<span class="chip warning">Solo separación · bloqueado hasta liberación de Caja</span>';
   var next=(processes[c.currentProcess]||{}).next||[];
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){
     var disabled="", label="Enviar a "+processTitle(n), cls="btn btn-primary";
@@ -5355,6 +5420,7 @@ function applyPersonalAssignment(c,next,assignmentUsers){
   }
 }
 function assignToProcess(c,next,detail,assignmentUsers){
+  closeSeparationIfCajaReleases(c,next);
   var current=c.currentProcess;
   stopActive(c);stopWait(c);
   procStats(c,current).completedAt=now();
@@ -5372,6 +5438,7 @@ function assignToProcess(c,next,detail,assignmentUsers){
 function openAlistamientoAssignment(id){
   var c=caseById(id);if(!c)return;
   normalizeReceptionDocumentFlow(c);
+  if(c.currentProcess==="recepcion_pedidos" && separationActive(c)){alert("Este pedido está marcado como SOLO SEPARACIÓN. No se puede enviar a alistamiento hasta que Caja lo libere hacia Logística.");return;}
   if(c.currentProcess==="recepcion_pedidos" && !canAssignAlistamientoFromReception(c)){alert("Este usuario no tiene permiso para enviar Recepción a Alistamiento ni asignar responsables.");return;}
   if(c.currentProcess==="recepcion_pedidos" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: falta "+(receptionPdfMissingReason(c)||"completar la validación documental")+". La validación ahora solo bloquea si realmente faltan líneas, PDF leído/cargado o compromiso; no bloquea por nombre de campo Drive.");return;}
   if(c.currentProcess!=="recepcion_pedidos" && c.currentProcess!=="alistamiento"){alert("La asignación individual solo aplica al paso de Alistamiento.");return;}
@@ -5811,6 +5878,7 @@ function transfer(id,next){
   var c=caseById(id);
   normalizeReceptionDocumentFlow(c);
   if(!canOperateCurrentProcess(c)){alert("Este pedido tiene asignación individual o no pertenece a su macroproceso.");return;}
+  if(separationActive(c) && c.currentProcess==="recepcion_pedidos" && next==="alistamiento"){alert("Este pedido está marcado como SOLO SEPARACIÓN. No puede avanzar a alistamiento hasta que Caja confirme/libere el pago hacia Logística.");return;}
   if(c.currentProcess==="recepcion_pedidos" && next!=="alistamiento"){alert("El flujo obligatorio es: Recepción de pedidos → Alistamiento. El compromiso de mercancía se registra dentro de Recepción.");return;}
   if(next==="alistamiento" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: falta "+(receptionPdfMissingReason(c)||"completar la validación documental")+".");return;}
   if(c.currentProcess==="alistamiento" && next!=="facturacion"){alert("Después de alistamiento el flujo continúa directamente a Facturación. Si hay cortes, primero deben quedar registrados.");return;}
@@ -5996,6 +6064,37 @@ function openBoxHold(id){
   drawer(modal('Gestión de pedido retenido en Caja','<form class="form" id="boxHoldForm"><div class="notice"><strong>Pedido retenido:</strong> Caja decide si lo soluciona directamente o si requiere gestión del asesor de ventas. Al cerrar por Caja, el pedido vuelve a Recepción de pedidos. Si se envía a Ventas, al responder vuelve a Caja para verificar pago.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>OC: '+esc(c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||'—')+' · Cliente: '+esc(c.client||'—')+'</p><p>'+esc((c.salesHold||{}).reason||c.description||'')+'</p></section><label class="field"><span>Decisión</span><select class="select" name="decision"><option value="caja_resuelve">Caja lo gestiona y cierra</option><option value="ventas_gestiona">Requiere gestión del asesor de ventas</option></select></label><label class="field"><span>Detalle de gestión *</span><textarea class="textarea" name="detail" required placeholder="Indique validación de pago, cartera, autorización o novedad comercial."></textarea></label><button class="btn btn-primary" type="submit">Guardar decisión</button></form>'));
   qs('#boxHoldForm').onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),d=String(fd.get('detail')||'');c.salesHold=c.salesHold||{history:[]};c.salesHold.history=c.salesHold.history||[];c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});if(fd.get('decision')==='ventas_gestiona'){stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:'caja'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS';persistCase(c,{type:'BOX_HOLD_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}else{c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;assignToProcess(c,'recepcion_pedidos','Caja cerró retenido y devuelve a Recepción de pedidos: '+d).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}};
 }
+
+function openSalesSeparation(id){
+  var c=caseById(id);if(!c)return;
+  if(!canSalesRequestSeparation(c)){alert("Solo el asesor de Ventas del pedido puede solicitar separación, y solo si no existe una separación activa.");return;}
+  drawer(modal('Solicitud de separación de pedido','<form class="form" id="salesSeparationForm"><div class="notice danger"><strong>Solicitud para Recepción:</strong> este envío NO libera el pedido para logística. Es únicamente para separar mercancía mientras se confirma el pago. El aviso quedará permanente hasta que Caja libere el pedido hacia Logística.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>Cliente: '+esc(c.client||'—')+' · OC: '+esc(c.purchaseOrder||'—')+'</p></section><label class="field"><span>Motivo / anotación obligatoria</span><textarea class="textarea" name="detail" required placeholder="Ej.: cliente pendiente de pago; favor separar mercancía mientras Caja confirma recaudo. No alistar ni despachar todavía."></textarea></label><button class="btn btn-primary" type="submit">Enviar solicitud a Recepción de pedidos</button></form>'));
+  qs('#salesSeparationForm').onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target),detail=String(fd.get('detail')||'');
+    stopActive(c);stopWait(c);
+    c.separationRequest={active:true,status:'ACTIVA',createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,detail:detail,reason:'Pedido pendiente de pago; solo separar mercancía',releaseCondition:'Hasta que Caja libere el pedido hacia Logística'};
+    c.salesHold=c.salesHold||{history:[]};
+    c.salesHold.status='SEPARACION_SOLICITADA_PAGO_PENDIENTE';
+    c.salesHold.reason=detail;
+    c.salesHold.createdAt=c.salesHold.createdAt||now();
+    c.salesHold.createdByName=c.salesHold.createdByName||state.user.name;
+    c.salesHold.history=c.salesHold.history||[];
+    c.salesHold.history.push({at:now(),by:state.user.name,action:'Solicitud de separación de pedido',detail:detail});
+    c.currentProcess='recepcion_pedidos';
+    c.status='asignado';
+    c.assignedRole='coordinador_logistico';
+    c.assignedName='Recepción de pedidos · SOLO SEPARACIÓN';
+    c.assignedTo='';c.assignedUid='';c.assignedUsers=[];c.assignedUserIds=[];
+    c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.openRequirement=null;
+    c.checklist=c.checklist||{};
+    (processes.recepcion_pedidos.checklist||[]).forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});
+    procStats(c,'recepcion_pedidos').startedAt=procStats(c,'recepcion_pedidos').startedAt||now();
+    addStateHistory(c,'asignado','Ventas solicita separación de pedido en Recepción. Solo separar; no liberar logística hasta Caja.',{tipo_estado:'separacion',targetProcess:'recepcion_pedidos'});
+    persistCase(c,{type:'SALES_SEPARATION_REQUEST',detail:detail,targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','lider_logistico','jefe_logistica','caja','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  };
+}
+
 function openSalesNoDelivery(id){
   var c=caseById(id);if(!c)return;
   drawer(modal('Novedad de no entrega a logística','<form class="form" id="noDeliveryForm"><div class="notice danger"><strong>Estado no entregado:</strong> registre la novedad cuando el cliente informe que no recibió el producto. El pedido pasará al estado <strong>No entregado</strong> y quedará en Requerimientos visible para Logística/Líder/Jefe/Gerencia/Super Admin.</div><label class="field"><span>Detalle de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Cliente, factura/guía, transportadora, fecha esperada, contacto y qué solicita el cliente."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"></label><button class="btn btn-primary" type="submit">Marcar como no entregado y enviar a requerimientos</button></form>'));
@@ -6200,6 +6299,7 @@ function bindActions(){
     if(a==="cashInvoice")openCashInvoiceBox(id);
     if(a==="boxHold")openBoxHold(id);
     if(a==="salesNoDelivery")openSalesNoDelivery(id);
+    if(a==="salesSeparation")openSalesSeparation(id);
     if(a==="manageNoDelivery")openNoDeliveryManagement(id);
     if(a==="salesCaseInfo")openSalesCaseInfo(id);
     if(a==="exportSalesReport")exportSalesReport();
