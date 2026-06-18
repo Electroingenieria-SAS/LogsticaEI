@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v98_separacion_ventas_minimal_fix";
+var storageKey = "ei_trazabilidad_v99_fix_ver_pedido_ventas";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -561,7 +561,11 @@ function isSalesRole(){return state.user && normalizeRole(state.user.role)==="ve
 function sameSalesOwner(c){
   if(!state.user || !c)return false;
   var aliases=currentUserIdentityAliases();
-  return aliases.indexOf(String(c.createdBy||""))>=0 || samePersonText(c.createdByName,state.user.name) || samePersonText(c.salesAdvisor,state.user.name) || samePersonText(c.createdByEmail,state.user.email);
+  var values=[c.createdBy,c.createdByName,c.createdByEmail,c.salesAdvisor,c.salesAdvisorName,c.advisor,c.vendedor,c.salesUser,c.salesEmail];
+  if(values.some(function(v){return aliases.indexOf(String(v||"").trim())>=0;}))return true;
+  return values.some(function(v){
+    return samePersonText(v,state.user.name) || samePersonText(v,state.user.email) || samePersonText(v,state.user.displayName);
+  });
 }
 function separationActive(c){return !!(c && c.separationRequest && c.separationRequest.active===true);}
 function canSalesRequestSeparation(c){
@@ -1140,6 +1144,27 @@ function caseSummary(c){
 
 function normalizePersonText(v){
   return stripAccents(String(v||"").trim().toLowerCase()).replace(/\s+/g," ");
+}
+function normalizePersonComparableText(v){
+  var s=stripAccents(String(v||"").trim().toLowerCase());
+  if(!s)return "";
+  if(s.indexOf("@")>=0)s=s.split("@")[0];
+  s=s.replace(/[_\.\-]+/g," ");
+  s=s.replace(/\b(ei|com|co|electroingenieria|sas|s\s*a\s*s)\b/g," ");
+  s=s.replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
+  return s;
+}
+function samePersonText(a,b){
+  var x=normalizePersonComparableText(a), y=normalizePersonComparableText(b);
+  if(!x || !y)return false;
+  if(x===y)return true;
+  var xp=x.split(" ").filter(Boolean), yp=y.split(" ").filter(Boolean);
+  if(!xp.length || !yp.length)return false;
+  var small=xp.length<=yp.length?xp:yp;
+  var big=xp.length<=yp.length?yp:xp;
+  var hits=small.filter(function(t){return big.indexOf(t)>=0;}).length;
+  if(small.length===1)return hits===1 && small[0].length>=4;
+  return hits>=Math.min(2,small.length);
 }
 function personKey(uidValue,name,email){
   var uidClean=String(uidValue||"").trim();
