@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v103_separacion_alistable_caja_facturacion";
+var storageKey = "ei_trazabilidad_v104_actualizar_inicio_cierre_popup";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -54,6 +54,29 @@ var state = {
   realtime: { caseUnsubs: [], eventUnsub: null, eventUnsubs: [], userUnsub: null, pollTimer: null, buckets: {}, eventBuckets: {}, initialCasesLoaded: false, initialEventsLoaded: false, lastHash: "", lastEventHash: "", lastChangeAt: 0, lastEventAt: 0, startedAt: 0, pendingRender: false },
   notifications: { enabled: true, memory: {}, queue: [], queueTimer: null, lastSoundAt: 0 }
 };
+
+function ensureV104UiFixes(){
+  if(document.getElementById("ei-v104-ui-fixes"))return;
+  var st=document.createElement("style");
+  st.id="ei-v104-ui-fixes";
+  st.textContent='\
+.drawer.open{display:flex!important;align-items:flex-start!important;justify-content:center!important;padding:clamp(10px,2.2vw,28px)!important;overflow-y:auto!important;overscroll-behavior:contain!important;}\
+.drawer .modal{width:min(980px,calc(100vw - 28px))!important;max-height:calc(100dvh - 28px)!important;overflow:auto!important;border-radius:22px!important;box-sizing:border-box!important;}\
+.drawer .modal-head{position:sticky!important;top:0!important;z-index:3!important;background:inherit!important;backdrop-filter:blur(8px)!important;border-bottom:1px solid rgba(15,23,42,.08)!important;margin:-4px -2px 14px!important;padding:8px 2px 12px!important;}\
+.drawer .form{gap:12px!important;}\
+.drawer .grid,.drawer .cut-grid{gap:12px!important;}\
+.drawer .field span{font-size:.86rem!important;}\
+.drawer .input,.drawer .select,.drawer .textarea{min-height:42px!important;font-size:14px!important;}\
+.drawer .textarea{min-height:92px!important;}\
+.drawer .top-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;}\
+.drawer .btn{white-space:normal!important;}\
+.drawer .table-wrap{max-width:100%!important;overflow:auto!important;}\
+.home-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:14px 16px;border:1px solid rgba(15,23,42,.08);border-radius:18px;background:#fff;}\
+.home-refresh-card strong{display:block;color:#061b46;}\
+.home-refresh-card span{display:block;font-size:12px;opacity:.72;margin-top:3px;}\
+@media(max-width:760px){.drawer.open{padding:8px!important;align-items:stretch!important;}.drawer .modal{width:100%!important;max-height:calc(100dvh - 16px)!important;border-radius:18px!important;padding:14px!important;}.drawer .grid,.drawer .grid-2,.drawer .grid-3,.drawer .grid-4,.drawer .cut-grid,.drawer .cut-grid-2,.drawer .cut-grid-3,.drawer .cut-grid-4{display:grid!important;grid-template-columns:1fr!important;}.drawer .modal-head h3{font-size:1rem!important;line-height:1.15!important;}.drawer .modal-head .btn{padding:8px 10px!important;font-size:12px!important;}.drawer .card{padding:12px!important;border-radius:16px!important;}.drawer .notice{padding:10px 12px!important;border-radius:14px!important;font-size:13px!important;}.drawer table{font-size:12px!important;}.drawer th,.drawer td{padding:8px!important;}.home-refresh-card{flex-direction:column;align-items:stretch;}.home-refresh-card .btn{width:100%;}}';
+  document.head.appendChild(st);
+}
 
 var roles = {
   admin:"Administrador / Desarrollador",
@@ -822,6 +845,22 @@ function addStateHistory(c, type, detail, extra){
   if(c.stateHistory.length>500)c.stateHistory=c.stateHistory.slice(-500);
 }
 function totalMs(c){return (c.closedAt?new Date(c.closedAt).getTime():Date.now())-new Date(c.createdAt).getTime();}
+function caseClosedDate(c){
+  if(!c)return null;
+  var v=c.closedAt||c.closed_at||c.completedAt||c.finishedAt||"";
+  if(!v && /cerrado|cancelado/i.test(String(c.status||"")))v=c.updatedAt||c.createdAt||"";
+  var d=v?new Date(v):null;
+  return d && !isNaN(d.getTime())?d:null;
+}
+function caseClosedOlderThanDays(c,days){
+  var d=caseClosedDate(c);
+  if(!d)return false;
+  return (Date.now()-d.getTime())>=((days||2)*24*60*60*1000);
+}
+function caseVisibleOnHome(c){
+  return !caseClosedOlderThanDays(c,2);
+}
+
 function activeMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].activeMs||0);});if(c.status==="en_proceso"&&c.activeStartedAt)total+=msSince(c.activeStartedAt);return total;}
 function waitMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].waitMs||0);});if((c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja")&&c.waitStartedAt)total+=msSince(c.waitStartedAt);return total;}
 function deadMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].deadMs||0);});if(c.status==="asignado"&&c.deadStartedAt)total+=msSince(c.deadStartedAt);return total;}
@@ -985,11 +1024,15 @@ function writeSalesCasesCache(list){
   }catch(e){}
 }
 function mergeSalesCasesIntoState(list){
-  var mine=sortByUpdated(uniqueById(list||[]));
+  var mine=sortByUpdated(uniqueById(list||[]).filter(caseBelongsToCurrentSalesUser));
   var map={};
   mine.forEach(function(c){if(c&&c.id)map[c.id]=c;});
-  (state.cases||[]).forEach(function(c){if(!c||!c.id||map[c.id])return; if(!caseBelongsToCurrentSalesUser(c))mine.push(c);});
-  return sortByUpdated(uniqueById(mine));
+  (state.cases||[]).forEach(function(c){
+    if(!c||!c.id||map[c.id])return;
+    if(caseBelongsToCurrentSalesUser(c))mine.push(c);
+    else if(state.detailId && c.id===state.detailId)mine.push(c);
+  });
+  return sortByUpdated(uniqueById(mine).filter(function(c){return caseBelongsToCurrentSalesUser(c) || (state.detailId && c.id===state.detailId);}));
 }
 function loadSalesCasesFastOnline(){
   var keys=salesLoadIdentityKeys();
@@ -1044,6 +1087,33 @@ function loadSalesCasesFast(){
   var cached=readSalesCasesCache();
   refreshSalesCasesInBackground("loadCasesForRole");
   return Promise.resolve(cached.length?cached:[]);
+}
+function loadSalesCasesForcedOnline(){
+  try{localStorage.removeItem(salesCacheKey());}catch(e){}
+  state.salesRefreshPromise=null;
+  return loadSalesCasesFastOnline().then(function(list){
+    writeSalesCasesCache(list);
+    return mergeSalesCasesIntoState(list);
+  });
+}
+function forceRefreshCurrentUserCases(){
+  if(!db||!state.user){alert("No hay conexión activa para actualizar pedidos.");return;}
+  var previousRoute=state.route;
+  state.dataLoading=true;
+  showLiveToast("Actualizando pedidos","Forzando nueva lectura de Firebase para este usuario. No cierre la ventana.",false);
+  var p=(normalizeRole(state.user.role)==="ventas")
+    ? loadSalesCasesForcedOnline().then(function(list){state.cases=list||[];})
+    : loadCasesForRole().then(function(list){state.cases=list||[];});
+  p.then(function(){
+    state.dataLoading=false;
+    state.route=previousRoute||state.route||"dashboard";
+    state.__forceRenderOnce=true;
+    render();
+    showLiveToast("Pedidos actualizados","La bandeja fue cargada nuevamente para el usuario actual.",false);
+  }).catch(function(e){
+    state.dataLoading=false;
+    showError("No fue posible actualizar pedidos: "+((e&&e.message)||e));
+  });
 }
 function loadingPedidosPanel(text){
   return '<section class="mobile-loading-orders card"><div class="loading-spinner-dot"></div><div><strong>Cargando pedidos</strong><span>'+esc(text||'Estamos trayendo solo la información necesaria para tu rol. Espere un momento.')+'</span></div></section>';
@@ -2298,10 +2368,15 @@ function visibleCases(){
 
 function renderDashboard(){
   if(isExecutive())return renderIndicators();
-  var list=visibleCases();var open=list.filter(function(c){return !c.closedAt;});
+  var rawList=visibleCases();
+  var list=rawList.filter(caseVisibleOnHome);
+  var hiddenClosed=rawList.length-list.length;
+  var open=list.filter(function(c){return !c.closedAt && !/^cerrado|cancelado/i.test(String(c.status||""));});
   var waits=open.filter(function(c){return c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja";});
   var loadingHtml=state.dataLoading?loadingPedidosPanel('Cargando pedidos y bandeja del usuario...'):'';
-  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja";}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section><section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
+  var refreshCard='<section class="home-refresh-card"><div><strong>Actualizar pedidos</strong><span>Fuerza la carga de los pedidos del usuario actual para evitar bandejas cruzadas o pedidos que no aparecen.</span></div><button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos ahora</button></section>';
+  var hiddenNote=hiddenClosed?'<div class="notice" style="margin-top:12px"><strong>Limpieza automática:</strong> '+hiddenClosed+' pedido(s) cerrado(s) con más de 2 días se ocultaron del inicio para evitar congestión. Siguen disponibles en consultas/reportes.</div>':'';
+  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+refreshCard+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
 }
 
 function caseList(list){
@@ -4956,6 +5031,7 @@ function modal(title,body){
 }
 
 function drawer(html){
+  ensureV104UiFixes();
   var d=qs('#drawer');
   if(!d){d=document.createElement('div');d.id='drawer';d.className='drawer';document.body.appendChild(d);}
   d.innerHTML=html||'';
@@ -6518,6 +6594,7 @@ function bindActions(){
     if(a==="salesCaseInfo")openSalesCaseInfo(id);
     if(a==="exportSalesReport")exportSalesReport();
     if(a==="refreshSalesReports"){state.salesLoading=true;renderSalesReports();refreshSalesCasesInBackground("manual");}
+    if(a==="forceRefreshCases")forceRefreshCurrentUserCases();
     if(a==="resendPending")resendPendingItems(id);
     if(a==="deliveryEvidence")openDeliveryEvidence(id,b.getAttribute("data-delivery-evidence"));
     if(a==="certificate")openCertificateModal();
