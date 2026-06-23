@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v105_un_solo_actualizar_pedidos";
+var storageKey = "ei_trazabilidad_v106_reportes_pdf4496";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -760,6 +760,38 @@ function canAccessReportsModule(){return !!state.user;}
 function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
 function canCommentReports(){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion";}
 function canDeleteReports(){return state.user && isSuperAdminRoleValue(state.user.role);}
+
+function reportCaseIdentifiers(r){
+  var ids=[];
+  if(!r)return ids;
+  [r.sourceId,r.caseId,r.caseUid,r.caseDocumentId,r.sourceCaseId].forEach(function(x){if(x)ids.push(String(x));});
+  [r.sourceReference,r.caseReference,r.reference,r.pedido,r.orderNumber].forEach(function(x){if(x)ids.push(String(x));});
+  return ids.map(function(x){return String(x||'').trim();}).filter(Boolean);
+}
+function reportBelongsToCase(r,c){
+  if(!r||!c)return false;
+  var ids=reportCaseIdentifiers(r).map(function(x){return normalizePersonComparableText ? normalizePersonComparableText(x) : normalizePersonText(x);});
+  var caseIds=[c.id,c.reference,c.caseNumber,c.pedido,c.orderNumber].map(function(x){return String(x||'').trim();}).filter(Boolean);
+  return caseIds.some(function(v){
+    var nv=normalizePersonComparableText ? normalizePersonComparableText(v) : normalizePersonText(v);
+    return nv && ids.indexOf(nv)>=0;
+  });
+}
+function reportRelevantToCurrentUser(r){
+  if(!state.user || !r)return false;
+  if(canSeeAll() || normalizeRole(state.user.role)!=='ventas')return true;
+  var ownCases=(state.cases||[]).filter(function(c){return sameSalesOwner ? sameSalesOwner(c) : (c.createdBy===state.user.uid);});
+  if(ownCases.some(function(c){return reportBelongsToCase(r,c);})){return true;}
+  if((r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email)) && !r.sourceId && !r.sourceReference && !r.caseId)return true;
+  if(samePersonText(r.caseCreatedByName,state.user.name) || samePersonText(r.salesAdvisor,state.user.name) || samePersonText(r.caseCreatedByEmail,state.user.email))return true;
+  return false;
+}
+function filterReportsForCurrentUser(list){
+  return (list||[]).filter(reportRelevantToCurrentUser);
+}
+function visibleReports(){
+  return filterReportsForCurrentUser(state.reports||[]);
+}
 function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return isSuperAdminRoleValue(r)||r==="lider_recepcion";}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
 function projectUploadDayText(){return isProjectUploadDay()?"Habilitado hoy":"Solo se habilita los lunes y jueves";}
@@ -1223,7 +1255,7 @@ function loadData(){
     state.users=res[2]||[];
     state.receptions=res[3]||[];
     state.projectOrders=res[4]||[];
-    state.reports=res[5]||[];
+    state.reports=filterReportsForCurrentUser(res[5]||[]);
     state.dataLoading=false;
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
@@ -5313,11 +5345,11 @@ function reportStatusChip(st){
 }
 function renderReports(){
   if(!canAccessReportsModule()){layout(header("Reportes","Acceso restringido.")+'<div class="empty">No tiene acceso a reportes.</div>');return;}
-  var list=state.reports||[];
+  var list=visibleReports();
   var open=list.filter(function(r){return String(r.status||"").indexOf("CERRADO")<0;}).length;
   var retained=list.filter(function(r){return r.sourceModule==="recepcion_mercancia" && String(r.status||"").indexOf("CERRADO")<0;}).length;
   var rows=list.map(function(r){var manage=canCommentReports()?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';}).join('');
-  layout(header("Reportes y novedades","Bandeja transversal: todos ven el estado; jefes gestionan. Las novedades de recepción retenida solo se cierran desde Recepción con evidencia.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Bandeja filtrada por responsabilidad: Ventas solo ve novedades de sus propios pedidos; jefes gestionan.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
@@ -5366,8 +5398,8 @@ function openGeneralReportModal(id){
 function submitGeneralReport(id,fd){
   var c=caseById(id);if(!c)return;
   var detail=String(fd.get("detail")||"").trim();if(!detail){alert("Debe escribir la novedad.");return;}
-  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[]};
-  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada: "+report.category,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,state.user.role]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
+  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:c.salesAdvisor||'',caseOwnerUid:c.createdBy||''};
+  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada: "+report.category,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
 }
 
 function kpiFilteredCases(){
@@ -8643,6 +8675,97 @@ bindActions = function(){
   qsa('[data-action="editOrderItem"]').forEach(function(b){b.onclick=function(){openEditOrderItem(b.getAttribute('data-id'),b.getAttribute('data-line'));};});
   qsa('[data-action="addOrderItem"]').forEach(function(b){b.onclick=function(){openAddOrderItem(b.getAttribute('data-id'));};});
   qsa('[data-action="deleteOrderItem"]').forEach(function(b){b.onclick=function(){deleteOrderItem(b.getAttribute('data-id'),b.getAttribute('data-line'));};});
+};
+
+
+/* V106: lectura reforzada de PDF SIESA con cantidades 20.000,00 y filas multilinea; no elimina lector V92. */
+function eiV106QtyRegex(){return /^\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?$|^\d+(?:[.,]\d+)?$/;}
+function eiV106CleanDescTail(s){return eiV92CleanText(String(s||'').replace(/\$\s*[\d.,]+.*$/g,'').replace(/\b(?:VALOR|UNIT|PARCIAL|SUBTOTAL|IVA|TOTAL)\b.*$/ig,''));}
+function eiV106ParseSiesaRowsFromRawText(raw){
+  var text=String(raw||'').replace(/\r/g,'\n');
+  var rows=[];
+  var unitRx='(?:'+orderUnitPattern()+')';
+  var qty='(\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{2,4})|\\d+[.,]\\d+)';
+  var loc='([A-Z]\\d{5,6})';
+  var ref='(\\d{6,8})';
+  var rx=new RegExp('(?:^|\\n|\\s)('+unitRx+')\\s+\\$[\\s\\S]{0,90}?'+ref+'\\s+(?:PARQUE\\s+INDUSTRIAL\\s+)?([\\s\\S]{8,220}?)\\s+'+qty+'\\s*'+loc,'gi');
+  var m;
+  while((m=rx.exec(text))){
+    var unit=m[1], reference=m[2], desc=m[3], cantidad=m[4], ubic=m[5];
+    desc=eiV106CleanDescTail(desc).replace(/\s+/g,' ').trim();
+    desc=desc.replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
+    if(eiV92ReferenceOk(reference) && desc && cantidad && ubic){rows.push({referencia:reference,descripcion:desc,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V106_RAW'});}
+  }
+  // Fallback para textos extraídos por columnas donde referencia/descripcion/ubicación/cantidad quedan separados.
+  if(!rows.length){
+    var lines=text.split(/\n+/).map(function(x){return eiV92CleanText(x);}).filter(Boolean);
+    var refRows=[];
+    for(var i=0;i<lines.length;i++){
+      var mm=lines[i].match(/^(\d{6,8})\s+(.+)/);
+      if(mm && eiV92ReferenceOk(mm[1])){
+        var desc=mm[2];
+        if(i+1<lines.length && /^CT$/i.test(lines[i+1])){desc+=' CT';}
+        refRows.push({referencia:mm[1],descripcion:desc});
+      }
+    }
+    var locs=[], qtys=[], units=[];
+    lines.forEach(function(l){if(/^[A-Z]\d{5,6}$/.test(l))locs.push(l); if(eiV106QtyRegex().test(l))qtys.push(l); if(new RegExp('^'+unitRx+'$','i').test(l))units.push(l);});
+    refRows.forEach(function(r,idx){
+      var cantidad=qtys[idx]||qtys[0]||'', unit=units[idx]||units[0]||'M', ubic=locs[idx]||'';
+      if(r.referencia && r.descripcion && cantidad && unit)rows.push({referencia:r.referencia,descripcion:r.descripcion,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V106_COLUMN_TEXT'});
+    });
+  }
+  return eiV92DedupeItems(rows);
+}
+var eiV106LegacyParseRows = eiV92ParseSiesaRows;
+eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
+  var lines=eiV92GroupLines(words,5);
+  var header=eiV92FindHeaderLine(lines);
+  var bodyStart=header?header.top+7:0;
+  var footer=lines.filter(function(l){return l.top>bodyStart+20 && eiV92IsFooterLine(l);}).sort(function(a,b){return a.top-b.top;})[0];
+  var bodyEnd=footer?footer.top-2:pageHeight-30;
+  var refMin=0, refMax=pageWidth*0.12;
+  var descMin=pageWidth*0.08, descMax=pageWidth*0.53;
+  var ubicMin=pageWidth*0.60, ubicMax=pageWidth*0.70;
+  var qtyMin=pageWidth*0.69, qtyMax=pageWidth*0.77;
+  var unitMin=pageWidth*0.75, unitMax=pageWidth*0.84;
+  var qtyRx=eiV106QtyRegex();
+  var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
+  var rows=[];
+  for(var li=0;li<lines.length;li++){
+    var line=lines[li];
+    if(line.top<=bodyStart || line.top>=bodyEnd)continue;
+    var ref=eiV92FirstInRange(line,refMin,refMax,null);
+    if(!eiV92ReferenceOk(ref))continue;
+    var qty=eiV92FirstInRange(line,qtyMin,qtyMax,qtyRx) || eiV92FirstInRange(line,pageWidth*0.66,pageWidth*0.79,qtyRx);
+    var unit=eiV92FirstInRange(line,unitMin,unitMax,unitRx) || eiV92FirstInRange(line,pageWidth*0.73,pageWidth*0.86,unitRx);
+    if(!qty || !unit)continue;
+    var desc=eiV92LineTextInRange(line,descMin,descMax);
+    var next=lines[li+1];
+    if(next && !eiV92ReferenceOk(eiV92FirstInRange(next,refMin,refMax,null)) && next.top>line.top && (next.top-line.top)<13){
+      var cont=eiV92LineTextInRange(next,descMin,descMax);
+      if(cont && !/^(PARQUE|INDUSTRIAL)$/i.test(cont))desc+=' '+cont;
+    }
+    desc=eiV106CleanDescTail(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
+    var ubic=eiV92LineTextInRange(line,ubicMin,ubicMax);
+    if(!desc)return;
+    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum,mode:'V106_GEOMETRY'});
+  }
+  return rows;
+};
+var eiV106ReadPdfFileBase = readPdfFile;
+readPdfFile = function(file){
+  return eiV106ReadPdfFileBase(file).then(function(text){
+    var rawRows=eiV106ParseSiesaRowsFromRawText(text);
+    if(!rawRows.length)return text;
+    var existing=[]; try{existing=extractPedidoItems(text)||[];}catch(e){existing=[];}
+    var merged=eiV92DedupeItems((existing||[]).concat(rawRows.map(function(m,i){return eiV92MaterialToApp(m,i,'V106_RAW_TEXT');})));
+    if(merged.length <= existing.length)return text;
+    var clean=String(text||'').replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
+    var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V106_MERGE'));}).join('\n');
+    var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V106',materialesExtraidos:merged.length,rawExtraidos:rawRows.length,nota:'Incluye soporte para cantidades con miles 20.000,00 y filas SIESA multilinea.'});
+    return markers+'\n'+audit+'\n'+clean;
+  });
 };
 
 
