@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v106_reportes_pdf4496";
+var storageKey = "ei_trazabilidad_v107_medida_completa_corte";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -4756,7 +4756,7 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-1">'+
       '<label class="field"><span>Foto del carreto rotulado obligatoria para registrar</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+(cut.carretoRotuladoUrl?'Foto del carreto rotulado cargada: '+fmtDate(cut.carretoRotuladoAt)+(cut.carretoRotuladoUrl?' · Drive OK':''):(cut.carretoRotuladoPendingUpload?'Foto del carreto tomada. Pendiente subir a Drive; el flujo no se bloquea.':'Cuando finalice el corte, tome una sola foto del carreto rotulado y pulse Registrar corte.'))+'</small></label>'+ 
-    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-success" data-cut-action="completeMeasure" '+(finished?'disabled':'')+'>Medida completa</button><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · módulo completo",info+form));
   function refreshPreview(){
@@ -4812,6 +4812,72 @@ function handleCutAction(c,cut,action){
     if(!userCanApproveCut(rule,cut)){alert("No tiene permiso para rechazar esta autorización. "+cutApprovalTargetLabel(rule,cut));return;}
     cut.approvalStatus="RECHAZADO";cut.rejectedBy=state.user.uid;cut.rejectedByName=state.user.name;cut.rejectedAt=now();cut.status="RECHAZADO";
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="completeMeasure"){
+    var ok=confirm("¿Confirmar Medida completa? Use esta opción solo cuando encontraron un carreto exacto y no se requiere cronómetro ni corte físico.");
+    if(!ok)return;
+    var completeAt=now();
+    cut.status="FINALIZADO";
+    cut.measureComplete=true;
+    cut.medidaCompleta=true;
+    cut.measureCompleteAt=completeAt;
+    cut.measureCompleteBy=state.user.uid;
+    cut.measureCompleteByName=state.user.name;
+    cut.completedAt=completeAt;
+    cut.finishedAt=completeAt;
+    cut.registeredAt=completeAt;
+    cut.finishedByName=state.user.name;
+    cut.registeredBy=state.user.uid;
+    cut.registeredByName=state.user.name;
+    cut.durationMs=0;
+    cut.durationText="00:00:00";
+    cut.startedAt=null;
+    cut.horaInicio=cut.horaInicio||new Date().toTimeString().slice(0,8);
+    cut.horaFin=new Date().toTimeString().slice(0,8);
+    cut.fechaCorte=cut.fechaCorte||new Date().toISOString().slice(0,10);
+    cut.metrajeFinal=cut.metrajeFinal||cut.metrosSolicitados||"";
+    if(!cut.disponibleAntes)cut.disponibleAntes=cut.metrosSolicitados||cut.metrajeFinal||"";
+    cut.remanenteReal="0";
+    cut.siesaExportStatus="NO_APLICA_MEDIDA_COMPLETA";
+    cut.siesaBatchId="MEDIDA_COMPLETA";
+    cut.siesaExportedAt=completeAt;
+    cut.siesaExportedByName=state.user.name;
+    cut.corteUniforme=true;
+    cut.tramoRotulado=true;
+    cut.evidenciaRegistro=true;
+    refreshCutStats(c);
+    var pending=(c.cutRequests||[]).filter(function(x){return !cutIsOperationallyDone(x) && x.id!==cut.id;});
+    c.cutReturnAlerts=c.cutReturnAlerts||[];
+    c.cutReturnAlerts.push({
+      id:uid("CRA"),
+      cutId:cut.id,
+      cutCode:cut.code||cut.id,
+      reference:cut.referencia||cut.descripcion||"Medida completa",
+      meters:cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||""),
+      returnedAt:completeAt,
+      returnedBy:state.user.name,
+      status:"DISPONIBLE_PARA_EMPALETAR",
+      detail:"Medida completa: se encontró carreto exacto. No requirió cronómetro ni corte físico. Llevar a alistamiento y empaletar para facturación."
+    });
+    if(c.cutReturnAlerts.length>25)c.cutReturnAlerts=c.cutReturnAlerts.slice(-25);
+    var event={type:"CUT_MEASURE_COMPLETE",detail:"Medida completa registrada: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. Se encontró carreto exacto; no requirió cronómetro ni corte físico. Alistamiento debe continuar el proceso normal.",targetRole:primaryOwnerRole("alistamiento"),visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]};
+    stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=pending.length===0?(procStats(c,"corte_cable").completedAt||completeAt):procStats(c,"corte_cable").completedAt;
+    c.currentProcess="alistamiento";
+    c.status="en_proceso";
+    c.assignedRole=primaryOwnerRole("alistamiento");
+    c.assignedName=processOwnerTitle("alistamiento");
+    c.assignedTo="";
+    c.deadStartedAt=completeAt;
+    c.activeStartedAt=completeAt;
+    c.waitStartedAt=null;
+    c.checklist=c.checklist||{};
+    processes.alistamiento.checklist.forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]="pending";});
+    if(c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]=pending.length===0?"ok":"pending";
+    if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
+    if(pending.length){event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero esta medida completa ya queda liberada para empaletar.";}
+    else{event.detail+=" Todos los cortes del pedido quedaron registrados; Alistamiento debe terminar validación y enviar a Facturación.";}
+    persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="retryCutUploads"){
@@ -5531,14 +5597,14 @@ function plainSiesa(v){
   return String(v==null?"":v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[\r\n|;]/g," ").trim();
 }
 function countPendingSiesaCutsInCase(c){
-  var n=0;(c.cutRequests||[]).forEach(function(cut){if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO")n++;});return n;
+  var n=0;(c.cutRequests||[]).forEach(function(cut){if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"&&cut.siesaExportStatus!=="NO_APLICA_MEDIDA_COMPLETA")n++;});return n;
 }
 function pendingSiesaCuts(){
   var rows=[];
   state.cases.forEach(function(c){
     if(c.excludeFromKpi===true)return;
     (c.cutRequests||[]).forEach(function(cut){
-      if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"){rows.push({caseObj:c,cut:cut});}
+      if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"&&cut.siesaExportStatus!=="NO_APLICA_MEDIDA_COMPLETA"){rows.push({caseObj:c,cut:cut});}
     });
   });
   return rows.sort(function(a,b){return new Date(a.cut.registeredAt||a.cut.finishedAt||a.caseObj.updatedAt||0)-new Date(b.cut.registeredAt||b.cut.finishedAt||b.caseObj.updatedAt||0);});
