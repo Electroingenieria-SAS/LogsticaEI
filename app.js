@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v108_notas_ventas_diarias_recepcion";
+var storageKey = "ei_trazabilidad_v109_confirmacion_corte_alistamiento";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -4448,6 +4448,59 @@ function collectReceptionItemsFromForm(fd, keepBlank){
   }
   return out;
 }
+function receptionDecisionSummary(parsed){
+  var items=(parsed&&parsed.items)||[];
+  var toCut=[], direct=[], other=[];
+  items.forEach(function(it,idx){
+    var label=(idx+1)+". "+(it.referencia||"Sin referencia")+" · "+(it.descripcion||"")+" · "+(it.cantidad||"")+" "+(it.unidad||"")+" · Ubicación: "+(it.ubicacion||"—");
+    if(it.requiereCorte)toCut.push(label);
+    else if(it.decisionCorteRecepcion==="CARRETO_COMPLETO")direct.push(label);
+    else other.push(label);
+  });
+  return {toCut:toCut,direct:direct,other:other,total:items.length};
+}
+function confirmReceptionCutDecision(parsed){
+  var s=receptionDecisionSummary(parsed);
+  var lines=[];
+  lines.push("CONFIRMACIÓN OBLIGATORIA DE RECEPCIÓN");
+  lines.push("");
+  lines.push("Revise antes de guardar, porque esta decisión define si el material va a Corte o si continúa directo a Alistamiento.");
+  lines.push("");
+  lines.push("A CORTE: "+s.toCut.length);
+  s.toCut.slice(0,8).forEach(function(x){lines.push("  - "+x);});
+  if(s.toCut.length>8)lines.push("  - ... y "+(s.toCut.length-8)+" línea(s) más");
+  lines.push("");
+  lines.push("DIRECTO A ALISTAMIENTO / CARRETO COMPLETO: "+s.direct.length);
+  s.direct.slice(0,8).forEach(function(x){lines.push("  - "+x);});
+  if(s.direct.length>8)lines.push("  - ... y "+(s.direct.length-8)+" línea(s) más");
+  if(s.other.length){
+    lines.push("");
+    lines.push("NO APLICA CORTE / ALISTAMIENTO NORMAL: "+s.other.length);
+    s.other.slice(0,6).forEach(function(x){lines.push("  - "+x);});
+    if(s.other.length>6)lines.push("  - ... y "+(s.other.length-6)+" línea(s) más");
+  }
+  lines.push("");
+  lines.push("¿Confirma que esta clasificación está correcta?");
+  return confirm(lines.join("\n"));
+}
+function applyReceptionDecisionConfirmation(c,parsed){
+  var s=receptionDecisionSummary(parsed);
+  c.receptionDecisionConfirmation={
+    confirmed:true,
+    confirmedAt:now(),
+    confirmedBy:state.user?state.user.uid:"",
+    confirmedByName:state.user?state.user.name:"",
+    totalLines:s.total,
+    toCut:s.toCut.length,
+    directToAlistamiento:s.direct.length,
+    noCutOther:s.other.length,
+    detail:"Recepción confirmó clasificación: "+s.toCut.length+" línea(s) a corte, "+s.direct.length+" línea(s) directo a alistamiento por carreto completo y "+s.other.length+" línea(s) sin corte."
+  };
+  c.receptionDecisionLog=c.receptionDecisionLog||[];
+  c.receptionDecisionLog.push(c.receptionDecisionConfirmation);
+  if(c.receptionDecisionLog.length>20)c.receptionDecisionLog=c.receptionDecisionLog.slice(-20);
+}
+
 function applyReceptionCutDecisions(parsed, fd){
   if(!parsed||!parsed.items)return parsed;
   parsed.items.forEach(function(it,idx){
@@ -4499,13 +4552,15 @@ function openReceptionPdf(id){
     parsed.items=collectReceptionItemsFromForm(fd,false);
     if(!parsed.items.length){alert("Debe quedar al menos una línea del pedido. Corrija la extracción o agregue una línea manual.");return;}
     parsed=applyReceptionCutDecisions(parsed,fd);
+    if(!confirmReceptionCutDecision(parsed)){return;}
+    applyReceptionDecisionConfirmation(c,parsed);
     var filledFields=mergePdfExtractionIntoCase(c,parsed);
-    c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus="SI";c.documentFlow.initialCommitmentDetail=fd.get("commitDetail")||"Mercancía comprometida/bloqueada en SIESA/ERP desde recepción.";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
+    c.documentFlow=c.documentFlow||{};c.documentFlow.initialCommitmentStatus="SI";c.documentFlow.initialCommitmentDetail=fd.get("commitDetail")||"Mercancía comprometida/bloqueada en SIESA/ERP desde recepción.";c.documentFlow.initialCommitmentAt=now();c.documentFlow.initialCommitmentBy=state.user.name;c.documentFlow.receptionPdfLoadedAt=now();c.documentFlow.receptionPdfLoadedBy=state.user.name;c.documentFlow.receptionPdfFileName=fileName;c.documentFlow.pdfPages=parsed.pages||1;c.documentFlow.extractedLines=(parsed.items||[]).length;c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;c.documentFlow.lastReceptionDecisionConfirmedAt=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.confirmedAt;c.documentFlow.lastReceptionDecisionSummary=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.detail;
     var added=autoCreateCutsFromItems(c,state.user.name);
     applyReceptionChecklistFromPdf(c,parsed);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
       c.documentFlow.receptionPdfDriveUrl=up.url;c.documentFlow.receptionPdfDriveId=up.fileId;c.documentFlow.receptionPdfDriveFolder=up.folderPath||up.folder;
-      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos, con mercancía comprometida. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos.");
+      appendEvidence(c,up,"PDF oficial del pedido recibido en Recepción de pedidos, con mercancía comprometida. Lectura: "+c.orderItems.length+" líneas, "+added+" cortes automáticos. "+((c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.detail)||""));
       return persistCase(c,{type:"RECEPTION_PDF_EXTRACTED",detail:"PDF leído y guardado en Drive. Pedido: "+(c.reference||"")+". Campos autollenados: "+(filledFields.length?filledFields.join(", "):"sin campos vacíos pendientes")+". Líneas detectadas: "+c.orderItems.length+". Cortes automáticos generados: "+added});
     }).then(function(){if(previewUrl)URL.revokeObjectURL(previewUrl);closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
