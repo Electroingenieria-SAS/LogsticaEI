@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v111_excel_informe_completo_horas";
+var storageKey = "ei_trazabilidad_v112_demora_exacta_pedido";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -5779,22 +5779,66 @@ function waitTimelineRows(data){
 }
 function caseRequirementDurationMs(c){return waitTimelineRows([c]).filter(function(r){return /requer/i.test(String(r.tipo||""));}).reduce(function(s,r){return s+Number(r.duracion||0);},0);}
 function caseWaitDetailText(c){return waitTimelineRows([c]).map(function(r){return r.tipo+" · "+r.proceso+" · "+fmt(r.duracion)+(r.detalle?" · "+r.detalle:"");}).join(" || ");}
+function caseDelayMetrics(c){
+  var inicio=caseCreatedAtFixed(c), actualizado=caseUpdatedAtFixed(c), fin=caseEndAtFixed(c);
+  var total=excelSafeDuration(inicio,fin);
+  var va=activeMs(c);
+  var waits=waitTimelineRows([c]);
+  var req=waits.filter(function(r){return /requer/i.test(String(r.tipo||""));}).reduce(function(s,r){return s+Number(r.duracion||0);},0);
+  var espera=waits.filter(function(r){return !/requer/i.test(String(r.tipo||""));}).reduce(function(s,r){return s+Number(r.duracion||0);},0);
+  if(!espera)espera=Math.max(0,waitMs(c)-req);
+  var nva=Math.max(0,total-va-espera-req);
+  var cerrado=!!(c.closedAt||c.completedAt||c.finishedAt||/cerrado|finalizado|entregado/i.test(String(c.status||"")));
+  var timeline=processTimelineRows([c]);
+  var procMax=timeline.reduce(function(best,r){return Number(r.total||0)>Number(best.total||0)?r:best;},{total:0,procesoNombre:""});
+  var parts=[
+    {k:"VA / trabajo",v:va},
+    {k:"Espera",v:espera},
+    {k:"Requerimientos",v:req},
+    {k:"NVA / no clasificado",v:nva}
+  ].sort(function(a,b){return b.v-a.v;});
+  return {
+    c:c,
+    inicio:inicio,
+    actualizado:actualizado,
+    fin:fin,
+    cerrado:cerrado,
+    total:total,
+    totalHoras:excelHours(total),
+    totalDias:Number((excelHours(total)/24).toFixed(2)),
+    va:va,
+    espera:espera,
+    req:req,
+    nva:nva,
+    pctVa:total?Number((va/total*100).toFixed(1)):0,
+    pctEspera:total?Number((espera/total*100).toFixed(1)):0,
+    pctReq:total?Number((req/total*100).toFixed(1)):0,
+    pctNva:total?Number((nva/total*100).toFixed(1)):0,
+    mayorDemora:parts[0].k,
+    mayorDemoraHoras:excelHours(parts[0].v),
+    procesoMayorDemora:procMax.procesoNombre||"",
+    procesoMayorDemoraHoras:excelHours(procMax.total||0),
+    detalle:caseWaitDetailText(c)
+  };
+}
+function caseDelayExcelRow(r){
+  var c=r.c;
+  return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(r.cerrado?'Cerrado':'Abierto')+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.cerrado?'Final real':'Corte del análisis')+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+'</td><td>'+r.mayorDemoraHoras+'</td><td>'+escapeExcel(r.procesoMayorDemora)+'</td><td>'+r.procesoMayorDemoraHoras+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';
+}
 function downloadKpiExcel(){
   var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows, userRows=processUserRows(data,state.kpiFilters&&state.kpiFilters.user), timelineRows=processTimelineRows(data), waitRows=waitTimelineRows(data);
   var selectedUser=(kpiUserOptions().filter(function(u){return u.key===(state.kpiFilters&&state.kpiFilters.user||"");})[0]||{}).label||"Todos";
-  var caseRows=data.map(function(c){
-    var inicio=caseCreatedAtFixed(c), actualizado=caseUpdatedAtFixed(c), fin=caseEndAtFixed(c), total=excelSafeDuration(inicio,fin), va=activeMs(c), espera=waitMs(c), req=caseRequirementDurationMs(c), nva=Math.max(0,total-va-espera);
-    return {c:c,inicio:inicio,actualizado:actualizado,fin:fin,total:total,va:va,espera:espera,req:req,nva:nva};
-  });
-  var totalHoras=caseRows.reduce(function(s,r){return s+r.total;},0), vaHoras=caseRows.reduce(function(s,r){return s+r.va;},0), esperaHoras=caseRows.reduce(function(s,r){return s+r.espera;},0), reqHoras=caseRows.reduce(function(s,r){return s+r.req;},0);
+  var caseRows=data.map(function(c){return caseDelayMetrics(c);});
+  var totalHoras=caseRows.reduce(function(s,r){return s+r.total;},0), vaHoras=caseRows.reduce(function(s,r){return s+r.va;},0), esperaHoras=caseRows.reduce(function(s,r){return s+r.espera;},0), reqHoras=caseRows.reduce(function(s,r){return s+r.req;},0), nvaHoras=caseRows.reduce(function(s,r){return s+r.nva;},0);
   var html='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}</style></head><body>'+ 
     '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+'</p>'+ 
-    '<div class="note"><strong>Corrección V111:</strong> el informe normaliza fechas para que Creado nunca quede después de Actualizado. Las horas se calculan como diferencia real entre inicio y fin, y se separan en VA, espera, requerimientos y NVA para análisis.</div>'+ 
+    '<div class="note"><strong>Corrección V112:</strong> el Excel ahora calcula la demora exacta de cada pedido como Fin/Corte del análisis menos Inicio corregido, en HH:MM:SS, horas decimales y días. Además separa VA, esperas, requerimientos y NVA para identificar dónde se demoró realmente cada pedido.</div>'+ 
     '<h2>Resumen ejecutivo de horas</h2><table><tr><th>Concepto</th><th>HH:MM:SS</th><th>Horas decimales</th><th>Criterio</th></tr>'+ 
     '<tr><td>Tiempo total analizado</td><td>'+escapeExcel(fmt(totalHoras))+'</td><td>'+excelHours(totalHoras)+'</td><td>Suma de Fin - Inicio por pedido</td></tr>'+ 
     '<tr><td>Tiempo trabajado VA</td><td>'+escapeExcel(fmt(vaHoras))+'</td><td>'+excelHours(vaHoras)+'</td><td>Suma de tiempos activos por etapa</td></tr>'+ 
     '<tr><td>Tiempo en espera</td><td>'+escapeExcel(fmt(esperaHoras))+'</td><td>'+excelHours(esperaHoras)+'</td><td>Esperas acumuladas y esperas actuales</td></tr>'+ 
-    '<tr><td>Tiempo en requerimientos</td><td>'+escapeExcel(fmt(reqHoras))+'</td><td>'+excelHours(reqHoras)+'</td><td>Duración de requerimientos cerrados y abiertos</td></tr></table>'+ 
+    '<tr><td>Tiempo en requerimientos</td><td>'+escapeExcel(fmt(reqHoras))+'</td><td>'+excelHours(reqHoras)+'</td><td>Duración de requerimientos cerrados y abiertos</td></tr>'+ 
+    '<tr><td>Tiempo NVA / sin clasificación</td><td>'+escapeExcel(fmt(nvaHoras))+'</td><td>'+excelHours(nvaHoras)+'</td><td>Tiempo total - VA - Espera - Requerimientos</td></tr></table>'+ 
     '<h2>Indicadores generales</h2><table><tr><th>Indicador</th><th>Valor</th><th>Fórmula / criterio</th></tr>'+ 
     '<tr><td>Lead Time promedio</td><td>'+escapeExcel(fmt(s.leadAvg))+'</td><td>Finalización - solicitud / procesos finalizados</td></tr>'+ 
     '<tr><td>% VA</td><td>'+s.vaPct+'%</td><td>Tiempo VA / Lead Time × 100</td></tr>'+ 
@@ -5811,7 +5855,8 @@ function downloadKpiExcel(){
     '<tr><td>Pedidos vencidos</td><td>'+s.overdue+'</td><td>Abiertos con fecha límite vencida</td></tr>'+ 
     '<tr><td>Tiempo aprobación</td><td>'+escapeExcel(fmt(s.approvalAvg))+'</td><td>Aprobación - solicitud aprobación</td></tr></table>'+ 
     '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>Muerto/NVA</th><th>Horas NVA</th><th>Total</th><th>Horas total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+excelHours(r.value)+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo espera</th><th>Horas espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+caseRows.map(function(r){var c=r.c;return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(c.closedAt?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+escapeExcel(c.closedAt?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(caseWaitDetailText(c))+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Demora exacta por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Demora total días</th><th>VA HH:MM:SS</th><th>VA horas</th><th>% VA</th><th>Espera HH:MM:SS</th><th>Espera horas</th><th>% Espera</th><th>Requerimientos HH:MM:SS</th><th>Requerimientos horas</th><th>% Requerimientos</th><th>NVA HH:MM:SS</th><th>NVA horas</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Responsables</th><th>Detalle esperas/requerimientos</th></tr>'+caseRows.map(caseDelayExcelRow).join('')+'</table>'+ 
+    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Días total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>% VA</th><th>Tiempo espera</th><th>Horas espera</th><th>% Espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>% Requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>% NVA</th><th>Mayor demora</th><th>Proceso con mayor demora</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+caseRows.map(function(r){var c=r.c;return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(r.cerrado?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+' · '+r.mayorDemoraHoras+' h</td><td>'+escapeExcel(r.procesoMayorDemora)+' · '+r.procesoMayorDemoraHoras+' h</td><td>'+escapeExcel(r.cerrado?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Horas etapa</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo en espera</th><th>Horas espera</th><th>Tiempo muerto/NVA</th><th>Horas NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>'+timelineRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+excelHours(r.activo)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+excelHours(r.muerto)+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
