@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v110_excel_horas_exactas";
+var storageKey = "ei_trazabilidad_v111_excel_informe_completo_horas";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -881,7 +881,7 @@ function addStateHistory(c, type, detail, extra){
   c.stateHistory.push(item);
   if(c.stateHistory.length>500)c.stateHistory=c.stateHistory.slice(-500);
 }
-function totalMs(c){return (c.closedAt?new Date(c.closedAt).getTime():Date.now())-new Date(c.createdAt).getTime();}
+function totalMs(c){return excelSafeDuration(caseCreatedAtFixed(c),caseEndAtFixed(c));}
 function caseClosedDate(c){
   if(!c)return null;
   var v=c.closedAt||c.closed_at||c.completedAt||c.finishedAt||"";
@@ -5610,6 +5610,72 @@ function vsmSummary(data){
   return {data:data,closed:closed,allClosed:allClosed,open:open,leadTotal:leadTotal,leadAvg:avgMs(leadSum,closed.length),va:va,wait:wait,dead:dead,nva:nva,vaPct:pct(va,leadTotal),waitPct:pct(wait,leadTotal),wip:open.length,fpy:pct(correctFirst,closed.length),reworkPct:pct(rework,allClosed.length||data.length),bad:bad,checks:checks,badPct:pct(bad,checks),cutTotal:cutTotal,cutDone:cutDoneN,cutPct:pct(cutDoneN,cutTotal),handoffs:handoffs,handoffAvg:closed.length?Number((handoffs/closed.length).toFixed(1)):0,throughput:Number((closed.length/periodDays).toFixed(2)),slaPct:pct(slaInTime,allClosed.length),overdue:overdue,reqPct:pct(reqCases,data.length),approvalAvg:avgMs(approvals.reduce(function(s,x){return s+x;},0),approvals.length),cancelPct:pct(cancelled,data.length),availabilityPct:pct(avail,data.length),accuracyPct:pct(accurate,data.length),bottleneck:bottleneck,rows:rows};
 }
 function escapeExcel(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function excelTimeValue(v){
+  if(!v)return NaN;
+  if(v && typeof v.toDate==="function"){var td=v.toDate();return td&&!isNaN(td.getTime())?td.getTime():NaN;}
+  if(typeof v==="number")return Number.isFinite(v)?v:NaN;
+  var d=new Date(v);
+  return isNaN(d.getTime())?NaN:d.getTime();
+}
+function excelIsoFromMs(ms){return Number.isFinite(ms)?new Date(ms).toISOString():"";}
+function excelMinDate(values){
+  var arr=(values||[]).map(excelTimeValue).filter(Number.isFinite);
+  return arr.length?Math.min.apply(null,arr):NaN;
+}
+function excelMaxDate(values){
+  var arr=(values||[]).map(excelTimeValue).filter(Number.isFinite);
+  return arr.length?Math.max.apply(null,arr):NaN;
+}
+function caseAllDateValues(c){
+  var vals=[];
+  function add(v){if(v!==undefined&&v!==null&&v!=="")vals.push(v);}
+  if(!c)return vals;
+  [c.createdAt,c.created_at,c.date,c.fecha,c.updatedAt,c.closedAt,c.completedAt,c.finishedAt,c.activeStartedAt,c.waitStartedAt,c.deadStartedAt].forEach(add);
+  Object.keys(c.processStats||{}).forEach(function(k){var st=(c.processStats||{})[k]||{};[st.startedAt,st.completedAt,st.activeStartedAt,st.waitStartedAt,st.deadStartedAt,st.lastAt,st.updatedAt].forEach(add);});
+  (c.stateHistory||[]).forEach(function(h){[h.timestamp,h.createdAt,h.at,h.updatedAt].forEach(add);});
+  (c.flowTrace||[]).forEach(function(h){[h.timestamp,h.createdAt,h.at,h.updatedAt].forEach(add);});
+  (c.requirements||[]).forEach(function(r){[r.sentAt,r.createdAt,r.updatedAt,r.closedAt,r.resolvedAt].forEach(add);});
+  if(c.openRequirement)[c.openRequirement.sentAt,c.openRequirement.createdAt,c.openRequirement.updatedAt].forEach(add);
+  (c.evidence||[]).forEach(function(e){[e.uploadedAt,e.createdAt].forEach(add);});
+  Object.keys(c.deliveryEvidence||{}).forEach(function(k){var e=c.deliveryEvidence[k];if(e)[e.uploadedAt,e.createdAt].forEach(add);});
+  (c.cutRequests||[]).forEach(function(x){[x.createdAt,x.takenAt,x.startedAt,x.finishedAt,x.completedAt,x.registeredAt,x.carretoRotuladoAt,x.siesaExportedAt].forEach(add);});
+  (state.events||[]).forEach(function(e){if(e.caseId===c.id || e.caseId===c.caseNumber || e.reference===c.reference)[e.timestamp,e.createdAt,e.updatedAt].forEach(add);});
+  return vals;
+}
+function caseCreatedAtFixed(c){
+  var vals=[];
+  if(c){[c.createdAt,c.created_at,c.date,c.fecha].forEach(function(v){if(v)vals.push(v);});}
+  var traceMin=excelMinDate(caseAllDateValues(c));
+  var declared=excelMinDate(vals);
+  var updated=excelTimeValue(c&&c.updatedAt);
+  var chosen=Number.isFinite(declared)?declared:traceMin;
+  if(Number.isFinite(traceMin))chosen=Number.isFinite(chosen)?Math.min(chosen,traceMin):traceMin;
+  if(Number.isFinite(updated) && Number.isFinite(chosen) && updated<chosen)chosen=updated;
+  if(!Number.isFinite(chosen))chosen=Date.now();
+  return excelIsoFromMs(chosen);
+}
+function caseUpdatedAtFixed(c){
+  var start=excelTimeValue(caseCreatedAtFixed(c));
+  var max=excelMaxDate(caseAllDateValues(c));
+  if(c&&c.closedAt)max=Math.max(max,excelTimeValue(c.closedAt));
+  if(!Number.isFinite(max))max=start;
+  if(Number.isFinite(start)&&max<start)max=start;
+  return excelIsoFromMs(max);
+}
+function caseEndAtFixed(c){
+  var start=excelTimeValue(caseCreatedAtFixed(c));
+  var closed=excelMaxDate([c&&c.closedAt,c&&c.completedAt,c&&c.finishedAt]);
+  var end=Number.isFinite(closed)?closed:Date.now();
+  if(Number.isFinite(start)&&end<start)end=start;
+  return excelIsoFromMs(end);
+}
+function excelSafeDuration(start,end){
+  var a=excelTimeValue(start), b=excelTimeValue(end);
+  if(!Number.isFinite(a))return 0;
+  if(!Number.isFinite(b))b=Date.now();
+  return Math.max(0,b-a);
+}
+function excelHours(ms){return Number((Math.max(0,Number(ms||0))/3600000).toFixed(2));}
 function excelDateTime(v){
   if(!v)return "";
   var d=new Date(v);
@@ -5617,17 +5683,29 @@ function excelDateTime(v){
   try{return new Intl.DateTimeFormat("es-CO",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).format(d).replace(",","");}
   catch(e){return d.toLocaleString();}
 }
+function stageTraceTimes(c,p){
+  var pname=processTitle(p), vals=[];
+  caseTraceRows(c).forEach(function(r){
+    if(r.proceso===pname || normalizePersonText(r.proceso)===normalizePersonText(pname) || normalizePersonText(r.proceso)===normalizePersonText(p))vals.push(r.rawAt);
+  });
+  return {first:excelIsoFromMs(excelMinDate(vals)), last:excelIsoFromMs(excelMaxDate(vals))};
+}
 function processStageStart(c,p,st){
   st=st||{};
-  if(st.startedAt)return st.startedAt;
-  if(c.currentProcess===p)return c.activeStartedAt||c.waitStartedAt||c.deadStartedAt||c.updatedAt||c.createdAt||"";
-  return "";
+  var tr=stageTraceTimes(c,p);
+  var v=excelIsoFromMs(excelMinDate([st.startedAt,st.activeStartedAt,st.waitStartedAt,st.deadStartedAt,tr.first,(c.currentProcess===p?(c.activeStartedAt||c.waitStartedAt||c.deadStartedAt||c.updatedAt||c.createdAt):"")]));
+  return v||"";
 }
 function processStageEnd(c,p,st){
   st=st||{};
-  if(st.completedAt)return st.completedAt;
-  if(c.closedAt && c.currentProcess===p)return c.closedAt;
-  return "";
+  var tr=stageTraceTimes(c,p), start=processStageStart(c,p,st);
+  var candidates=[st.completedAt,st.lastAt,tr.last];
+  if(c.closedAt)candidates.push(c.closedAt);
+  if(c.currentProcess===p)candidates.push(c.closedAt||"");
+  var v=excelIsoFromMs(excelMaxDate(candidates));
+  if(!v && c.currentProcess===p)v="";
+  if(v && start && excelTimeValue(v)<excelTimeValue(start))v=start;
+  return v||"";
 }
 function processActiveExactMs(c,p,st){
   var v=Number((st||{}).activeMs||0);
@@ -5649,20 +5727,19 @@ function processStageElapsedMs(c,p,st){
   var counted=a+w+d;
   var start=processStageStart(c,p,st), end=processStageEnd(c,p,st);
   if(start){
-    var sdt=new Date(start).getTime(), edt=end?new Date(end).getTime():Date.now();
+    var sdt=new Date(start).getTime(), edt=end?new Date(end).getTime():(c.currentProcess===p?Date.now():NaN);
     if(Number.isFinite(sdt)&&Number.isFinite(edt)&&edt>=sdt)return Math.max(counted,edt-sdt);
   }
   return counted;
 }
-function caseCurrentWaitStartForProcess(c,p){
-  return c.currentProcess===p ? (c.waitStartedAt||"") : "";
-}
+function caseCurrentWaitStartForProcess(c,p){return c.currentProcess===p ? (c.waitStartedAt||"") : "";}
 function processTimelineRows(data){
   var out=[];
   data.forEach(function(c){
     var keys={};
     Object.keys(c.processStats||{}).forEach(function(k){keys[k]=1;});
     if(c.currentProcess)keys[c.currentProcess]=1;
+    caseTraceRows(c).forEach(function(r){FLOW.forEach(function(k){if(processTitle(k)===r.proceso)keys[k]=1;});});
     FLOW.forEach(function(k){if(keys[k]){
       var st=(c.processStats||{})[k]||{};
       var active=processActiveExactMs(c,k,st), wait=processWaitExactMs(c,k,st), dead=processDeadExactMs(c,k,st), elapsed=processStageElapsedMs(c,k,st);
@@ -5677,30 +5754,47 @@ function processTimelineRows(data){
   return out.sort(function(a,b){return (a.pedido||"").localeCompare(b.pedido||"") || new Date(a.inicio||0)-new Date(b.inicio||0);});
 }
 function waitTimelineRows(data){
-  var out=[];
+  var out=[], seen={};
+  function key(row){return [row.pedido,row.proceso,row.inicio,row.fin,row.tipo,normalizePersonText(row.detalle)].join("|");}
   function add(c,processKey,at,until,kind,detail,user){
     if(!at)return;
-    var a=new Date(at).getTime(), b=until?new Date(until).getTime():Date.now();
-    out.push({pedido:c.reference||c.id||"",oc:purchaseOrderValue(c),cliente:c.client||"",proceso:processTitle(processKey||c.currentProcess),inicio:at,fin:until||"",duracion:(Number.isFinite(a)&&Number.isFinite(b)&&b>=a)?(b-a):0,tipo:kind||"Espera",detalle:detail||"",usuario:user||""});
+    var start=excelTimeValue(at), finish=until?excelTimeValue(until):Date.now();
+    if(!Number.isFinite(start))return;
+    if(!Number.isFinite(finish)||finish<start)finish=start;
+    var row={pedido:c.reference||c.id||"",oc:purchaseOrderValue(c),cliente:c.client||"",asesor:salesAdvisorName(c),proceso:processTitle(processKey||c.currentProcess),inicio:excelIsoFromMs(start),fin:until?excelIsoFromMs(finish):"",duracion:Math.max(0,finish-start),tipo:kind||"Espera",detalle:detail||"",usuario:user||""};
+    var k=key(row);if(seen[k])return;seen[k]=true;out.push(row);
   }
   data.forEach(function(c){
     if(c.waitStartedAt)add(c,c.currentProcess,c.waitStartedAt,"","Espera actual",c.openRequirement?(c.openRequirement.reason||c.openRequirement.detail||""):(c.status||"En espera"),c.openRequirement?(c.openRequirement.sentByName||""):"");
-    (c.requirements||[]).forEach(function(r){add(c,r.sourceProcess||r.returnProcess||c.currentProcess,r.sentAt||r.createdAt,r.closedAt||r.resolvedAt||r.updatedAt,"Requerimiento",(r.reason||"Requerimiento")+(r.detail?" · "+r.detail:""),r.sentByName||r.createdByName||"");});
+    (c.requirements||[]).forEach(function(r){add(c,r.sourceProcess||r.returnProcess||c.currentProcess,r.sentAt||r.createdAt,r.closedAt||r.resolvedAt||r.updatedAt,"Requerimiento",(r.reason||"Requerimiento")+(r.detail?" · "+r.detail:"")+(r.status?" · Estado: "+r.status:""),r.sentByName||r.createdByName||"");});
     if(c.openRequirement){var r=c.openRequirement;add(c,r.sourceProcess||r.returnProcess||c.currentProcess,r.sentAt||r.createdAt||c.waitStartedAt,"","Requerimiento activo",(r.reason||"Requerimiento activo")+(r.detail?" · "+r.detail:""),r.sentByName||"");}
+    Object.keys(c.processStats||{}).forEach(function(k){var st=(c.processStats||{})[k]||{};if(Number(st.waitMs||0)>0)add(c,k,st.waitStartedAt||st.startedAt||c.createdAt,st.completedAt||c.closedAt,"Espera acumulada por etapa","Tiempo de espera acumulado registrado por el macroproceso",caseProcessResponsibleNames(c,k));});
     (c.stateHistory||[]).forEach(function(h){
       var t=String(h.type||h.traceType||"").toUpperCase();
       var d=String(h.detail||"");
-      if(t.indexOf("WAIT")>=0 || t.indexOf("ESPERA")>=0 || t.indexOf("REQUIREMENT")>=0 || t.indexOf("REQUER")>=0 || /espera|requerimiento|bloque/i.test(d))add(c,h.process||c.currentProcess,h.timestamp||h.createdAt,"",flowTraceTypeLabel(h.traceType||h.type)||"Espera",d,h.responsibleName||h.userName||"");
+      if(t.indexOf("WAIT")>=0 || t.indexOf("ESPERA")>=0 || t.indexOf("REQUIREMENT")>=0 || t.indexOf("REQUER")>=0 || /espera|requerimiento|bloque|mora|pago|retenido/i.test(d))add(c,h.process||c.currentProcess,h.timestamp||h.createdAt,"",flowTraceTypeLabel(h.traceType||h.type)||" / espera",d,h.responsibleName||h.userName||"");
     });
   });
   return out.sort(function(a,b){return new Date(a.inicio||0)-new Date(b.inicio||0);});
 }
+function caseRequirementDurationMs(c){return waitTimelineRows([c]).filter(function(r){return /requer/i.test(String(r.tipo||""));}).reduce(function(s,r){return s+Number(r.duracion||0);},0);}
+function caseWaitDetailText(c){return waitTimelineRows([c]).map(function(r){return r.tipo+" · "+r.proceso+" · "+fmt(r.duracion)+(r.detalle?" · "+r.detalle:"");}).join(" || ");}
 function downloadKpiExcel(){
   var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows, userRows=processUserRows(data,state.kpiFilters&&state.kpiFilters.user), timelineRows=processTimelineRows(data), waitRows=waitTimelineRows(data);
   var selectedUser=(kpiUserOptions().filter(function(u){return u.key===(state.kpiFilters&&state.kpiFilters.user||"");})[0]||{}).label||"Todos";
-  var html='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}</style></head><body>'+ 
-    '<h1>Dashboard VSM · Trazabilidad logística</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+'</p>'+ 
-    '<div class="note"><strong>Fórmula base:</strong> Lead Time = Tiempo VA + Tiempo NVA + Tiempo de espera. Los porcentajes están limitados a máximo 100%.</div>'+ 
+  var caseRows=data.map(function(c){
+    var inicio=caseCreatedAtFixed(c), actualizado=caseUpdatedAtFixed(c), fin=caseEndAtFixed(c), total=excelSafeDuration(inicio,fin), va=activeMs(c), espera=waitMs(c), req=caseRequirementDurationMs(c), nva=Math.max(0,total-va-espera);
+    return {c:c,inicio:inicio,actualizado:actualizado,fin:fin,total:total,va:va,espera:espera,req:req,nva:nva};
+  });
+  var totalHoras=caseRows.reduce(function(s,r){return s+r.total;},0), vaHoras=caseRows.reduce(function(s,r){return s+r.va;},0), esperaHoras=caseRows.reduce(function(s,r){return s+r.espera;},0), reqHoras=caseRows.reduce(function(s,r){return s+r.req;},0);
+  var html='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}</style></head><body>'+ 
+    '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+'</p>'+ 
+    '<div class="note"><strong>Corrección V111:</strong> el informe normaliza fechas para que Creado nunca quede después de Actualizado. Las horas se calculan como diferencia real entre inicio y fin, y se separan en VA, espera, requerimientos y NVA para análisis.</div>'+ 
+    '<h2>Resumen ejecutivo de horas</h2><table><tr><th>Concepto</th><th>HH:MM:SS</th><th>Horas decimales</th><th>Criterio</th></tr>'+ 
+    '<tr><td>Tiempo total analizado</td><td>'+escapeExcel(fmt(totalHoras))+'</td><td>'+excelHours(totalHoras)+'</td><td>Suma de Fin - Inicio por pedido</td></tr>'+ 
+    '<tr><td>Tiempo trabajado VA</td><td>'+escapeExcel(fmt(vaHoras))+'</td><td>'+excelHours(vaHoras)+'</td><td>Suma de tiempos activos por etapa</td></tr>'+ 
+    '<tr><td>Tiempo en espera</td><td>'+escapeExcel(fmt(esperaHoras))+'</td><td>'+excelHours(esperaHoras)+'</td><td>Esperas acumuladas y esperas actuales</td></tr>'+ 
+    '<tr><td>Tiempo en requerimientos</td><td>'+escapeExcel(fmt(reqHoras))+'</td><td>'+excelHours(reqHoras)+'</td><td>Duración de requerimientos cerrados y abiertos</td></tr></table>'+ 
     '<h2>Indicadores generales</h2><table><tr><th>Indicador</th><th>Valor</th><th>Fórmula / criterio</th></tr>'+ 
     '<tr><td>Lead Time promedio</td><td>'+escapeExcel(fmt(s.leadAvg))+'</td><td>Finalización - solicitud / procesos finalizados</td></tr>'+ 
     '<tr><td>% VA</td><td>'+s.vaPct+'%</td><td>Tiempo VA / Lead Time × 100</td></tr>'+ 
@@ -5715,20 +5809,17 @@ function downloadKpiExcel(){
     '<tr><td>Throughput</td><td>'+s.throughput+'</td><td>Finalizados por día del periodo</td></tr>'+ 
     '<tr><td>Cumplimiento SLA</td><td>'+s.slaPct+'%</td><td>Entregados a tiempo / finalizados × 100</td></tr>'+ 
     '<tr><td>Pedidos vencidos</td><td>'+s.overdue+'</td><td>Abiertos con fecha límite vencida</td></tr>'+ 
-    '<tr><td>Tiempo aprobación</td><td>'+escapeExcel(fmt(s.approvalAvg))+'</td><td>Aprobación - solicitud aprobación</td></tr>'+ 
-    '<tr><td>Cancelaciones</td><td>'+s.cancelPct+'%</td><td>Cancelados / pedidos recibidos × 100</td></tr>'+ 
-    '<tr><td>Disponibilidad</td><td>'+s.availabilityPct+'%</td><td>Pedidos con compromiso confirmado / revisados × 100</td></tr>'+ 
-    '<tr><td>Exactitud pedido</td><td>'+s.accuracyPct+'%</td><td>Pedidos sin errores de información / recibidos × 100</td></tr></table>'+ 
-    '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Espera</th><th>Muerto/NVA</th><th>Total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Espera</th><th>NVA/Muerto</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Casos</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Creado fecha/hora exacta</th><th>Actualizado fecha/hora exacta</th><th>Cerrado fecha/hora exacta</th><th>Lead Time</th><th>VA</th><th>Espera</th><th>NVA</th><th>SLA</th><th>Requerimientos</th><th>Cortes</th></tr>'+data.map(function(c){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(c.salesAdvisor||c.createdByName||'')+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(c.createdAt))+'</td><td>'+escapeExcel(excelDateTime(c.updatedAt))+'</td><td>'+escapeExcel(excelDateTime(c.closedAt))+'</td><td>'+escapeExcel(fmt(totalMs(c)))+'</td><td>'+escapeExcel(fmt(activeMs(c)))+'</td><td>'+escapeExcel(fmt(waitMs(c)))+'</td><td>'+escapeExcel(fmt(Math.max(0,totalMs(c)-activeMs(c)-waitMs(c))))+'</td><td>'+escapeExcel(c.closedAt?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||0)+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Tiempo trabajado VA</th><th>Tiempo en espera</th><th>Tiempo muerto/NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>'+timelineRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
+    '<tr><td>Tiempo aprobación</td><td>'+escapeExcel(fmt(s.approvalAvg))+'</td><td>Aprobación - solicitud aprobación</td></tr></table>'+ 
+    '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>Muerto/NVA</th><th>Horas NVA</th><th>Total</th><th>Horas total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+excelHours(r.value)+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo espera</th><th>Horas espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+caseRows.map(function(r){var c=r.c;return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(c.closedAt?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+escapeExcel(c.closedAt?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(caseWaitDetailText(c))+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Horas etapa</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo en espera</th><th>Horas espera</th><th>Tiempo muerto/NVA</th><th>Horas NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>'+timelineRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+excelHours(r.activo)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+excelHours(r.muerto)+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Flujo del pedido con nombres</h2><table><tr><th>Pedido</th><th>OC</th><th>Fecha y hora exacta</th><th>Macroproceso</th><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Detalle</th></tr>'+data.map(function(c){return caseTraceRows(c).map(function(r){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(excelDateTime(r.rawAt))+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.rol)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');}).join('')+'</table>'+ 
-    '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Medida completa</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Sí':'No')+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
+    '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Medida completa</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Sí':'No')+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
     '</body></html>';
   var blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dashboard_vsm_logistica_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dashboard_vsm_logistica_completo_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
 }
 function bindKpiFilters(){
   var from=qs("#kpiFrom"),to=qs("#kpiTo"),proc=qs("#kpiProcess"),user=qs("#kpiUser");
