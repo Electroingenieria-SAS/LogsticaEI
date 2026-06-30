@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v116_cortes_recepcion_simplificado";
+var storageKey = "ei_trazabilidad_v117_qa_erp_final";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -6073,7 +6073,7 @@ function downloadKpiExcel(){
     '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Flujo del pedido con nombres</h2><table><tr><th>Pedido</th><th>OC</th><th>Fecha y hora exacta</th><th>Macroproceso</th><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Detalle</th></tr>'+data.map(function(c){return caseTraceRows(c).map(function(r){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(excelDateTime(r.rawAt))+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.rol)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');}).join('')+'</table>'+ 
-    '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Medida completa</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Sí':'No')+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
+    '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Cierre sin corte</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':(x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':'No'))+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
     '</body></html>';
   var blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dashboard_demora_pedidos_v113_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
@@ -6091,15 +6091,22 @@ function siesaSettings(){
 function plainSiesa(v){
   return String(v==null?"":v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[\r\n|;]/g," ").trim();
 }
+function siesaCutRequiresExport(cut){
+  if(!cut || cut.status!=="FINALIZADO")return false;
+  var st=String(cut.siesaExportStatus||"");
+  if(st==="EXPORTADO")return false;
+  if(st.indexOf("NO_APLICA")===0)return false;
+  return true;
+}
 function countPendingSiesaCutsInCase(c){
-  var n=0;(c.cutRequests||[]).forEach(function(cut){if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"&&cut.siesaExportStatus!=="NO_APLICA_MEDIDA_COMPLETA")n++;});return n;
+  var n=0;(c.cutRequests||[]).forEach(function(cut){if(siesaCutRequiresExport(cut))n++;});return n;
 }
 function pendingSiesaCuts(){
   var rows=[];
   state.cases.forEach(function(c){
     if(c.excludeFromKpi===true)return;
     (c.cutRequests||[]).forEach(function(cut){
-      if(cut.status==="FINALIZADO"&&cut.siesaExportStatus!=="EXPORTADO"&&cut.siesaExportStatus!=="NO_APLICA_MEDIDA_COMPLETA"){rows.push({caseObj:c,cut:cut});}
+      if(siesaCutRequiresExport(cut)){rows.push({caseObj:c,cut:cut});}
     });
   });
   return rows.sort(function(a,b){return new Date(a.cut.registeredAt||a.cut.finishedAt||a.caseObj.updatedAt||0)-new Date(b.cut.registeredAt||b.cut.finishedAt||b.caseObj.updatedAt||0);});
@@ -9419,6 +9426,65 @@ readPdfFile = function(file){
     return markers+'\n'+audit+'\n'+clean;
   });
 };
+
+
+/* V117 QA ERP final: refuerzo conservador sin cambiar flujo.
+   - El planificador de cortes reutiliza la sincronización robusta de Recepción.
+   - No necesita corte / Medida completa no quedan pendientes en SIESA.
+   - Se agrega verificación de salud operativa en consola para detectar funciones críticas faltantes. */
+function eiV117OperationalHealthCheck(){
+  var required=["autoCreateCutsFromItems","normalizeReceptionLinesForFlow","cutSourceKeyFromItem","renderAfterLiveChange","caseRelevantToCurrentUser","uploadFileToDrive","extractPedido","readPdfFile"];
+  var missing=required.filter(function(name){try{return typeof eval(name)!=="function";}catch(e){return true;}});
+  if(missing.length){console.error("QA ERP V117 · funciones críticas faltantes:",missing);}
+  else{console.info("QA ERP V117 · funciones críticas disponibles.");}
+  return missing;
+}
+var eiV117LegacyOpenCutsPlanner = openCutsPlanner;
+openCutsPlanner = function(id){
+  var c=caseById(id);if(!c)return;
+  if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}
+  normalizeReceptionLinesForFlow(c);
+  var items=c.orderItems||[];
+  var rows=items.length?items.map(function(it,i){
+    var checked=it.requiereCorte?'checked':'';
+    var decision=it.posibleCorte?(it.requiereCorte?'Recepción: enviar a corte':'Recepción: no cortar · carreto completo'):'No aplica';
+    return '<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(decision)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.metrosSolicitadosOverride||it.cantidad||'')+'"></td><td><input class="input" name="available_'+i+'" value="'+esc(it.disponibleAntes||'')+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';
+  }).join(""):'<tr><td colspan="9">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
+  drawer(modal("Definir / ajustar cortes del pedido",'<form class="form" id="cutsPlanForm"><div class="notice"><strong>Sincronización ERP:</strong> lo marcado aquí se sincroniza línea por línea con Corte. Si no se marca corte, la línea continúa en Alistamiento como carreto completo / sin corte físico.</div><div class="table-wrap"><table><thead><tr><th>Corte</th><th>Referencia</th><th>Descripción</th><th>Cant.</th><th>Unidad</th><th>Ubicación</th><th>Decisión recepción</th><th>Metros a cortar</th><th>Disponible</th></tr></thead><tbody>'+rows+'</tbody></table></div><fieldset><legend>Corte manual opcional</legend><div class="grid grid-3"><label class="field"><span>Referencia</span><input class="input" name="manualRef"></label><label class="field"><span>Metros</span><input class="input" name="manualMeters"></label><label class="field"><span>Disponible</span><input class="input" name="manualAvailable"></label></div><label class="field"><span>Observación</span><textarea class="textarea" name="manualObs"></textarea></label></fieldset><button class="btn btn-primary" type="submit">Guardar y sincronizar Corte/Alistamiento</button></form>'));
+  qs("#cutsPlanForm").onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target);
+    items.forEach(function(it,i){
+      it.requiereCorte=!!fd.get("cut_"+i);
+      it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";
+      it.decisionCorteRecepcion=it.requiereCorte?"MANDAR_CORTE":"CARRETO_COMPLETO";
+      it.metrosSolicitadosOverride=String(fd.get("meters_"+i)||it.cantidad||"");
+      it.disponibleAntes=String(fd.get("available_"+i)||it.disponibleAntes||"");
+    });
+    var before=(c.cutRequests||[]).length;
+    var added=autoCreateCutsFromItems(c,state.user?state.user.name:"Alistamiento");
+    items.forEach(function(it,i){
+      if(!it.requiereCorte)return;
+      var lineId=receptionLineStableId(c,it,i), key=cutSourceKeyFromItem(c,it,i);
+      (c.cutRequests||[]).forEach(function(x){
+        if(String(x.sourceLineId||"")===lineId || String(x.sourceLineKey||"")===key){
+          x.metrosSolicitados=String(fd.get("meters_"+i)||x.metrosSolicitados||it.cantidad||"");
+          x.disponibleAntes=String(fd.get("available_"+i)||x.disponibleAntes||"");
+        }
+      });
+    });
+    if(fd.get("manualRef")||fd.get("manualMeters")){
+      var idm=uid("CUT");
+      c.cutRequests.push({id:idm,code:"CT-"+(c.cutRequests.length+1),caseId:c.id,pedido:c.reference,tipoPedido:c.orderKind||"VENTAS",referencia:fd.get("manualRef")||"Corte manual",descripcion:fd.get("manualObs")||"",metrosSolicitados:fd.get("manualMeters")||"",unidad:"M",disponibleAntes:fd.get("manualAvailable")||"",status:"PENDIENTE_CORTE",createdAt:now(),createdByName:state.user.name,generatedBy:"MANUAL",siesaExportStatus:"PENDIENTE",siesaExportedAt:"",siesaBatchId:""});
+      added++;
+    }
+    c.hasCuts=(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);});
+    var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();
+    applyAlistamientoAutoChecklist(c);
+    persistCase(c,{type:"CUT_REQUESTS_SYNCED_V117",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  };
+};
+try{eiV117OperationalHealthCheck();}catch(e){console.warn("QA ERP V117 no pudo ejecutarse",e);}
 
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
