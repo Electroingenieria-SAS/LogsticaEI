@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v121_superadmin_vsm_excel_estable";
+var storageKey = "ei_trazabilidad_v123_vsm_standalone_liviano";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -5945,8 +5945,55 @@ function downloadHtmlExcelFile(fileName,html){
   }
 }
 function safeExportExcel(label,fn){
-  try{showLiveToast("Generando Excel",label+" · espere unos segundos.",false);}catch(e){}
-  setTimeout(function(){try{fn();}catch(e){console.error("Exportación Excel falló",label,e);showError("La exportación de "+label+" falló sin tumbar la app: "+((e&&e.message)||e));}},30);
+  try{showLiveToast("Generando Excel",label+" · preparando datos por lotes para que la página no se caiga.",false);}catch(e){}
+  setTimeout(function(){
+    try{
+      var r=fn();
+      if(r && typeof r.then==="function"){
+        r.then(function(){try{showLiveToast("Excel listo",label+" generado correctamente.",false);}catch(e){}})
+         .catch(function(e){console.error("Exportación Excel falló",label,e);showError("La exportación de "+label+" falló sin tumbar la app: "+((e&&e.message)||e));});
+      }
+    }catch(e){
+      console.error("Exportación Excel falló",label,e);
+      showError("La exportación de "+label+" falló sin tumbar la app: "+((e&&e.message)||e));
+    }
+  },30);
+}
+function downloadHtmlExcelParts(fileName,parts){
+  try{
+    var blobParts=["\ufeff"].concat(parts||[]);
+    var blob=new Blob(blobParts,{type:'application/vnd.ms-excel;charset=utf-8'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){try{URL.revokeObjectURL(a.href);a.remove();}catch(e){}},1500);
+  }catch(e){
+    console.error("No se pudo descargar Excel por partes",e);
+    showError("No se pudo generar el Excel: "+((e&&e.message)||e)+". Intente aplicar filtro de fecha/proceso y vuelva a exportar.");
+  }
+}
+function excelAsyncAppendRows(parts,list,label,buildRow,batchSize){
+  list=list||[];batchSize=batchSize||25;
+  return new Promise(function(resolve,reject){
+    var i=0;
+    function step(){
+      try{
+        var chunk=[],start=Date.now();
+        while(i<list.length && chunk.length<batchSize && (Date.now()-start)<70){
+          var idx=i++;
+          chunk.push(safeExcelBuild(label+" #"+(idx+1),function(){return buildRow(list[idx],idx);},1));
+        }
+        if(chunk.length)parts.push(chunk.join(""));
+        if(i<list.length){
+          if(i%Math.max(batchSize,50)===0){try{showLiveToast("Generando Excel",label+" "+i+"/"+list.length,false);}catch(e){}}
+          setTimeout(step,0);
+        }else resolve();
+      }catch(e){reject(e);}
+    }
+    step();
+  });
 }
 function excelTimeValue(v){
   if(!v)return NaN;
@@ -6128,6 +6175,8 @@ function caseDelayMetrics(c){
   var nva=Math.max(0,total-va-espera-req);
   var cerrado=!!(c.closedAt||c.completedAt||c.finishedAt||/cerrado|finalizado|entregado/i.test(String(c.status||"")));
   var timeline=processTimelineRows([c]);
+  var stageHours={};
+  timeline.forEach(function(r){stageHours[r.proceso]=excelHours((Number(stageHours[r.proceso]||0)*3600000)+Number(r.total||0));});
   var procMax=timeline.reduce(function(best,r){return Number(r.total||0)>Number(best.total||0)?r:best;},{total:0,procesoNombre:""});
   var parts=[
     {k:"VA / trabajo",v:va},
@@ -6156,7 +6205,8 @@ function caseDelayMetrics(c){
     mayorDemoraHoras:excelHours(parts[0].v),
     procesoMayorDemora:procMax.procesoNombre||"",
     procesoMayorDemoraHoras:excelHours(procMax.total||0),
-    detalle:caseWaitDetailText(c)
+    stageHours:stageHours,
+    detalle:waits.map(function(w){return w.tipo+" · "+w.proceso+" · "+fmt(w.duracion)+(w.detalle?" · "+w.detalle:"");}).join(" || ")
   };
 }
 function caseDelayExcelRow(r){
@@ -6196,15 +6246,15 @@ function caseDelayPrincipalRow(r){
     '<td>'+r.mayorDemoraHoras+'</td>'+ 
     '<td>'+escapeExcel(r.procesoMayorDemora)+'</td>'+ 
     '<td>'+r.procesoMayorDemoraHoras+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'recepcion_pedidos')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'alistamiento')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'corte_cable')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'facturacion')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'caja')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'despacho_nacional')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'despacho_local')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'cliente_recoge')+'</td>'+ 
-    '<td>'+caseDelayStageHours(c,'entrega_cliente_punto')+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.recepcion_pedidos)||caseDelayStageHours(c,'recepcion_pedidos'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.alistamiento)||caseDelayStageHours(c,'alistamiento'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.corte_cable)||caseDelayStageHours(c,'corte_cable'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.facturacion)||caseDelayStageHours(c,'facturacion'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.caja)||caseDelayStageHours(c,'caja'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.despacho_nacional)||caseDelayStageHours(c,'despacho_nacional'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.despacho_local)||caseDelayStageHours(c,'despacho_local'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.cliente_recoge)||caseDelayStageHours(c,'cliente_recoge'))+'</td>'+ 
+    '<td>'+((r.stageHours&&r.stageHours.cliente_punto)||caseDelayStageHours(c,'cliente_punto'))+'</td>'+ 
     '<td>'+escapeExcel(caseResponsibleNames(c))+'</td>'+ 
     '<td>'+escapeExcel(r.detalle||'')+'</td>'+ 
     '</tr>';
@@ -6225,45 +6275,81 @@ function caseDelayPrincipalTable(title, caseRows){
     '</tr></thead><tbody>'+caseRows.map(caseDelayPrincipalRow).join('')+'</tbody></table>';
 }
 function downloadKpiExcel(){
-  var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows, userRows=processUserRows(data,state.kpiFilters&&state.kpiFilters.user), timelineRows=processTimelineRows(data), waitRows=waitTimelineRows(data);
+  var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows;
   var selectedUser=(kpiUserOptions().filter(function(u){return u.key===(state.kpiFilters&&state.kpiFilters.user||"");})[0]||{}).label||"Todos";
-  var caseRows=data.map(function(c){return caseDelayMetrics(c);});
-  var totalHoras=caseRows.reduce(function(s,r){return s+r.total;},0), vaHoras=caseRows.reduce(function(s,r){return s+r.va;},0), esperaHoras=caseRows.reduce(function(s,r){return s+r.espera;},0), reqHoras=caseRows.reduce(function(s,r){return s+r.req;},0), nvaHoras=caseRows.reduce(function(s,r){return s+r.nva;},0);
-  var html='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}</style></head><body>'+ 
-    '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+'</p>'+ 
-    '<div class="note"><strong>Corrección V113:</strong> la primera tabla del Excel ahora es la base de informe: DEMORA EXACTA POR PEDIDO, con total en horas, días, VA, esperas, requerimientos, NVA y horas por macroproceso.</div>'+ 
-    caseDelayPrincipalTable('DEMORA EXACTA POR PEDIDO · BASE PRINCIPAL DEL INFORME', caseRows)+
-    '<h2>Resumen ejecutivo de horas</h2><table><tr><th>Concepto</th><th>HH:MM:SS</th><th>Horas decimales</th><th>Criterio</th></tr>'+ 
-    '<tr><td>Tiempo total analizado</td><td>'+escapeExcel(fmt(totalHoras))+'</td><td>'+excelHours(totalHoras)+'</td><td>Suma de Fin - Inicio por pedido</td></tr>'+ 
-    '<tr><td>Tiempo trabajado VA</td><td>'+escapeExcel(fmt(vaHoras))+'</td><td>'+excelHours(vaHoras)+'</td><td>Suma de tiempos activos por etapa</td></tr>'+ 
-    '<tr><td>Tiempo en espera</td><td>'+escapeExcel(fmt(esperaHoras))+'</td><td>'+excelHours(esperaHoras)+'</td><td>Esperas acumuladas y esperas actuales</td></tr>'+ 
-    '<tr><td>Tiempo en requerimientos</td><td>'+escapeExcel(fmt(reqHoras))+'</td><td>'+excelHours(reqHoras)+'</td><td>Duración de requerimientos cerrados y abiertos</td></tr>'+ 
-    '<tr><td>Tiempo NVA / sin clasificación</td><td>'+escapeExcel(fmt(nvaHoras))+'</td><td>'+excelHours(nvaHoras)+'</td><td>Tiempo total - VA - Espera - Requerimientos</td></tr></table>'+ 
-    '<h2>Indicadores generales</h2><table><tr><th>Indicador</th><th>Valor</th><th>Fórmula / criterio</th></tr>'+ 
-    '<tr><td>Lead Time promedio</td><td>'+escapeExcel(fmt(s.leadAvg))+'</td><td>Finalización - solicitud / procesos finalizados</td></tr>'+ 
-    '<tr><td>% VA</td><td>'+s.vaPct+'%</td><td>Tiempo VA / Lead Time × 100</td></tr>'+ 
-    '<tr><td>Tiempo de espera</td><td>'+escapeExcel(fmt(s.wait))+'</td><td>Tiempo acumulado en esperas, bloqueos y requerimientos</td></tr>'+ 
-    '<tr><td>% Espera</td><td>'+s.waitPct+'%</td><td>Tiempo espera / Lead Time × 100</td></tr>'+ 
-    '<tr><td>WIP</td><td>'+s.wip+'</td><td>Registros abiertos, pendientes, en proceso o en espera</td></tr>'+ 
-    '<tr><td>FPY</td><td>'+s.fpy+'%</td><td>Correctos a la primera / finalizados × 100</td></tr>'+ 
-    '<tr><td>Reproceso</td><td>'+s.reworkPct+'%</td><td>Procesos con requerimiento / finalizados × 100</td></tr>'+ 
-    '<tr><td>No conformidad</td><td>'+s.badPct+'%</td><td>Checks no conformes / checks realizados × 100</td></tr>'+ 
-    '<tr><td>Cortes</td><td>'+s.cutDone+'/'+s.cutTotal+' · '+s.cutPct+'%</td><td>Cortes finalizados / cortes solicitados × 100</td></tr>'+ 
-    '<tr><td>Handoffs</td><td>'+s.handoffs+'</td><td>Cambios de responsable o etapa</td></tr>'+ 
-    '<tr><td>Throughput</td><td>'+s.throughput+'</td><td>Finalizados por día del periodo</td></tr>'+ 
-    '<tr><td>Cumplimiento SLA</td><td>'+s.slaPct+'%</td><td>Entregados a tiempo / finalizados × 100</td></tr>'+ 
-    '<tr><td>Pedidos vencidos</td><td>'+s.overdue+'</td><td>Abiertos con fecha límite vencida</td></tr>'+ 
-    '<tr><td>Tiempo aprobación</td><td>'+escapeExcel(fmt(s.approvalAvg))+'</td><td>Aprobación - solicitud aprobación</td></tr></table>'+ 
-    '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>Muerto/NVA</th><th>Horas NVA</th><th>Total</th><th>Horas total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+excelHours(r.value)+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Demora exacta por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Demora total días</th><th>VA HH:MM:SS</th><th>VA horas</th><th>% VA</th><th>Espera HH:MM:SS</th><th>Espera horas</th><th>% Espera</th><th>Requerimientos HH:MM:SS</th><th>Requerimientos horas</th><th>% Requerimientos</th><th>NVA HH:MM:SS</th><th>NVA horas</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Responsables</th><th>Detalle esperas/requerimientos</th></tr>'+safeExcelMapJoin(caseRows,'Demora exacta',caseDelayExcelRow,31)+'</table>'+ 
-    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Días total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>% VA</th><th>Tiempo espera</th><th>Horas espera</th><th>% Espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>% Requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>% NVA</th><th>Mayor demora</th><th>Proceso con mayor demora</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+safeExcelMapJoin(caseRows,'Casos tiempo completo',function(r){var c=r.c||{};return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(r.cerrado?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+' · '+r.mayorDemoraHoras+' h</td><td>'+escapeExcel(r.procesoMayorDemora)+' · '+r.procesoMayorDemoraHoras+' h</td><td>'+escapeExcel(r.cerrado?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';},32)+'</table>'+ 
-    '<h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Horas etapa</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo en espera</th><th>Horas espera</th><th>Tiempo muerto/NVA</th><th>Horas NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>'+timelineRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+excelHours(r.activo)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+excelHours(r.muerto)+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Flujo del pedido con nombres</h2><table><tr><th>Pedido</th><th>OC</th><th>Fecha y hora exacta</th><th>Macroproceso</th><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Detalle</th></tr>'+data.map(function(c){return caseTraceRows(c).map(function(r){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(excelDateTime(r.rawAt))+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.rol)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');}).join('')+'</table>'+ 
-    '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Cierre sin corte</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':(x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':'No'))+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
-    '</body></html>';
-  downloadHtmlExcelFile('dashboard_demora_pedidos_v121_'+new Date().toISOString().slice(0,10)+'.xls',html);
+  var parts=[];
+  var caseRows=[];
+  var totalHoras=0, vaHoras=0, esperaHoras=0, reqHoras=0, nvaHoras=0;
+  var head='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px;vertical-align:top}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}.total-hours{font-weight:bold;background:#eaf2ff}</style></head><body>'+
+    '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+' · <strong>Pedidos:</strong> '+data.length+'</p>'+ 
+    '<div class="note"><strong>V122:</strong> exportación por lotes para evitar que el navegador se quede sin responder. La primera tabla sigue siendo la base del informe: DEMORA EXACTA POR PEDIDO.</div>';
+  parts.push(head);
+  function buildCaseMetrics(){
+    return excelAsyncAppendRows([],data,'Cálculo de demora por pedido',function(c){
+      var r=caseDelayMetrics(c);caseRows.push(r);totalHoras+=r.total;vaHoras+=r.va;esperaHoras+=r.espera;reqHoras+=r.req;nvaHoras+=r.nva;return '';
+    },10);
+  }
+  function appendSummary(){
+    parts.push('<h2>Resumen ejecutivo de horas</h2><table><tr><th>Concepto</th><th>HH:MM:SS</th><th>Horas decimales</th><th>Criterio</th></tr>'+ 
+      '<tr><td>Tiempo total analizado</td><td>'+escapeExcel(fmt(totalHoras))+'</td><td>'+excelHours(totalHoras)+'</td><td>Suma de Fin - Inicio por pedido</td></tr>'+ 
+      '<tr><td>Tiempo trabajado VA</td><td>'+escapeExcel(fmt(vaHoras))+'</td><td>'+excelHours(vaHoras)+'</td><td>Suma de tiempos activos por etapa</td></tr>'+ 
+      '<tr><td>Tiempo en espera</td><td>'+escapeExcel(fmt(esperaHoras))+'</td><td>'+excelHours(esperaHoras)+'</td><td>Esperas acumuladas y esperas actuales</td></tr>'+ 
+      '<tr><td>Tiempo en requerimientos</td><td>'+escapeExcel(fmt(reqHoras))+'</td><td>'+excelHours(reqHoras)+'</td><td>Duración de requerimientos cerrados y abiertos</td></tr>'+ 
+      '<tr><td>Tiempo NVA / sin clasificación</td><td>'+escapeExcel(fmt(nvaHoras))+'</td><td>'+excelHours(nvaHoras)+'</td><td>Tiempo total - VA - Espera - Requerimientos</td></tr></table>'+ 
+      '<h2>Indicadores generales</h2><table><tr><th>Indicador</th><th>Valor</th><th>Fórmula / criterio</th></tr>'+ 
+      '<tr><td>Lead Time promedio</td><td>'+escapeExcel(fmt(s.leadAvg))+'</td><td>Finalización - solicitud / procesos finalizados</td></tr>'+ 
+      '<tr><td>% VA</td><td>'+s.vaPct+'%</td><td>Tiempo VA / Lead Time × 100</td></tr>'+ 
+      '<tr><td>Tiempo de espera</td><td>'+escapeExcel(fmt(s.wait))+'</td><td>Tiempo acumulado en esperas, bloqueos y requerimientos</td></tr>'+ 
+      '<tr><td>% Espera</td><td>'+s.waitPct+'%</td><td>Tiempo espera / Lead Time × 100</td></tr>'+ 
+      '<tr><td>WIP</td><td>'+s.wip+'</td><td>Registros abiertos, pendientes, en proceso o en espera</td></tr>'+ 
+      '<tr><td>FPY</td><td>'+s.fpy+'%</td><td>Correctos a la primera</td></tr>'+ 
+      '<tr><td>Reproceso</td><td>'+s.reworkPct+'%</td><td>Con requerimientos o correcciones</td></tr>'+ 
+      '<tr><td>Cortes</td><td>'+s.cutDone+'/'+s.cutTotal+' · '+s.cutPct+'%</td><td>Cortes finalizados / solicitados</td></tr>'+ 
+      '<tr><td>Handoffs</td><td>'+s.handoffs+'</td><td>Cambios de responsable o etapa</td></tr>'+ 
+      '<tr><td>Throughput</td><td>'+s.throughput+'</td><td>Finalizados por día</td></tr>'+ 
+      '<tr><td>SLA</td><td>'+s.slaPct+'%</td><td>Entregados a tiempo</td></tr></table>'+ 
+      '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>Muerto/NVA</th><th>Horas NVA</th><th>Total</th><th>Horas total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+excelHours(r.value)+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>');
+  }
+  function appendPrincipalHeader(){
+    parts.push('<h1>DEMORA EXACTA POR PEDIDO · BASE PRINCIPAL DEL INFORME</h1><div class="warn"><strong>Tabla principal:</strong> la demora se calcula como Fin exacto / corte del análisis - Inicio exacto corregido. Si el pedido está abierto, el fin es la hora de exportación.</div>'+ 
+      '<table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>DEMORA TOTAL HH:MM:SS</th><th>DEMORA TOTAL HORAS</th><th>DEMORA TOTAL DÍAS</th><th>Horas trabajadas VA</th><th>Horas en espera</th><th>Horas en requerimientos</th><th>Horas NVA / sin clasificar</th><th>% VA</th><th>% Espera</th><th>% Requerimientos</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Horas Recepción</th><th>Horas Alistamiento</th><th>Horas Corte</th><th>Horas Facturación</th><th>Horas Caja/Cartera</th><th>Horas Despacho nacional</th><th>Horas Despacho local</th><th>Horas Cliente recoge</th><th>Horas Entrega cliente en punto</th><th>Responsables que intervinieron</th><th>Detalle esperas / requerimientos</th></tr></thead><tbody>');
+  }
+  function appendFullCaseHeader(){
+    parts.push('</tbody></table><h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Días total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>% VA</th><th>Tiempo espera</th><th>Horas espera</th><th>% Espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>% Requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>% NVA</th><th>Mayor demora</th><th>Proceso con mayor demora</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>');
+  }
+  function fullCaseRow(r){var c=r.c||{};return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(r.cerrado?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+' · '+r.mayorDemoraHoras+' h</td><td>'+escapeExcel(r.procesoMayorDemora)+' · '+r.procesoMayorDemoraHoras+' h</td><td>'+escapeExcel(r.cerrado?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}
+  function appendTimelineRows(){
+    parts.push('</table><h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Horas etapa</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo en espera</th><th>Horas espera</th><th>Tiempo muerto/NVA</th><th>Horas NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>');
+    return excelAsyncAppendRows(parts,data,'Cronología por pedido',function(c){return processTimelineRows([c]).map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+excelHours(r.activo)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+excelHours(r.muerto)+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('');},8);
+  }
+  function appendWaitRows(){
+    parts.push('</table><h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');
+    return excelAsyncAppendRows(parts,data,'Esperas y requerimientos',function(c){return waitTimelineRows([c]).map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');},8);
+  }
+  function appendUsers(){
+    var userRows=[];try{userRows=processUserRows(data,state.kpiFilters&&state.kpiFilters.user);}catch(e){userRows=[];parts.push('<tr><td colspan="14">Medición individual omitida por dato irregular: '+escapeExcel((e&&e.message)||e)+'</td></tr>');}
+    parts.push('</table><h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>');
+    return excelAsyncAppendRows(parts,userRows,'Medición usuarios',function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';},25);
+  }
+  function appendTrace(){
+    parts.push('</table><h2>Flujo del pedido con nombres</h2><table><tr><th>Pedido</th><th>OC</th><th>Fecha y hora exacta</th><th>Macroproceso</th><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Detalle</th></tr>');
+    return excelAsyncAppendRows(parts,data,'Trazabilidad',function(c){return caseTraceRows(c).map(function(r){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(excelDateTime(r.rawAt))+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.rol)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');},8);
+  }
+  function appendCuts(){
+    parts.push('</table><h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Cierre sin corte</th><th>Foto carreto</th><th>Lote SIESA</th></tr>');
+    return excelAsyncAppendRows(parts,data,'Cortes',function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':(x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':'No'))+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');},10);
+  }
+  return buildCaseMetrics().then(function(){
+    caseRows=caseRows.sort(function(a,b){return Number(b.total||0)-Number(a.total||0);});
+    appendSummary();appendPrincipalHeader();
+    return excelAsyncAppendRows(parts,caseRows,'Demora exacta por pedido',caseDelayPrincipalRow,12);
+  }).then(function(){appendFullCaseHeader();return excelAsyncAppendRows(parts,caseRows,'Tiempo completo por pedido',fullCaseRow,12);})
+    .then(appendTimelineRows)
+    .then(appendWaitRows)
+    .then(appendUsers)
+    .then(appendTrace)
+    .then(appendCuts)
+    .then(function(){parts.push('</table></body></html>');downloadHtmlExcelParts('dashboard_demora_pedidos_v122_'+new Date().toISOString().slice(0,10)+'.xls',parts);});
 }
 function bindKpiFilters(){
   var from=qs("#kpiFrom"),to=qs("#kpiTo"),proc=qs("#kpiProcess"),user=qs("#kpiUser");
@@ -6352,36 +6438,24 @@ function enforceSiesaExportIfNeeded(c){
 
 function renderIndicators(){
   if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin. Rol detectado: '+esc(state.user?state.user.role:'sin sesión')+'</div>');return;}
-  var data=kpiFilteredCases(), s=vsmSummary(data), rows=s.rows, userRows=processUserRows(data,state.kpiFilters&&state.kpiFilters.user), timelineRows=processTimelineRows(data), waitRows=waitTimelineRows(data);
-  var userOptions=kpiUserOptions();
-  var filterHtml='<section class="card" style="margin-bottom:16px"><div class="grid grid-4"><label class="field"><span>Desde</span><input class="input" type="date" id="kpiFrom"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="kpiTo"></label><label class="field"><span>Macroproceso</span><select class="select" id="kpiProcess"><option value="">Todos</option>'+FLOW.map(function(p){return'<option value="'+p+'">'+esc(processTitle(p))+'</option>';}).join('')+'</select></label><label class="field"><span>Usuario / responsable</span><select class="select" id="kpiUser"><option value="">Todos los usuarios</option>'+userOptions.map(function(u){return'<option value="'+esc(u.key)+'">'+esc(u.label+(u.role?' · '+roleTitle(u.role):''))+'</option>';}).join('')+'</select></label></div></section>';
-  var bottleneck=s.bottleneck?esc(s.bottleneck.label):"Sin datos";
-  var cards=[
-    ["Lead Time prom.",fmt(s.leadAvg),"Finalización - solicitud"],
-    ["% VA",s.vaPct+"%","Tiempo valor agregado / Lead Time"],
-    ["Tiempo espera",fmt(s.wait),"Lead Time - VA visible por esperas"],
-    ["% Espera",s.waitPct+"%","Espera / Lead Time"],
-    ["WIP",s.wip,"Abiertos, pendientes o en espera"],
-    ["FPY",s.fpy+"%","Correctos a la primera"],
-    ["Reproceso",s.reworkPct+"%","Con requerimientos o correcciones"],
-    ["No conformidad",s.badPct+"%","Checks no conformes"],
-    ["Cortes",s.cutDone+"/"+s.cutTotal,"Avance "+s.cutPct+"%"],
-    ["Handoffs",s.handoffs,"Promedio "+s.handoffAvg],
-    ["Throughput",s.throughput,"Finalizados por día"],
-    ["SLA",s.slaPct+"%","Entregados a tiempo"],
-    ["Vencidos",s.overdue,"Abiertos fuera de plazo"],
-    ["% Requerimientos",s.reqPct+"%","Procesos con novedad"],
-    ["T. aprobación",fmt(s.approvalAvg),"Promedio autorizaciones"],
-    ["Cancelaciones",s.cancelPct+"%","Cancelados / recibidos"],
-    ["Disponibilidad",s.availabilityPct+"%","Compromiso confirmado"],
-    ["Exactitud pedido",s.accuracyPct+"%","Sin errores ni requerimientos"]
-  ];
-  layout(header("Dashboard VSM y KPIs","Indicadores por módulo, fecha, cuello de botella, tiempos, requerimientos y cortes. Todos los porcentajes se controlan sobre máximo 100%.",'<button class="btn btn-primary" data-action="exportKpiExcel">Exportar informe Excel</button><button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>')+filterHtml+
-    '<section class="grid grid-4">'+cards.map(function(c){return'<article class="card kpi"><span>'+esc(c[0])+'</span><strong style="font-size:1.45rem">'+esc(c[1])+'</strong><small>'+esc(c[2])+'</small></article>';}).join('')+'</section>'+ 
-    '<section class="grid grid-2" style="margin-top:16px"><article class="chart-card"><div class="chart-title">Cuello de botella principal</div><div class="notice"><strong>'+bottleneck+'</strong><br>Se calcula comparando tiempo promedio por etapa y WIP acumulado.</div>'+bars(rows.map(function(r){return {label:r.label,value:r.avg};}))+'</article><article class="chart-card"><div class="chart-title">VA · NVA · Espera</div>'+bars([{label:"VA",value:s.va},{label:"Espera",value:s.wait},{label:"NVA",value:s.nva},{label:"Tiempo muerto",value:s.dead}])+'</article></section>'+ 
-    '<section class="card" style="margin-top:16px"><h3>Tabla VSM por macroproceso</h3><div class="table-wrap"><table><thead><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Espera</th><th>NVA/Muerto</th><th>Total</th><th>Promedio etapa</th><th>Req.</th><th>Cortes</th><th>Cuello</th></tr></thead><tbody>'+rows.map(function(r,i){return'<tr><td>'+esc(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+fmt(r.active)+'</td><td>'+fmt(r.wait)+'</td><td>'+fmt(r.dead)+'</td><td>'+fmt(r.value)+'</td><td>'+fmt(r.avg)+'</td><td>'+r.requirements+'</td><td>'+r.finishedCuts+'/'+r.cuts+'</td><td>'+(s.bottleneck&&s.bottleneck.key===r.key?'Principal':'—')+'</td></tr>';}).join("")+'</tbody></table></div></section>'+ 
-    '<section class="card" style="margin-top:16px"><h3>Medición individual por usuario y proceso</h3><p class="muted">Muestra quién intervino en cada etapa según inicio de trabajo, historial, evidencias, cortes, requerimientos y asesor comercial.</p><div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Espera</th><th>NVA/Muerto</th><th>Req.</th><th>Cortes</th></tr></thead><tbody>'+(userRows.map(function(r){return'<tr><td>'+esc(r.user)+'</td><td>'+esc(roleTitle(r.role))+'</td><td>'+esc(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+fmt(r.active)+'</td><td>'+fmt(r.wait)+'</td><td>'+fmt(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join("")||'<tr><td colspan="11">Sin responsables individuales registrados para el filtro actual.</td></tr>')+'</tbody></table></div></section>');
-  bindKpiFilters();
+  var link='./vsm-dashboard.html?v=123';
+  var canExportSiesa=(state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role)));
+  layout(header("VSM ERP · Estudios de tiempo","Panel liviano. El tablero pesado se separó en un índice independiente para evitar que la app operativa se bloquee.",'<a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir VSM optimizado</a>'+(canExportSiesa?'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>':''))+
+    '<section class="notice success"><strong>V123:</strong> el VSM ya no se calcula dentro de la pantalla operativa principal. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, lead time por usuario, VA, espera, NVA/tiempo muerto y exportación Excel optimizada.</section>'+ 
+    '<section class="grid grid-3" style="margin-top:16px">'+
+      '<article class="card kpi"><span>Modo de carga</span><strong style="font-size:1.25rem">Por lotes</strong><small>No congela la app principal.</small></article>'+ 
+      '<article class="card kpi"><span>Indicadores base</span><strong style="font-size:1.25rem">VSM + LT</strong><small>Proceso, usuario, pedido, esperas y requerimientos.</small></article>'+ 
+      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V123</strong><small>Tablas separadas para informe completo.</small></article>'+ 
+    '</section>'+ 
+    '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=123" target="_blank" rel="noopener">Abrir y preparar exportación</a></div></section>'+ 
+    '<section class="card" style="margin-top:16px"><h3>Fórmulas aplicadas en el tablero</h3><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Fórmula funcional</th></tr></thead><tbody>'+ 
+    '<tr><td>Lead Time pedido</td><td>Fin real o corte del análisis - Inicio real del pedido</td></tr>'+ 
+    '<tr><td>VA</td><td>Suma de tiempos activos registrados por proceso</td></tr>'+ 
+    '<tr><td>Espera</td><td>Tiempos de espera del proceso + bloqueos abiertos/cerrados</td></tr>'+ 
+    '<tr><td>Requerimientos</td><td>Desde creación del requerimiento hasta respuesta/cierre o corte del análisis</td></tr>'+ 
+    '<tr><td>NVA / tiempo muerto</td><td>Lead Time - VA - Espera, sin valores negativos</td></tr>'+ 
+    '<tr><td>Eficiencia de flujo</td><td>VA / Lead Time</td></tr>'+ 
+    '</tbody></table></div></section>');
 }
 
 function startActive(c){
@@ -7439,16 +7513,28 @@ function excelSectionTable(title,items){
   return '<h2>'+escapeExcel(title)+'</h2><table border="1" cellspacing="0" cellpadding="4"><tr><th>Concepto</th><th>Cantidad</th><th>Gráfica</th></tr>'+items.map(function(x){return '<tr><td>'+escapeExcel(x.label)+'</td><td>'+Number(x.value||0)+'</td><td>'+excelBar(x.value,max)+'</td></tr>';}).join('')+'</table>';
 }
 function exportSalesReport(){
-  var list=salesReportRows(), summary=salesSummaryStats(list), caseRows=list.map(function(c){return caseDelayMetrics(c);});
-  var byAdvisor=salesCountBy(list,salesAdvisorName), byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);}), byStatus=salesCountBy(list,function(c){return statusText(c.status);});
-  var detailRows=list.map(function(c){var m=caseDelayMetrics(c);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.invoiceNumber||c.factura||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(statusText(c.status))+'</td><td>'+escapeExcel(excelDateTime(m.inicio))+'</td><td>'+escapeExcel(excelDateTime(m.fin))+'</td><td>'+escapeExcel(fmt(m.total))+'</td><td>'+m.totalHoras+'</td><td>'+excelHours(m.espera)+'</td><td>'+excelHours(m.req)+'</td><td>'+escapeExcel(c.requestedDelivery?processTitle(c.requestedDelivery):'')+'</td><td>'+escapeExcel(c.deliveryType?processTitle(c.deliveryType):'')+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(caseProcessFlowWithNames(c))+'</td><td>'+Number(c.totalRequirements||0)+'</td><td>'+caseAllAttachments(c).length+'</td><td>'+escapeExcel(caseSalesNotesText(c))+'</td><td>'+escapeExcel(c.closedAt?fmtDate(c.closedAt):'')+'</td></tr>';}).join('');
-  var html='<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1{color:#173b77}h2{color:#173b77;margin-top:24px}table{border-collapse:collapse;margin-bottom:16px}th{background:#173b77;color:#fff}td,th{font-size:12px} .kpi td{font-size:16px;font-weight:bold;text-align:center}</style></head><body>'+
-    '<h1>Dashboard ventas · trazabilidad por asesor</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>El informe respeta los filtros aplicados en la consola de Ventas diaria.</p>'+
-    caseDelayPrincipalTable('DEMORA EXACTA POR PEDIDO · VENTAS DIARIA', caseRows)+
-    '<table class="kpi" border="1" cellspacing="0" cellpadding="8"><tr><th>Total pedidos</th><th>Abiertos</th><th>Cerrados</th><th>Requerimientos</th><th>Retenidos</th><th>Parciales</th></tr><tr><td>'+summary.total+'</td><td>'+summary.abiertos+'</td><td>'+summary.cerrados+'</td><td>'+summary.requerimientos+'</td><td>'+summary.retenidos+'</td><td>'+summary.parciales+'</td></tr></table>'+
-    excelSectionTable('Gráfica 1 · Pedidos por asesor',byAdvisor)+excelSectionTable('Gráfica 2 · Distribución por proceso',byProcess)+excelSectionTable('Gráfica 3 · Distribución por estado',byStatus)+
-    '<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Inicio exacto corregido</th><th>Fin exacto / corte</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Horas espera</th><th>Horas requerimientos</th><th>Entrega solicitada</th><th>Entrega definida</th><th>Responsables que intervinieron</th><th>Flujo con nombres</th><th>Requerimientos</th><th>Anexos</th><th>Notas y comentarios</th><th>Cierre</th></tr></thead><tbody>'+detailRows+'</tbody></table></body></html>';
-  downloadHtmlExcelFile('dashboard_ventas_demora_v121_'+new Date().toISOString().slice(0,10)+'.xls',html);
+  var list=salesReportRows(), summary=salesSummaryStats(list), byAdvisor=salesCountBy(list,salesAdvisorName), byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);}), byStatus=salesCountBy(list,function(c){return statusText(c.status);});
+  var parts=[], caseRows=[];
+  parts.push('<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1{color:#173b77}h2{color:#173b77;margin-top:24px}table{border-collapse:collapse;margin-bottom:16px}th{background:#173b77;color:#fff}td,th{font-size:12px;border:1px solid #cbd5e1;padding:4px;vertical-align:top}.kpi td{font-size:16px;font-weight:bold;text-align:center}.total-hours{font-weight:bold;background:#eaf2ff}.warn{background:#fff7ed;padding:10px;border:1px solid #fbbf24}</style></head><body>'+ 
+    '<h1>Dashboard ventas · trazabilidad por asesor</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>El informe respeta los filtros aplicados en la consola de Ventas diaria. V122 genera el archivo por lotes para evitar que el navegador se quede sin responder.</p>');
+  function buildMetrics(){
+    return excelAsyncAppendRows([],list,'Cálculo ventas diaria',function(c){caseRows.push(caseDelayMetrics(c));return '';},10);
+  }
+  function appendPrincipal(){
+    parts.push('<h1>DEMORA EXACTA POR PEDIDO · VENTAS DIARIA</h1><div class="warn"><strong>Tabla principal:</strong> inicio, fin, demora total en horas, esperas, requerimientos y NVA por pedido.</div>'+ 
+      '<table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>DEMORA TOTAL HH:MM:SS</th><th>DEMORA TOTAL HORAS</th><th>DEMORA TOTAL DÍAS</th><th>Horas trabajadas VA</th><th>Horas en espera</th><th>Horas en requerimientos</th><th>Horas NVA / sin clasificar</th><th>% VA</th><th>% Espera</th><th>% Requerimientos</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Horas Recepción</th><th>Horas Alistamiento</th><th>Horas Corte</th><th>Horas Facturación</th><th>Horas Caja/Cartera</th><th>Horas Despacho nacional</th><th>Horas Despacho local</th><th>Horas Cliente recoge</th><th>Horas Entrega cliente en punto</th><th>Responsables que intervinieron</th><th>Detalle esperas / requerimientos</th></tr></thead><tbody>');
+    return excelAsyncAppendRows(parts,caseRows,'Demora ventas diaria',caseDelayPrincipalRow,12);
+  }
+  function appendSummary(){
+    parts.push('</tbody></table><table class="kpi" border="1" cellspacing="0" cellpadding="8"><tr><th>Total pedidos</th><th>Abiertos</th><th>Cerrados</th><th>Requerimientos</th><th>Retenidos</th><th>Parciales</th></tr><tr><td>'+summary.total+'</td><td>'+summary.abiertos+'</td><td>'+summary.cerrados+'</td><td>'+summary.requerimientos+'</td><td>'+summary.retenidos+'</td><td>'+summary.parciales+'</td></tr></table>'+excelSectionTable('Gráfica 1 · Pedidos por asesor',byAdvisor)+excelSectionTable('Gráfica 2 · Distribución por proceso',byProcess)+excelSectionTable('Gráfica 3 · Distribución por estado',byStatus));
+  }
+  function appendDetail(){
+    parts.push('<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Inicio exacto corregido</th><th>Fin exacto / corte</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Horas espera</th><th>Horas requerimientos</th><th>Entrega solicitada</th><th>Entrega definida</th><th>Responsables que intervinieron</th><th>Flujo con nombres</th><th>Requerimientos</th><th>Anexos</th><th>Notas y comentarios</th><th>Cierre</th></tr></thead><tbody>');
+    return excelAsyncAppendRows(parts,list,'Detalle ventas diaria',function(c){var m=caseDelayMetrics(c);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.invoiceNumber||c.factura||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(statusText(c.status))+'</td><td>'+escapeExcel(excelDateTime(m.inicio))+'</td><td>'+escapeExcel(excelDateTime(m.fin))+'</td><td>'+escapeExcel(fmt(m.total))+'</td><td>'+m.totalHoras+'</td><td>'+excelHours(m.espera)+'</td><td>'+excelHours(m.req)+'</td><td>'+escapeExcel(c.requestedDelivery?processTitle(c.requestedDelivery):'')+'</td><td>'+escapeExcel(c.deliveryType?processTitle(c.deliveryType):'')+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(caseProcessFlowWithNames(c))+'</td><td>'+Number(c.totalRequirements||0)+'</td><td>'+caseAllAttachments(c).length+'</td><td>'+escapeExcel(caseSalesNotesText(c))+'</td><td>'+escapeExcel(c.closedAt?fmtDate(c.closedAt):'')+'</td></tr>';},10);
+  }
+  return buildMetrics().then(function(){caseRows=caseRows.sort(function(a,b){return Number(b.total||0)-Number(a.total||0);});return appendPrincipal();})
+    .then(function(){appendSummary();return appendDetail();})
+    .then(function(){parts.push('</tbody></table></body></html>');downloadHtmlExcelParts('dashboard_ventas_demora_v122_'+new Date().toISOString().slice(0,10)+'.xls',parts);});
 }
 function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 

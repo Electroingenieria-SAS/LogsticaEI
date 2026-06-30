@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VSM ERP · Logística EI</title>
+  <meta name="theme-color" content="#061b46">
+  <link rel="manifest" href="./manifest.json">
+  <style>
+    :root{--azul:#061b46;--azul2:#0f2d5c;--dorado:#f2b705;--bg:#f4f7fb;--card:#fff;--line:#dbe4f0;--text:#102033;--muted:#617089;--ok:#0f9f6e;--warn:#d97706;--bad:#dc2626}
+    *{box-sizing:border-box}body{margin:0;font-family:"Century Gothic",Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .shell{max-width:1480px;margin:0 auto;padding:18px}.top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;background:linear-gradient(135deg,var(--azul),var(--azul2));color:#fff;border-radius:24px;padding:18px 20px;box-shadow:0 18px 45px rgba(6,27,70,.18)}
+    h1{margin:0;font-size:1.55rem}.top p{margin:6px 0 0;opacity:.86}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:14px;padding:10px 14px;font-weight:800;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#fff;color:var(--azul);box-shadow:0 6px 16px rgba(15,23,42,.10)}.btn.primary{background:var(--dorado);color:#111827}.btn.dark{background:var(--azul);color:#fff}.btn:disabled{opacity:.55;cursor:not-allowed}
+    .notice{border-radius:18px;padding:12px 14px;background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12;margin:14px 0}.notice.ok{background:#ecfdf5;border-color:#bbf7d0;color:#065f46}.notice.bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+    .filters,.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px;box-shadow:0 10px 28px rgba(15,23,42,.06)}.filters{margin-top:16px}.grid{display:grid;gap:12px}.grid-4{grid-template-columns:repeat(4,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .field span{display:block;font-size:.78rem;font-weight:800;color:var(--muted);margin-bottom:5px}.input,.select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:14px;padding:9px 10px;font:inherit;background:#fff}
+    .kpi span{display:block;color:var(--muted);font-size:.78rem;font-weight:800}.kpi strong{display:block;color:var(--azul);font-size:1.42rem;margin-top:4px}.kpi small{display:block;color:var(--muted);margin-top:4px}.bar{height:10px;background:#edf2f7;border-radius:999px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--azul),var(--dorado));width:0}.table-wrap{overflow:auto;max-height:62vh;border-radius:16px;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px 10px;border-bottom:1px solid #edf2f7;text-align:left;font-size:.86rem;vertical-align:top}th{position:sticky;top:0;background:#f8fafc;color:var(--azul);z-index:1}.muted{color:var(--muted)}.pill{display:inline-flex;border-radius:999px;padding:4px 8px;background:#eef2ff;color:#1e3a8a;font-size:.76rem;font-weight:800}.loading{display:none;gap:10px;align-items:center}.loading.show{display:flex}.spin{width:18px;height:18px;border:3px solid #dbe4f0;border-top-color:var(--azul);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+    .footer{margin:20px 0 6px;color:var(--muted);font-size:.82rem}.section-title{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:18px 0 10px}.section-title h2{margin:0;font-size:1.15rem;color:var(--azul)}
+    @media(max-width:920px){.shell{padding:10px}.top{display:block;border-radius:18px}.actions{margin-top:12px}.grid-4,.grid-3,.grid-2{grid-template-columns:1fr}.filters,.card{border-radius:18px}.table-wrap{max-height:58vh}th,td{font-size:.78rem;padding:8px}.btn{width:100%}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="top">
+      <div><h1>VSM ERP · Estudios de tiempo</h1><p>Tablero independiente para lead time, valor agregado, espera, tiempo muerto, usuarios y pedidos sin bloquear la app operativa.</p></div>
+      <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
+    </section>
+    <div id="status" class="notice ok">Inicializando tablero VSM liviano...</div>
+    <section class="filters">
+      <div class="grid grid-4">
+        <label class="field"><span>Desde creación / actualización</span><input class="input" type="date" id="fFrom"></label>
+        <label class="field"><span>Hasta</span><input class="input" type="date" id="fTo"></label>
+        <label class="field"><span>Macroproceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label>
+        <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">Abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera / requerimiento</option></select></label>
+      </div>
+      <div class="grid grid-4" style="margin-top:10px">
+        <label class="field"><span>Buscar</span><input class="input" id="fSearch" placeholder="Pedido, OC, cliente, asesor"></label>
+        <label class="field"><span>Cantidad inicial</span><select class="select" id="fLimit"><option>300</option><option selected>600</option><option>1000</option><option>1500</option></select></label>
+        <label class="field"><span>Usuario / actor</span><select class="select" id="fUser"><option value="">Todos</option></select></label>
+        <label class="field"><span>Vista</span><select class="select" id="fView"><option value="principal">Principal</option><option value="procesos">Procesos</option><option value="usuarios">Usuarios</option><option value="pedidos">Pedidos</option></select></label>
+      </div>
+    </section>
+    <div class="loading" id="loading"><span class="spin"></span><strong>Procesando por lotes...</strong><span id="progress" class="muted"></span></div>
+    <section id="summary" class="grid grid-4" style="margin-top:16px"></section>
+    <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Fórmulas usadas</h2><table><tr><td>Lead Time</td><td>Fin real/corte - inicio real</td></tr><tr><td>VA</td><td>Suma de tiempo activo por proceso</td></tr><tr><td>Espera</td><td>Espera registrada + bloqueos/requerimientos</td></tr><tr><td>NVA</td><td>Lead Time - VA - Espera</td></tr><tr><td>Eficiencia</td><td>VA / Lead Time</td></tr></table></article></section>
+    <div class="section-title"><h2 id="tableTitle">Resultados VSM</h2><span class="muted" id="rowCount"></span></div>
+    <section class="table-wrap"><table id="mainTable"></table></section>
+    <p class="footer">V123 · Tablero VSM independiente. La operación de pedidos queda aislada para evitar bloqueos de la PWA principal.</p>
+  </main>
+  <script src="./vsm-dashboard.js?v=123"></script>
+</body>
+</html>
