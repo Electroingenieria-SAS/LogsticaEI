@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v119_firebase_loader_resistente";
+var storageKey = "ei_trazabilidad_v120_superadmin_vsm_admin_fix";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -384,8 +384,8 @@ function daysBetweenInclusive(a,b){var ms=toDayStart(b)-toDayStart(a);return Mat
 function normalizeRole(r){
   var raw=stripAccents(String(r||"").trim().toLowerCase());
   var x=raw.replace(/[^a-z0-9_]+/g,"_").replace(/^_+|_+$/g,"").replace(/_+/g,"_");
-  if(x==="superadmin"||x==="super_admin"||x==="super_administrador"||x==="superadministrador"||x==="super_administracion")return "super_admin";
-  if(x==="administrador")return "admin";
+  if(x==="sa"||x==="superadmin"||x==="super_admin"||x==="super_administrador"||x==="superadministrador"||x==="super_administracion"||(x.indexOf("super")>=0&&(x.indexOf("admin")>=0||x.indexOf("administrador")>=0||x.indexOf("administracion")>=0)))return "super_admin";
+  if(x==="admin"||x==="administrador"||x==="administracion"||x==="administrador_desarrollador"||x==="admin_desarrollador"||x==="desarrollador"||x==="developer"||x==="administrator")return "admin";
   if(x==="asesor"||x==="asesor_ventas"||x==="asesor_de_ventas"||x==="vendedor"||x==="comercial")return "ventas";
   if(x==="cartera")return "caja";
   if(x==="jefe_logistico")return "jefe_logistica";
@@ -401,6 +401,13 @@ function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Si
 function isAdminRoleValue(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="superadministrador";}
 function isPrivilegedKpiRole(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="gerencia"||nr==="jefe_logistica";}
 function isSuperAdminRoleValue(r){return normalizeRole(r)==="super_admin";}
+function isKnownSuperAdminUser(u){
+  u=u||{};
+  var raw=stripAccents([u.uid,u.id,u.email,u.name,u.displayName,u.handle,u.username].map(function(x){return String(x||"");}).join(" ")).toLowerCase();
+  return raw.indexOf("juanespereztobon.1204@gmail.com")>=0 || raw.indexOf("juan esteban perez")>=0 || raw.indexOf("juan esteban pérez")>=0 || raw.indexOf("juanespereztobon")>=0;
+}
+function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)));}
+function currentUserIsAdminOrSuper(){return !!(state.user && (isAdminRoleValue(state.user.role)||currentUserIsSuperAdmin()));}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function legacyProcessTarget(p){
   if(p==="compromiso_mercancia"||p==="compromiso_inicial")return "alistamiento";
@@ -774,18 +781,18 @@ function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || n
 function isCutOperator(){return state.user && normalizeRole(state.user.role)==="auxiliar_corte";}
 function isJefeLogistica(){return state.user && normalizeRole(state.user.role)==="jefe_logistica";}
 function isExecutive(){return state.user && normalizeRole(state.user.role)==="gerencia";}
-function canManageUsers(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="gerencia");}
+function canManageUsers(){return state.user && (currentUserIsAdminOrSuper() || normalizeRole(state.user.role)==="gerencia");}
 function canApprovePriority(){return state.user && normalizeRole(state.user.role)==="gerencia";}
-function canSeeAll(){return state.user && isPrivilegedKpiRole(state.user.role);}
+function canSeeAll(){return state.user && (isPrivilegedKpiRole(state.user.role)||currentUserIsSuperAdmin());}
 function isProjectsRole(){return state.user && normalizeRole(state.user.role)==="proyectos";}
-function canCreate(){return state.user && (normalizeRole(state.user.role)==="ventas" || isAdminRoleValue(state.user.role));}
-function canAccessProjectsModule(){return state.user && (isProjectsRole() || isAdminRoleValue(state.user.role));}
-function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || isAdminRoleValue(state.user.role));}
-function canDeleteReceptionGoods(){return state.user && isSuperAdminRoleValue(state.user.role);}
+function canCreate(){return state.user && (normalizeRole(state.user.role)==="ventas" || currentUserIsAdminOrSuper());}
+function canAccessProjectsModule(){return state.user && (isProjectsRole() || currentUserIsAdminOrSuper());}
+function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || currentUserIsAdminOrSuper());}
+function canDeleteReceptionGoods(){return state.user && currentUserIsSuperAdmin();}
 function canAccessReportsModule(){return !!state.user;}
 function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
 function canCommentReports(){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion";}
-function canDeleteReports(){return state.user && isSuperAdminRoleValue(state.user.role);}
+function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
 
 function reportCaseIdentifiers(r){
   var ids=[];
@@ -824,7 +831,7 @@ function visibleReports(){
 function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return isSuperAdminRoleValue(r)||r==="lider_recepcion";}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
 function projectUploadDayText(){return isProjectUploadDay()?"Habilitado hoy":"Solo se habilita los lunes y jueves";}
-function canSeeKpis(){return state.user && isPrivilegedKpiRole(state.user.role);}
+function canSeeKpis(){return state.user && (isPrivilegedKpiRole(state.user.role)||currentUserIsSuperAdmin());}
 function canUploadEvidenceForCase(c){
   if(!state.user || !c || c.closedAt)return false;
   if(canSeeAll())return true;
@@ -2224,6 +2231,7 @@ function statusChip(st){
 function routes(){
   if(!state.user)return{main:[],processes:[]};
   var r=normalizeRole(state.user.role);
+  if(currentUserIsAdminOrSuper())return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="auxiliar_corte")return{main:["corte_cable","reports"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","reports"],processes:[]};
@@ -2253,12 +2261,13 @@ function mobileItems(){
   if(r==="gerencia")return [["dashboard","Inicio","⌂"],["approvals","Aprob.","✓"],["requirements","Req.","↗"]];
   if(r==="ventas")return [["create","Crear","+"],["sales_reports","Mis pedidos","VD"],["requirements","Req.","↗"],["dashboard","Inicio","⌂"]];
   if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["requirements","Req.","↗"],["approvals","Aprob.","✓"]];
-  if(isAdminRoleValue(r))return [["dashboard","Inicio","⌂"],["create","Crear","+"],["sales_reports","Ventas","VD"],["cases","Casos","▤"]];
+  if(isAdminRoleValue(r)||currentUserIsAdminOrSuper())return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["indicators","VSM","VS"],["admin","Admin","AD"]];
   var rs=routes();return [["dashboard","Inicio","⌂"],[rs.processes[0]||"cases","Panel","▤"],["requirements","Req.","↗"]];
 }
 
 function mobileRouteAllowed(route){
   var r=state.user?normalizeRole(state.user.role):"";
+  if(currentUserIsAdminOrSuper())return true;
   var always=["dashboard","cases","requirements","approvals"];
   if(always.indexOf(route)>=0)return true;
   if(route==="create"||route==="sales_reports")return r==="ventas"||isAdminRoleValue(r);
@@ -7024,8 +7033,8 @@ function closeMobileMenu(){
   if(m)m.classList.remove("open");
 }
 
-function canUseAdminPanel(){return state.user && (canSeeAll() || canManageUsers());}
-function canDeleteAdminData(){return state.user && isAdminRoleValue(state.user.role);}
+function canUseAdminPanel(){return state.user && (currentUserIsAdminOrSuper() || canSeeAll() || canManageUsers());}
+function canDeleteAdminData(){return state.user && currentUserIsAdminOrSuper();}
 function renderAdmin(){
   if(!canUseAdminPanel()){layout(header("Admin","Acceso restringido.")+'<div class="empty">Solo jefe logístico, gerencia, admin o super admin pueden abrir este módulo.</div>');return;}
   var total=state.cases.length, excl=state.cases.filter(function(c){return c.excludeFromKpi===true;}).length;
