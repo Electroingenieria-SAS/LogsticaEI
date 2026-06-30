@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v123_vsm_standalone_liviano";
+var storageKey = "ei_trazabilidad_v125_vsm_real_estable_botones";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -1355,7 +1355,6 @@ function loadData(){
     state.dataLoading=false;
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
-      autoCleanupPvc4474CajaDuplicate();
     }
   }).catch(function(e){
     state.dataLoading=false;
@@ -1720,19 +1719,33 @@ function shouldAutoRenderNow(){
 
 function renderAfterLiveChange(){
   if(!state.user)return;
+  function protectedNotice(title,msg){
+    state.realtime.pendingRender=true;
+    var t=Date.now();
+    if(!state.realtime.lastProtectedToastAt || t-state.realtime.lastProtectedToastAt>5000){
+      state.realtime.lastProtectedToastAt=t;
+      showLiveToast(title,msg,true);
+    }
+  }
   if(state.detailId){
     var still=caseById(state.detailId);
     if(still)cacheDetailCase(still);
-    state.realtime.pendingRender=true;
-    showLiveToast("Actualización disponible","El pedido tuvo movimiento. La app mantendrá abierta la ventana de Ver pedido; presiona Actualizar vista cuando termines.",true);
+    protectedNotice("Actualización disponible","El pedido tuvo movimiento. La app mantendrá abierta la ventana de Ver pedido; presiona Actualizar vista cuando termines.");
     return;
   }
-  if(shouldAutoRenderNow()){
-    try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}
-  }else{
-    state.realtime.pendingRender=true;
-    showLiveToast("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.",true);
+  if(!shouldAutoRenderNow()){
+    protectedNotice("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.");
+    return;
   }
+  if(state.realtime.renderTimer)clearTimeout(state.realtime.renderTimer);
+  state.realtime.renderTimer=setTimeout(function(){
+    state.realtime.renderTimer=null;
+    if(!shouldAutoRenderNow()){
+      protectedNotice("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.");
+      return;
+    }
+    try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}
+  },260);
 }
 
 function showLiveToast(title,msg,withButton){
@@ -2332,7 +2345,7 @@ function injectExecutiveMinimalCss(){
   var st=document.createElement('style');
   st.id='ei-v98-executive-css';
   st.textContent='\
-    .topbar{align-items:flex-start;gap:14px}.top-actions{gap:8px;align-items:flex-start}.executive-actions{position:relative}.executive-actions>summary{list-style:none;cursor:pointer;border:1px solid #dbe4f0;background:#fff;color:#0f1f3d;border-radius:14px;padding:9px 13px;font-weight:900;box-shadow:0 8px 22px rgba(15,31,61,.08)}.executive-actions>summary::-webkit-details-marker{display:none}.executive-actions-body{position:absolute;right:0;top:44px;z-index:30;min-width:280px;max-width:min(420px,calc(100vw - 30px));display:flex;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #dbe4f0;border-radius:18px;padding:12px;box-shadow:0 20px 55px rgba(15,31,61,.18)}.executive-actions-body .btn{flex:1 1 auto;justify-content:center}.separation-notice{border:2px solid #f59e0b;background:#fff7ed;color:#7c2d12}.process-guide-card{padding:14px}.process-guide-card .process-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.detail-metrics{display:none}.case-data-panel{border-style:dashed}.case-data-panel>h3:nth-of-type(n+2),.case-data-panel .timeline,.case-data-panel .flow-trace-panel{display:none}.main .card{border-radius:18px}.btn{border-radius:13px}.filters{border-radius:18px}\
+    .topbar{align-items:flex-start;gap:14px}.top-actions{gap:8px;align-items:flex-start}.executive-actions{position:relative}.executive-actions>summary{list-style:none;cursor:pointer;border:1px solid #dbe4f0;background:#fff;color:#0f1f3d;border-radius:14px;padding:9px 13px;font-weight:900;box-shadow:0 8px 22px rgba(15,31,61,.08)}.executive-actions>summary::-webkit-details-marker{display:none}.executive-actions-body{position:absolute;right:0;top:44px;z-index:30;min-width:280px;max-width:min(420px,calc(100vw - 30px));display:flex;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #dbe4f0;border-radius:18px;padding:12px;box-shadow:0 20px 55px rgba(15,31,61,.18)}.executive-actions-body .btn{flex:1 1 auto;justify-content:center}.erp-primary-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.erp-primary-actions .btn{flex:1 1 auto;justify-content:center}.separation-notice{border:2px solid #f59e0b;background:#fff7ed;color:#7c2d12}.process-guide-card{padding:14px}.process-guide-card .process-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.detail-metrics{display:none}.case-data-panel{border-style:dashed}.case-data-panel>h3:nth-of-type(n+2),.case-data-panel .timeline,.case-data-panel .flow-trace-panel{display:none}.main .card{border-radius:18px}.btn{border-radius:13px}.filters{border-radius:18px}\
     @media(max-width:820px){.executive-actions{width:100%}.executive-actions>summary{width:100%;text-align:center}.executive-actions-body{position:static;box-shadow:none;margin-top:8px;min-width:0;max-width:none}.topbar{display:block}.top-actions{margin-top:10px}.process-guide-card{display:none}.case-data-panel{display:none}}';
   document.head.appendChild(st);
 }
@@ -3990,7 +4003,19 @@ function renderDetail(id){
 function compactDetailActions(actions){
   var back='<button class="btn" data-route="cases">Volver</button>';
   if(!actions)return back;
-  return back+'<details class="executive-actions" open><summary>Acciones del pedido</summary><div class="executive-actions-body">'+actions+'</div></details>';
+  var btns=(String(actions).match(/<button[\s\S]*?<\/button>/g)||[]);
+  if(!btns.length)return back+actions;
+  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,close:11,transfer:12};
+  var primary=[],secondary=[];
+  btns.forEach(function(html){
+    var m=html.match(/data-action="([^"]+)"/),a=m?m[1]:"";
+    if(priority[a] && primary.length<3)primary.push({html:html,rank:priority[a]});else secondary.push(html);
+  });
+  primary.sort(function(a,b){return a.rank-b.rank;});
+  var primaryHtml=primary.map(function(x){return x.html;}).join("");
+  if(!primaryHtml && secondary.length){primaryHtml=secondary.shift();}
+  var more=secondary.length?'<details class="executive-actions"><summary>Más opciones</summary><div class="executive-actions-body">'+secondary.join("")+'</div></details>':'';
+  return back+'<div class="erp-primary-actions">'+primaryHtml+'</div>'+more;
 }
 
 function nextActionButtons(c){
@@ -6438,16 +6463,16 @@ function enforceSiesaExportIfNeeded(c){
 
 function renderIndicators(){
   if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin. Rol detectado: '+esc(state.user?state.user.role:'sin sesión')+'</div>');return;}
-  var link='./vsm-dashboard.html?v=123';
+  var link='./vsm-dashboard.html?v=125';
   var canExportSiesa=(state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role)));
   layout(header("VSM ERP · Estudios de tiempo","Panel liviano. El tablero pesado se separó en un índice independiente para evitar que la app operativa se bloquee.",'<a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir VSM optimizado</a>'+(canExportSiesa?'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>':''))+
-    '<section class="notice success"><strong>V123:</strong> el VSM ya no se calcula dentro de la pantalla operativa principal. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, lead time por usuario, VA, espera, NVA/tiempo muerto y exportación Excel optimizada.</section>'+ 
+    '<section class="notice success"><strong>V125:</strong> el VSM lee casos y eventos reales de Firebase y calcula lead time sin depender solo de processStats. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, lead time por usuario, VA, espera, NVA/tiempo muerto y exportación Excel optimizada.</section>'+ 
     '<section class="grid grid-3" style="margin-top:16px">'+
       '<article class="card kpi"><span>Modo de carga</span><strong style="font-size:1.25rem">Por lotes</strong><small>No congela la app principal.</small></article>'+ 
       '<article class="card kpi"><span>Indicadores base</span><strong style="font-size:1.25rem">VSM + LT</strong><small>Proceso, usuario, pedido, esperas y requerimientos.</small></article>'+ 
-      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V123</strong><small>Tablas separadas para informe completo.</small></article>'+ 
+      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V125</strong><small>Tablas separadas para informe completo.</small></article>'+ 
     '</section>'+ 
-    '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=123" target="_blank" rel="noopener">Abrir y preparar exportación</a></div></section>'+ 
+    '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=125" target="_blank" rel="noopener">Abrir y preparar exportación</a></div></section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Fórmulas aplicadas en el tablero</h3><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Fórmula funcional</th></tr></thead><tbody>'+ 
     '<tr><td>Lead Time pedido</td><td>Fin real o corte del análisis - Inicio real del pedido</td></tr>'+ 
     '<tr><td>VA</td><td>Suma de tiempos activos registrados por proceso</td></tr>'+ 
@@ -7627,24 +7652,6 @@ function protectedRenderBlocked(reason){
   else showLiveToast("Edición protegida","Hubo una actualización, pero la app no interrumpió lo que estás escribiendo. Cuando termines, pulsa Actualizar vista.",true);
 }
 
-var pvc4474CleanupRunning=false;
-function caseTextForCleanup(c){return [c&&c.reference,c&&c.pedido,c&&c.caseNumber,c&&c.purchaseOrder,c&&c.ordenCompra,c&&c.oc,c&&c.client,caseDisplayTitle(c)].join(" ");}
-function matchesPvc4474Oc114600002(c){var h=caseTextForCleanup(c);return /4474/.test(h) && /114600002/.test(h);}
-function autoCleanupPvc4474CajaDuplicate(){
-  if(pvc4474CleanupRunning || !db || !state.user || !canDeleteAdminData())return;
-  var matches=(state.cases||[]).filter(matchesPvc4474Oc114600002);
-  var sep=matches.filter(function(c){return separationActive(c) || /SEPARACION/i.test(String((c.salesHold&&c.salesHold.status)||""));});
-  var cajaDup=matches.filter(function(c){return c.currentProcess==="caja" && !separationActive(c);});
-  if(!sep.length || !cajaDup.length)return;
-  pvc4474CleanupRunning=true;
-  cajaDup.forEach(function(c){
-    Promise.all([deleteQueryBatch("case_events","caseId",c.id),deleteQueryBatch("evidences","caseId",c.id),deleteQueryBatch("requirements","caseId",c.id)])
-      .then(function(){return db.collection("cases").doc(c.id).delete();})
-      .then(function(){return createEvent({type:"CASE_DELETED_DUPLICATE_FLOW_FIX",detail:"Eliminado duplicado enviado a Caja por corrección de flujo: "+(c.reference||c.id)+" · OC 114600002",targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});})
-      .then(function(){state.cases=state.cases.filter(function(x){return x.id!==c.id;});renderAfterLiveChange();})
-      .catch(function(e){console.warn("No se pudo eliminar duplicado PVC 4474",e);});
-  });
-}
 function render(){
   var force=state.__forceRenderOnce===true;
   state.__forceRenderOnce=false;

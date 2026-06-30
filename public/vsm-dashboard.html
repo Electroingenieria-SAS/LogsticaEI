@@ -22,13 +22,13 @@
 <body>
   <main class="shell">
     <section class="top">
-      <div><h1>VSM ERP · Estudios de tiempo</h1><p>Tablero independiente para lead time, valor agregado, espera, tiempo muerto, usuarios y pedidos sin bloquear la app operativa.</p></div>
+      <div><h1>VSM ERP · Estudios de tiempo reales</h1><p>Tablero independiente para lead time, valor agregado, espera, tiempo muerto, usuarios y pedidos sin bloquear la app operativa.</p></div>
       <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
     </section>
     <div id="status" class="notice ok">Inicializando tablero VSM liviano...</div>
     <section class="filters">
       <div class="grid grid-4">
-        <label class="field"><span>Desde creación / actualización</span><input class="input" type="date" id="fFrom"></label>
+        <label class="field"><span>Desde inicio real del pedido</span><input class="input" type="date" id="fFrom"></label>
         <label class="field"><span>Hasta</span><input class="input" type="date" id="fTo"></label>
         <label class="field"><span>Macroproceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label>
         <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">Abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera / requerimiento</option></select></label>
@@ -45,8 +45,8 @@
     <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Fórmulas usadas</h2><table><tr><td>Lead Time</td><td>Fin real/corte - inicio real</td></tr><tr><td>VA</td><td>Suma de tiempo activo por proceso</td></tr><tr><td>Espera</td><td>Espera registrada + bloqueos/requerimientos</td></tr><tr><td>NVA</td><td>Lead Time - VA - Espera</td></tr><tr><td>Eficiencia</td><td>VA / Lead Time</td></tr></table></article></section>
     <div class="section-title"><h2 id="tableTitle">Resultados VSM</h2><span class="muted" id="rowCount"></span></div>
     <section class="table-wrap"><table id="mainTable"></table></section>
-    <p class="footer">V123 · Tablero VSM independiente. La operación de pedidos queda aislada para evitar bloqueos de la PWA principal.</p>
+    <p class="footer">V125 · Tablero VSM independiente. La operación de pedidos queda aislada para evitar bloqueos de la PWA principal.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=123"></script>
+  <script src="./vsm-dashboard.js?v=125"></script>
 </body>
 </html>
