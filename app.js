@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v112_demora_exacta_pedido";
+var storageKey = "ei_trazabilidad_v114_carreto_completo_qa";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -3822,8 +3822,9 @@ function renderDetail(id){
   var beforeReceptionFlow=JSON.stringify(c.documentFlow||{});
   normalizeReceptionDocumentFlow(c);
   if(beforeReceptionFlow!==JSON.stringify(c.documentFlow||{}))correctedOnOpen=true;
+  if(repairReceptionLinesFromPdfExtraction(c))correctedOnOpen=true;
   if(correctedOnOpen){
-    if(db && (canSeeAll() || isAdminRoleValue(state.user.role))){db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo guardar corrección automática",e);});}
+    if(db && state.user && (canSeeAll() || isAdminRoleValue(state.user.role) || canOperateCurrentProcess(c))){db.collection("cases").doc(c.id).set(c,{merge:true}).catch(function(e){console.warn("No se pudo guardar corrección automática",e);});}
   }
   if(isCutOperator() && !(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);})){renderCutsQueue();return;}
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="", canOperate=canOperateCurrentProcess(c);
@@ -4173,17 +4174,57 @@ function assignPdfField(c, key, value, label, filled){
     filled.push(label||key);
   }
 }
+function receptionLineBaseKey(it){
+  it=it||{};
+  return [
+    normalizeRefText(it.referencia||it.reference||""),
+    normalizeRefText(it.descripcion||it.description||""),
+    normalizeQty(it.cantidad||it.quantity||""),
+    String(it.unidad||it.unit||"").toUpperCase().replace(/\./g,"").trim()
+  ].join("|");
+}
+function receptionLineMergeKey(it){
+  it=it||{};
+  return [
+    receptionLineBaseKey(it),
+    normalizeRefText(it.ubicacion||it.location||""),
+    normalizeRefText(it.ext1||""),
+    normalizeRefText(it.ext2||""),
+    normalizeRefText(it.bodega||it.warehouse||"")
+  ].join("|");
+}
+function receptionLineHasLocationData(it){
+  return !!cleanPdfValue((it&&it.ubicacion)||"") || !!cleanPdfValue((it&&it.location)||"") || !!cleanPdfValue((it&&it.ext1)||"") || !!cleanPdfValue((it&&it.ext2)||"") || !!cleanPdfValue((it&&it.bodega)||"");
+}
 function mergePdfItemsIntoCase(c, parsed){
   var incoming=(parsed && parsed.items) ? parsed.items : [];
   c.orderItems=c.orderItems||[];
+
+  // V114: la clave de una línea de recepción incluye ubicación/bodega/extensiones.
+  // Antes, si el PDF traía 3 carretos iguales con distinta ubicación, se fusionaban en una sola línea.
+  var incomingBaseCounts={};
+  incoming.forEach(function(it){
+    var bk=receptionLineBaseKey(it);
+    if(bk)incomingBaseCounts[bk]=(incomingBaseCounts[bk]||0)+1;
+  });
+
+  // Si existe una línea antigua colapsada sin ubicación y ahora el PDF trae varias líneas del mismo material,
+  // se retira esa línea vieja para dejar las líneas reales una por una.
+  c.orderItems=c.orderItems.filter(function(it){
+    var bk=receptionLineBaseKey(it);
+    var oldPdfLine=String(it.origen||it.origin||"").indexOf("PDF")>=0 || String(it.detectionReason||"").toLowerCase().indexOf("pdf")>=0 || String(it.detectionReason||"").toLowerCase().indexOf("recepci")>=0;
+    if(incomingBaseCounts[bk]>1 && oldPdfLine && !receptionLineHasLocationData(it))return false;
+    return true;
+  });
+
   var index={};
   c.orderItems.forEach(function(it,idx){
-    var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
-    index[k]=idx;
+    index[receptionLineMergeKey(it)]=idx;
   });
+
   var added=0, updated=0;
   incoming.forEach(function(it){
-    var k=[normalizeRefText(it.referencia||it.reference||""), normalizeRefText(it.descripcion||it.description||""), normalizeQty(it.cantidad||it.quantity||""), String(it.unidad||it.unit||"").toUpperCase()].join("|");
+    var k=receptionLineMergeKey(it);
     if(index[k]!==undefined){
       var existing=c.orderItems[index[k]];
       existing.requiereCorte=!!it.requiereCorte;
@@ -4196,23 +4237,43 @@ function mergePdfItemsIntoCase(c, parsed){
       existing.ubicacion=it.ubicacion||existing.ubicacion||"";
       existing.valorUnitario=it.valorUnitario||existing.valorUnitario||"";
       existing.valorParcial=it.valorParcial||existing.valorParcial||"";
+      existing.receptionObservation=it.receptionObservation||existing.receptionObservation||"";
       existing.noCutReason=it.noCutReason||"";
       existing.estado=it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO";
       existing.detectionReason=it.detectionReason||existing.detectionReason||"";
       updated++;
       return;
     }
-    c.orderItems.push(Object.assign({
+    var newItem=Object.assign({
       id: uid("LIN"),
       estado: it.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO",
       origen: "PDF_RECEPCION",
       createdAt: now()
-    }, it));
+    }, it);
+    newItem.id=newItem.id||uid("LIN");
+    c.orderItems.push(newItem);
     index[k]=c.orderItems.length-1;
     added++;
   });
   return added;
 }
+function repairReceptionLinesFromPdfExtraction(c){
+  if(!c || !c.pdfExtraction || !Array.isArray(c.pdfExtraction.items) || !c.pdfExtraction.items.length)return false;
+  var before=(c.orderItems||[]).length;
+  var added=mergePdfItemsIntoCase(c,{items:c.pdfExtraction.items});
+  var after=(c.orderItems||[]).length;
+  if(added>0 || after!==before){
+    c.documentFlow=c.documentFlow||{};
+    c.documentFlow.receptionLinesRepairAt=now();
+    c.documentFlow.receptionLinesRepairBy=state.user?state.user.name:"";
+    c.documentFlow.receptionLinesRepairDetail="Corrección automática V114: se restauraron líneas iguales con ubicaciones distintas para que todos los carretos completos pasen a alistamiento.";
+    try{applyReceptionChecklistFromPdf(c,c.pdfExtraction||{});}catch(e){}
+    try{applyAlistamientoAutoChecklist(c);}catch(e){}
+    return true;
+  }
+  return false;
+}
+
 function mergePdfExtractionIntoCase(c, parsed){
   parsed=parsed||{};
   var filled=[];
