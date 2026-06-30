@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v117_qa_erp_final";
+var storageKey = "ei_trazabilidad_v118_corte_acciones_diferenciadas_qa";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -70,11 +70,16 @@ function ensureV104UiFixes(){
 .drawer .textarea{min-height:92px!important;}\
 .drawer .top-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;}\
 .drawer .btn{white-space:normal!important;}\
+.drawer .cut-primary-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important;margin:14px 0!important;}\
+.drawer .cut-action-card{border:1px solid rgba(15,23,42,.10)!important;border-radius:20px!important;padding:16px!important;background:linear-gradient(180deg,#ffffff,#f8fafc)!important;box-shadow:0 10px 26px rgba(15,23,42,.08)!important;text-align:left!important;min-height:112px!important;display:flex!important;flex-direction:column!important;justify-content:space-between!important;}\
+.drawer .cut-action-card strong{display:block!important;font-size:1.02rem!important;color:#061b46!important;margin-bottom:6px!important;}\
+.drawer .cut-action-card small{display:block!important;font-size:.78rem!important;line-height:1.35!important;opacity:.76!important;margin-bottom:12px!important;}\
+.drawer .cut-action-card .btn{width:100%!important;justify-content:center!important;font-weight:800!important;padding:12px 14px!important;border-radius:14px!important;}\
 .drawer .table-wrap{max-width:100%!important;overflow:auto!important;}\
 .home-refresh-card{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:14px 16px;border:1px solid rgba(15,23,42,.08);border-radius:18px;background:#fff;}\
 .home-refresh-card strong{display:block;color:#061b46;}\
 .home-refresh-card span{display:block;font-size:12px;opacity:.72;margin-top:3px;}\
-@media(max-width:760px){.drawer.open{padding:8px!important;align-items:stretch!important;}.drawer .modal{width:100%!important;max-height:calc(100dvh - 16px)!important;border-radius:18px!important;padding:14px!important;}.drawer .grid,.drawer .grid-2,.drawer .grid-3,.drawer .grid-4,.drawer .cut-grid,.drawer .cut-grid-2,.drawer .cut-grid-3,.drawer .cut-grid-4{display:grid!important;grid-template-columns:1fr!important;}.drawer .modal-head h3{font-size:1rem!important;line-height:1.15!important;}.drawer .modal-head .btn{padding:8px 10px!important;font-size:12px!important;}.drawer .card{padding:12px!important;border-radius:16px!important;}.drawer .notice{padding:10px 12px!important;border-radius:14px!important;font-size:13px!important;}.drawer table{font-size:12px!important;}.drawer th,.drawer td{padding:8px!important;}.home-refresh-card{flex-direction:column;align-items:stretch;}.home-refresh-card .btn{width:100%;}}';
+@media(max-width:760px){.drawer.open{padding:8px!important;align-items:stretch!important;}.drawer .modal{width:100%!important;max-height:calc(100dvh - 16px)!important;border-radius:18px!important;padding:14px!important;}.drawer .grid,.drawer .grid-2,.drawer .grid-3,.drawer .grid-4,.drawer .cut-grid,.drawer .cut-grid-2,.drawer .cut-grid-3,.drawer .cut-grid-4{display:grid!important;grid-template-columns:1fr!important;}.drawer .modal-head h3{font-size:1rem!important;line-height:1.15!important;}.drawer .modal-head .btn{padding:8px 10px!important;font-size:12px!important;}.drawer .card{padding:12px!important;border-radius:16px!important;}.drawer .notice{padding:10px 12px!important;border-radius:14px!important;font-size:13px!important;}.drawer table{font-size:12px!important;}.drawer th,.drawer td{padding:8px!important;}.home-refresh-card{flex-direction:column;align-items:stretch;}.home-refresh-card .btn{width:100%;}.drawer .cut-primary-actions{grid-template-columns:1fr!important;gap:10px!important;}.drawer .cut-action-card{min-height:auto!important;padding:13px!important;}}';
   document.head.appendChild(st);
 }
 
@@ -4924,7 +4929,12 @@ function openCutModule(id,cutId){
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar autorización de corte</button>';}
   if(canApproveNow){approvalActions+='<button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar autorización y enviar a Ventas</button>';}
-  var info='<section class="grid grid-3 cut-simple-head"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Estado</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section><section class="notice success cut-quick-note"><strong>Corte simple:</strong> si el carreto se entrega completo o no requiere corte, use <b>No necesita corte</b>. Si debe cortarse, use iniciar/finalizar y registre foto del carreto al final.</section>'+cutPendingUploadNotice(cut)+pdfDocumentCard(c,true);
+  var info='<section class="grid grid-3 cut-simple-head"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Estado</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+
+    '<section class="cut-primary-actions" aria-label="Acciones principales de corte">'+
+      '<article class="cut-action-card"><div><strong>No necesita corte</strong><small>Use esta opción cuando la línea no debía cortarse o se entrega como carreto completo sin intervención de Corte. Se libera a Alistamiento y queda marcada como sin corte físico.</small></div><button type="button" class="btn btn-success" data-cut-action="noCutNeeded" '+(finished?'disabled':'')+'>No necesita corte</button></article>'+
+      '<article class="cut-action-card"><div><strong>Medida completa</strong><small>Use esta opción cuando sí llegó a Corte, pero encontraron un carreto exacto con la medida solicitada. Se registra medida exacta y se libera a Alistamiento.</small></div><button type="button" class="btn btn-gold" data-cut-action="completeMeasure" '+(finished?'disabled':'')+'>Medida completa</button></article>'+
+    '</section>'+
+    '<section class="notice success cut-quick-note"><strong>Corte simple:</strong> estas dos acciones son diferentes. <b>No necesita corte</b> retira la línea del proceso de corte físico; <b>Medida completa</b> registra que Corte encontró un carreto exacto. Si sí debe cortarse, use iniciar/finalizar y registre foto del carreto al final.</section>'+cutPendingUploadNotice(cut)+pdfDocumentCard(c,true);
   var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
     '<fieldset><legend>Datos del corte</legend><div class="cut-grid">'+
       '<label class="field"><span>Tipo de pedido *</span><select class="select" name="tipoPedido" '+(started||finished?'disabled':'')+'><option value="VENTAS" '+(cut.tipoPedido!=="ALUMBRADO"?'selected':'')+'>Ventas</option><option value="ALUMBRADO" '+(cut.tipoPedido==="ALUMBRADO"?'selected':'')+'>Alumbrado</option></select></label>'+
@@ -4955,7 +4965,7 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-1">'+
       '<label class="field"><span>Foto del carreto rotulado obligatoria para registrar</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+(cut.carretoRotuladoUrl?'Foto del carreto rotulado cargada: '+fmtDate(cut.carretoRotuladoAt)+(cut.carretoRotuladoUrl?' · Drive OK':''):(cut.carretoRotuladoPendingUpload?'Foto del carreto tomada. Pendiente subir a Drive; el flujo no se bloquea.':'Cuando finalice el corte, tome una sola foto del carreto rotulado y pulse Registrar corte.'))+'</small></label>'+ 
-    '</div><div class="top-actions"><button type="button" class="btn btn-success" data-cut-action="noCutNeeded" '+(finished?'disabled':'')+'>No necesita corte</button><button type="button" class="btn btn-success" data-cut-action="completeMeasure" '+(finished?'disabled':'')+'>Medida completa</button><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · módulo completo",info+form));
   function refreshPreview(){
@@ -4972,6 +4982,118 @@ function openCutModule(id,cutId){
     window.__cutTimerInterval=setInterval(function(){var t=fmt(cutElapsedMs(cut));var a=qs("#cutLiveTimer"),b=qs("#cutTimerDisplay");if(a)a.textContent=t;if(b)b.textContent=t;},1000);
   }
   qsa("[data-cut-action]").forEach(function(btn){btn.onclick=function(){handleCutAction(c,cut,btn.getAttribute("data-cut-action"));};});
+}
+function syncCutSourceLineToAlistamiento(c,cut,mode){
+  try{
+    if(!c || !cut || !cut.sourceLineId)return;
+    (c.orderItems||[]).forEach(function(it){
+      if(it && it.id===cut.sourceLineId){
+        it.estado="PENDIENTE_ALISTAMIENTO";
+        it.requiereCorte=false;
+        it.cutRequestId=cut.id||it.cutRequestId||"";
+        it.cutResolutionMode=mode;
+        it.cutResolvedAt=now();
+        it.cutResolvedByName=state.user?state.user.name:"";
+        if(mode==="NO_NECESITA_CORTE"){
+          it.noCortar=true;
+          it.noNecesitaCorte=true;
+          it.medidaCompleta=false;
+          it.decisionRecepcion=it.decisionRecepcion||"NO_NECESITA_CORTE";
+          it.estadoCorte="NO_NECESITA_CORTE";
+        }else{
+          it.noCortar=false;
+          it.noNecesitaCorte=false;
+          it.medidaCompleta=true;
+          it.decisionCorte="MEDIDA_COMPLETA";
+          it.estadoCorte="MEDIDA_COMPLETA";
+        }
+      }
+    });
+  }catch(e){}
+}
+function finishCutWithoutPhysicalProcess(c,cut,mode){
+  var isNoCut=mode==="NO_NECESITA_CORTE";
+  var doneAt=now();
+  cut.status="FINALIZADO";
+  cut.resolutionMode=mode;
+  cut.noCutNeeded=!!isNoCut;
+  cut.noNecesitaCorte=!!isNoCut;
+  cut.measureComplete=!isNoCut;
+  cut.medidaCompleta=!isNoCut;
+  cut.completedAt=doneAt;
+  cut.finishedAt=doneAt;
+  cut.registeredAt=doneAt;
+  cut.finishedByName=state.user.name;
+  cut.registeredBy=state.user.uid;
+  cut.registeredByName=state.user.name;
+  cut.startedAt=null;
+  cut.durationMs=0;
+  cut.durationText="00:00:00";
+  cut.horaInicio=cut.horaInicio||new Date().toTimeString().slice(0,8);
+  cut.horaFin=new Date().toTimeString().slice(0,8);
+  cut.fechaCorte=cut.fechaCorte||new Date().toISOString().slice(0,10);
+  cut.metrajeFinal=cut.metrajeFinal||cut.metrosSolicitados||"";
+  if(!cut.disponibleAntes)cut.disponibleAntes=cut.metrosSolicitados||cut.metrajeFinal||"";
+  cut.remanenteReal=isNoCut?"":cutNormalizeDecimal(Math.max(0,cutParseDecimal(cut.disponibleAntes||0)-cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados||0)));
+  cut.corteUniforme=true;
+  cut.tramoRotulado=true;
+  cut.evidenciaRegistro=true;
+  if(isNoCut){
+    cut.noCutNeededAt=doneAt;
+    cut.noCutNeededBy=state.user.uid;
+    cut.noCutNeededByName=state.user.name;
+    cut.siesaExportStatus="NO_APLICA_NO_NECESITA_CORTE";
+    cut.siesaBatchId="NO_NECESITA_CORTE";
+    cut.siesaExportedAt=doneAt;
+    cut.siesaExportedByName=state.user.name;
+  }else{
+    cut.measureCompleteAt=doneAt;
+    cut.measureCompleteBy=state.user.uid;
+    cut.measureCompleteByName=state.user.name;
+    cut.siesaExportStatus="NO_APLICA_MEDIDA_COMPLETA";
+    cut.siesaBatchId="MEDIDA_COMPLETA";
+    cut.siesaExportedAt=doneAt;
+    cut.siesaExportedByName=state.user.name;
+  }
+  syncCutSourceLineToAlistamiento(c,cut,mode);
+  refreshCutStats(c);
+  var pending=(c.cutRequests||[]).filter(function(x){return !cutIsOperationallyDone(x) && x.id!==cut.id;});
+  c.cutReturnAlerts=c.cutReturnAlerts||[];
+  c.cutReturnAlerts.push({
+    id:uid("CRA"),
+    cutId:cut.id,
+    cutCode:cut.code||cut.id,
+    reference:cut.referencia||cut.descripcion||(isNoCut?"No necesita corte":"Medida completa"),
+    meters:cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||""),
+    returnedAt:doneAt,
+    returnedBy:state.user.name,
+    status:"DISPONIBLE_PARA_EMPALETAR",
+    detail:isNoCut?"No necesita corte: línea liberada como carreto completo / sin intervención física de Corte. Alistamiento puede continuar.":"Medida completa: Corte encontró carreto exacto con la medida solicitada. Alistamiento puede continuar."
+  });
+  if(c.cutReturnAlerts.length>25)c.cutReturnAlerts=c.cutReturnAlerts.slice(-25);
+  var event={
+    type:isNoCut?"CUT_NO_NEEDED":"CUT_MEASURE_COMPLETE",
+    detail:(isNoCut?"No necesita corte registrado: ":"Medida completa registrada: ")+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. "+(isNoCut?"La línea se libera a Alistamiento como material sin corte físico.":"Se encontró carreto exacto; no requirió cronómetro ni corte físico."),
+    targetRole:primaryOwnerRole("alistamiento"),
+    visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]
+  };
+  stopWait(c);stopActive(c);
+  procStats(c,"corte_cable").completedAt=pending.length===0?(procStats(c,"corte_cable").completedAt||doneAt):procStats(c,"corte_cable").completedAt;
+  c.currentProcess="alistamiento";
+  c.status="en_proceso";
+  c.assignedRole=primaryOwnerRole("alistamiento");
+  c.assignedName=processOwnerTitle("alistamiento");
+  c.assignedTo="";
+  c.deadStartedAt=doneAt;
+  c.activeStartedAt=doneAt;
+  c.waitStartedAt=null;
+  c.checklist=c.checklist||{};
+  processes.alistamiento.checklist.forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]="pending";});
+  if(c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]=pending.length===0?"ok":"pending";
+  if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
+  if(pending.length){event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero esta línea ya queda liberada para empaletar.";}
+  else{event.detail+=" Todos los cortes del pedido quedaron resueltos; Alistamiento debe terminar validación y enviar a Facturación.";}
+  return persistCase(c,event);
 }
 function handleCutAction(c,cut,action){
   applyCutFormValues(cut);
@@ -5013,72 +5135,16 @@ function handleCutAction(c,cut,action){
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
     return;
   }
-  if(action==="completeMeasure" || action==="noCutNeeded"){
-    var noCutNeededAction=action==="noCutNeeded";
-    var ok=confirm(noCutNeededAction?"¿Confirmar que NO necesita corte? El material pasará de inmediato a Alistamiento como carreto completo / sin corte físico.":"¿Confirmar Medida completa? Use esta opción solo cuando encontraron un carreto exacto y no se requiere cronómetro ni corte físico.");
-    if(!ok)return;
-    var completeAt=now();
-    cut.status="FINALIZADO";
-    cut.noCutNeeded=!!noCutNeededAction;
-    cut.measureComplete=!noCutNeededAction;
-    cut.medidaCompleta=!noCutNeededAction;
-    cut.measureCompleteAt=completeAt;
-    cut.measureCompleteBy=state.user.uid;
-    cut.measureCompleteByName=state.user.name;
-    cut.completedAt=completeAt;
-    cut.finishedAt=completeAt;
-    cut.registeredAt=completeAt;
-    cut.finishedByName=state.user.name;
-    cut.registeredBy=state.user.uid;
-    cut.registeredByName=state.user.name;
-    cut.durationMs=0;
-    cut.durationText="00:00:00";
-    cut.startedAt=null;
-    cut.horaInicio=cut.horaInicio||new Date().toTimeString().slice(0,8);
-    cut.horaFin=new Date().toTimeString().slice(0,8);
-    cut.fechaCorte=cut.fechaCorte||new Date().toISOString().slice(0,10);
-    cut.metrajeFinal=cut.metrajeFinal||cut.metrosSolicitados||"";
-    if(!cut.disponibleAntes)cut.disponibleAntes=cut.metrosSolicitados||cut.metrajeFinal||"";
-    cut.remanenteReal="0";
-    cut.siesaExportStatus=noCutNeededAction?"NO_APLICA_NO_NECESITA_CORTE":"NO_APLICA_MEDIDA_COMPLETA";
-    cut.siesaBatchId=noCutNeededAction?"NO_NECESITA_CORTE":"MEDIDA_COMPLETA";
-    cut.siesaExportedAt=completeAt;
-    cut.siesaExportedByName=state.user.name;
-    cut.corteUniforme=true;
-    cut.tramoRotulado=true;
-    cut.evidenciaRegistro=true;
-    refreshCutStats(c);
-    var pending=(c.cutRequests||[]).filter(function(x){return !cutIsOperationallyDone(x) && x.id!==cut.id;});
-    c.cutReturnAlerts=c.cutReturnAlerts||[];
-    c.cutReturnAlerts.push({
-      id:uid("CRA"),
-      cutId:cut.id,
-      cutCode:cut.code||cut.id,
-      reference:cut.referencia||cut.descripcion||(noCutNeededAction?"No necesita corte":"Medida completa"),
-      meters:cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||""),
-      returnedAt:completeAt,
-      returnedBy:state.user.name,
-      status:"DISPONIBLE_PARA_EMPALETAR",
-      detail:noCutNeededAction?"No necesita corte: Recepción/Corte confirmó carreto completo o material sin corte físico. Llevar a alistamiento y empaletar para facturación.":"Medida completa: se encontró carreto exacto. No requirió cronómetro ni corte físico. Llevar a alistamiento y empaletar para facturación."
-    });
-    if(c.cutReturnAlerts.length>25)c.cutReturnAlerts=c.cutReturnAlerts.slice(-25);
-    var event={type:noCutNeededAction?"CUT_NO_NEEDED":"CUT_MEASURE_COMPLETE",detail:(noCutNeededAction?"No necesita corte registrado: ":"Medida completa registrada: ")+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. "+(noCutNeededAction?"El material continúa directo a Alistamiento como carreto completo / sin corte físico.":"Se encontró carreto exacto; no requirió cronómetro ni corte físico. Alistamiento debe continuar el proceso normal."),targetRole:primaryOwnerRole("alistamiento"),visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]};
-    stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=pending.length===0?(procStats(c,"corte_cable").completedAt||completeAt):procStats(c,"corte_cable").completedAt;
-    c.currentProcess="alistamiento";
-    c.status="en_proceso";
-    c.assignedRole=primaryOwnerRole("alistamiento");
-    c.assignedName=processOwnerTitle("alistamiento");
-    c.assignedTo="";
-    c.deadStartedAt=completeAt;
-    c.activeStartedAt=completeAt;
-    c.waitStartedAt=null;
-    c.checklist=c.checklist||{};
-    processes.alistamiento.checklist.forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]="pending";});
-    if(c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]=pending.length===0?"ok":"pending";
-    if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
-    if(pending.length){event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero esta línea ya queda liberada para empaletar.";}
-    else{event.detail+=" Todos los cortes del pedido quedaron registrados; Alistamiento debe terminar validación y enviar a Facturación.";}
-    persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+  if(action==="noCutNeeded"){
+    var okNoCut=confirm("¿Confirmar que NO necesita corte? Use esta opción cuando la línea no debía cortarse o se entrega completa sin intervención de Corte. Se enviará a Alistamiento y NO quedará pendiente SIESA.");
+    if(!okNoCut)return;
+    finishCutWithoutPhysicalProcess(c,cut,"NO_NECESITA_CORTE").then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
+    return;
+  }
+  if(action==="completeMeasure"){
+    var okMeasure=confirm("¿Confirmar Medida completa? Use esta opción solo cuando el pedido sí llegó a Corte, pero encontraron un carreto exacto con la medida solicitada. Se enviará a Alistamiento y NO quedará pendiente SIESA.");
+    if(!okMeasure)return;
+    finishCutWithoutPhysicalProcess(c,cut,"MEDIDA_COMPLETA").then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
     return;
   }
   if(action==="retryCutUploads"){
