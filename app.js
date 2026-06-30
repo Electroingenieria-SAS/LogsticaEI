@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v120_superadmin_vsm_admin_fix";
+var storageKey = "ei_trazabilidad_v121_superadmin_vsm_excel_estable";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -401,12 +401,24 @@ function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Si
 function isAdminRoleValue(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="superadministrador";}
 function isPrivilegedKpiRole(r){var nr=normalizeRole(r);return nr==="admin"||nr==="super_admin"||nr==="gerencia"||nr==="jefe_logistica";}
 function isSuperAdminRoleValue(r){return normalizeRole(r)==="super_admin";}
-function isKnownSuperAdminUser(u){
+function knownSuperAdminIdentityText(u){
+  var parts=[];
+  function add(v){if(v!==undefined&&v!==null&&v!=="")parts.push(String(v));}
   u=u||{};
-  var raw=stripAccents([u.uid,u.id,u.email,u.name,u.displayName,u.handle,u.username].map(function(x){return String(x||"");}).join(" ")).toLowerCase();
-  return raw.indexOf("juanespereztobon.1204@gmail.com")>=0 || raw.indexOf("juan esteban perez")>=0 || raw.indexOf("juan esteban pérez")>=0 || raw.indexOf("juanespereztobon")>=0;
+  [u.uid,u.id,u.userId,u.authUid,u.profileUid,u.docUid,u.email,u.name,u.displayName,u.handle,u.username,u.rawRole,u.role].forEach(add);
+  if(Array.isArray(u.uidAliases))u.uidAliases.forEach(add);
+  try{if(auth&&auth.currentUser){[auth.currentUser.uid,auth.currentUser.email,auth.currentUser.displayName].forEach(add);}}catch(e){}
+  try{
+    var cached=sessionStorage.getItem(storageKey+"_session")||localStorage.getItem(storageKey+"_session")||"";
+    if(cached){var cu=JSON.parse(cached);[cu.uid,cu.id,cu.email,cu.name,cu.displayName,cu.role,cu.rawRole].forEach(add);}
+  }catch(e){}
+  return stripAccents(parts.join(" ")).toLowerCase();
 }
-function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)));}
+function isKnownSuperAdminUser(u){
+  var raw=knownSuperAdminIdentityText(u);
+  return raw.indexOf("juanespereztobon.1204@gmail.com")>=0 || raw.indexOf("juanespereztobon")>=0 || raw.indexOf("juan esteban perez")>=0 || raw.indexOf("juan e perez")>=0 || raw.indexOf("juan perez")>=0;
+}
+function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser)));}
 function currentUserIsAdminOrSuper(){return !!(state.user && (isAdminRoleValue(state.user.role)||currentUserIsSuperAdmin()));}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function legacyProcessTarget(p){
@@ -452,6 +464,7 @@ function migrateLegacyCaseInMemory(c, reason){
 function processOwnerRoles(p){return processes[p] ? uniqueArray(processes[p].ownerRoles||[]) : [];}
 function activeProcessKeys(){return Object.keys(processes).filter(function(k){return !processes[k].hidden;});}
 function canAccessProcess(role,p){
+  if(currentUserIsSuperAdmin&&currentUserIsSuperAdmin())return true;
   if(isAdminRoleValue(role))return true;
   var nr=normalizeRole(role);
   return processOwnerRoles(p).map(normalizeRole).indexOf(nr)>=0;
@@ -493,6 +506,7 @@ function applyProfileFallbackFromAuth(fbUser, err){
     cached.uid=String(cached.uid||fbUser.uid||"");
     cached.email=String(cached.email||fbUser.email||"");
     cached.name=String(cached.name||cached.displayName||cached.email||"Usuario");
+    if(isKnownSuperAdminUser(cached)||isKnownSuperAdminUser(fbUser)){cached.role="super_admin";cached.rawRole=cached.rawRole||"super_admin";}
     cached.uidAliases=uniqueArray(userIdentityAliases(cached).concat([fbUser.uid,fbUser.email,cached.name,cached.email]).map(function(x){return String(x||"").trim();}).filter(Boolean));
     state.user=cached;
     sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
@@ -790,7 +804,7 @@ function canAccessProjectsModule(){return state.user && (isProjectsRole() || cur
 function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || currentUserIsAdminOrSuper());}
 function canDeleteReceptionGoods(){return state.user && currentUserIsSuperAdmin();}
 function canAccessReportsModule(){return !!state.user;}
-function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
+function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return currentUserIsAdminOrSuper()||isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
 function canCommentReports(){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion";}
 function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
 
@@ -828,7 +842,7 @@ function filterReportsForCurrentUser(list){
 function visibleReports(){
   return filterReportsForCurrentUser(state.reports||[]);
 }
-function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return isSuperAdminRoleValue(r)||r==="lider_recepcion";}
+function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return currentUserIsSuperAdmin()||isSuperAdminRoleValue(r)||r==="lider_recepcion";}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
 function projectUploadDayText(){return isProjectUploadDay()?"Habilitado hoy":"Solo se habilita los lunes y jueves";}
 function canSeeKpis(){return state.user && (isPrivilegedKpiRole(state.user.role)||currentUserIsSuperAdmin());}
@@ -2231,7 +2245,7 @@ function statusChip(st){
 function routes(){
   if(!state.user)return{main:[],processes:[]};
   var r=normalizeRole(state.user.role);
-  if(currentUserIsAdminOrSuper())return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
+  if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="auxiliar_corte")return{main:["corte_cable","reports"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","reports"],processes:[]};
@@ -2267,7 +2281,7 @@ function mobileItems(){
 
 function mobileRouteAllowed(route){
   var r=state.user?normalizeRole(state.user.role):"";
-  if(currentUserIsAdminOrSuper())return true;
+  if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return true;
   var always=["dashboard","cases","requirements","approvals"];
   if(always.indexOf(route)>=0)return true;
   if(route==="create"||route==="sales_reports")return r==="ventas"||isAdminRoleValue(r);
@@ -2323,11 +2337,30 @@ function injectExecutiveMinimalCss(){
   document.head.appendChild(st);
 }
 
+function normalizeRouteKeyForNavigation(r){
+  r=String(r||"").trim();
+  if(r==="vsm"||r==="kpis"||r==="indicadores")return "indicators";
+  if(r==="administracion"||r==="administrador"||r==="admim")return "admin";
+  return r;
+}
+function openRouteSafely(route){
+  route=normalizeRouteKeyForNavigation(route);
+  if((route==="indicators"||route==="admin"||route==="users") && currentUserIsSuperAdmin()){
+    if(state.user){state.user.role="super_admin";state.user.rawRole=state.user.rawRole||"super_admin";try{sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));}catch(e){}}
+  }
+  state.route=route;
+  state.detailId=null;
+  state.__forceRenderOnce=true;
+  closeDrawer();
+  closeMobileMenu();
+  try{render();}
+  catch(e){showError("Error al abrir el módulo "+route+": "+((e&&e.message)||e));}
+}
 function layout(content){
   injectExecutiveMinimalCss();
   var rs=routes();
   appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
-  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();state.route=b.getAttribute("data-route");state.detailId=null;state.__forceRenderOnce=true;closeDrawer();closeMobileMenu();try{render();}catch(e){showError("Error al abrir el módulo "+state.route+": "+(e&&e.message?e.message:e));}};});
+  qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
 
@@ -2348,6 +2381,7 @@ function showLoading(msg){
 
 function fallbackRoleFromEmail(email){
   var e=String(email||"").toLowerCase();
+  if(e.indexOf("juanespereztobon")>=0 || e.indexOf("juanespereztobon.1204@gmail.com")>=0)return "super_admin";
   if(e.indexOf("caja")>=0 || e.indexOf("cartera")>=0)return "caja";
   if(e.indexOf("corte")>=0)return "auxiliar_corte";
   if(e.indexOf("proyecto")>=0)return "proyectos";
@@ -2361,6 +2395,7 @@ function authNameFromEmail(email){
 }
 function temporaryProfileFromAuth(fbUser,reason){
   var roleGuess=fallbackRoleFromEmail(fbUser&&fbUser.email);
+  if(isKnownSuperAdminUser(fbUser))roleGuess="super_admin";
   state.user={
     uid:(fbUser&&fbUser.uid)||"",
     id:(fbUser&&fbUser.uid)||"",
@@ -2412,6 +2447,7 @@ function applyProfileFromDoc(fbUser,doc){
   if(p.isActive===false)throw new Error("Usuario inactivo en Firestore.");
   var normalizedRole=normalizeRole(p.role||"coordinador_logistico");
   var aliases=uniqueArray([fbUser.uid,doc.id,p.uid,p.id,p.userId,p.authUid,p.email,fbUser.email,p.name,p.displayName].map(function(x){return String(x||"").trim();}).filter(Boolean));
+  if(isKnownSuperAdminUser({uid:fbUser.uid,id:doc.id,email:fbUser.email||p.email,name:p.name||p.displayName,uidAliases:aliases,role:p.role}))normalizedRole="super_admin";
   state.user={uid:fbUser.uid,id:doc.id,profileUid:p.uid||p.id||"",email:fbUser.email||p.email||"",name:p.name||p.email||fbUser.email||"Usuario",role:normalizedRole,rawRole:p.role||normalizedRole,uidAliases:aliases};
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   state.route=defaultRoute(state.user.role);
@@ -5881,6 +5917,37 @@ function vsmSummary(data){
   return {data:data,closed:closed,allClosed:allClosed,open:open,leadTotal:leadTotal,leadAvg:avgMs(leadSum,closed.length),va:va,wait:wait,dead:dead,nva:nva,vaPct:pct(va,leadTotal),waitPct:pct(wait,leadTotal),wip:open.length,fpy:pct(correctFirst,closed.length),reworkPct:pct(rework,allClosed.length||data.length),bad:bad,checks:checks,badPct:pct(bad,checks),cutTotal:cutTotal,cutDone:cutDoneN,cutPct:pct(cutDoneN,cutTotal),handoffs:handoffs,handoffAvg:closed.length?Number((handoffs/closed.length).toFixed(1)):0,throughput:Number((closed.length/periodDays).toFixed(2)),slaPct:pct(slaInTime,allClosed.length),overdue:overdue,reqPct:pct(reqCases,data.length),approvalAvg:avgMs(approvals.reduce(function(s,x){return s+x;},0),approvals.length),cancelPct:pct(cancelled,data.length),availabilityPct:pct(avail,data.length),accuracyPct:pct(accurate,data.length),bottleneck:bottleneck,rows:rows};
 }
 function escapeExcel(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function excelText(v){return escapeExcel(String(v==null?"":v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g," "));}
+function safeExcelBuild(label,fn,fallbackCols){
+  try{return fn()||"";}
+  catch(e){
+    console.warn("Excel: sección omitida",label,e);
+    var cols=Number(fallbackCols||1);
+    return '<tr><td colspan="'+cols+'">Sección omitida por dato irregular en '+escapeExcel(label)+': '+escapeExcel((e&&e.message)||e||"Error")+'</td></tr>';
+  }
+}
+function safeExcelMapJoin(list,label,fn,fallbackCols){
+  var out=[];(list||[]).forEach(function(item,i){out.push(safeExcelBuild(label+" #"+(i+1),function(){return fn(item,i);},fallbackCols));});return out.join("");
+}
+function downloadHtmlExcelFile(fileName,html){
+  try{
+    if(!html || html.length<50)throw new Error("El informe quedó vacío.");
+    var blob=new Blob(["\ufeff"+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+    if(window.navigator&&window.navigator.msSaveOrOpenBlob){window.navigator.msSaveOrOpenBlob(blob,fileName);return true;}
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');a.href=url;a.download=fileName;document.body.appendChild(a);a.click();
+    setTimeout(function(){try{URL.revokeObjectURL(url);a.remove();}catch(e){}},1500);
+    return true;
+  }catch(e){
+    console.error("No se pudo descargar Excel",e);
+    showError("No se pudo generar el Excel: "+((e&&e.message)||e)+". Intente aplicar filtros de fecha/proceso y vuelva a exportar.");
+    return false;
+  }
+}
+function safeExportExcel(label,fn){
+  try{showLiveToast("Generando Excel",label+" · espere unos segundos.",false);}catch(e){}
+  setTimeout(function(){try{fn();}catch(e){console.error("Exportación Excel falló",label,e);showError("La exportación de "+label+" falló sin tumbar la app: "+((e&&e.message)||e));}},30);
+}
 function excelTimeValue(v){
   if(!v)return NaN;
   if(v && typeof v.toDate==="function"){var td=v.toDate();return td&&!isNaN(td.getTime())?td.getTime():NaN;}
@@ -6188,16 +6255,15 @@ function downloadKpiExcel(){
     '<tr><td>Pedidos vencidos</td><td>'+s.overdue+'</td><td>Abiertos con fecha límite vencida</td></tr>'+ 
     '<tr><td>Tiempo aprobación</td><td>'+escapeExcel(fmt(s.approvalAvg))+'</td><td>Aprobación - solicitud aprobación</td></tr></table>'+ 
     '<h2>VSM por macroproceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>Muerto/NVA</th><th>Horas NVA</th><th>Total</th><th>Horas total</th><th>Promedio etapa</th><th>Requerimientos</th><th>Cortes</th><th>Cortes finalizados</th></tr>'+rows.map(function(r){return '<tr><td>'+escapeExcel(r.label)+'</td><td>'+r.count+'</td><td>'+r.wip+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+escapeExcel(fmt(r.value))+'</td><td>'+excelHours(r.value)+'</td><td>'+escapeExcel(fmt(r.avg))+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td><td>'+r.finishedCuts+'</td></tr>';}).join('')+'</table>'+ 
-    '<h2>Demora exacta por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Demora total días</th><th>VA HH:MM:SS</th><th>VA horas</th><th>% VA</th><th>Espera HH:MM:SS</th><th>Espera horas</th><th>% Espera</th><th>Requerimientos HH:MM:SS</th><th>Requerimientos horas</th><th>% Requerimientos</th><th>NVA HH:MM:SS</th><th>NVA horas</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Responsables</th><th>Detalle esperas/requerimientos</th></tr>'+caseRows.map(caseDelayExcelRow).join('')+'</table>'+ 
-    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Días total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>% VA</th><th>Tiempo espera</th><th>Horas espera</th><th>% Espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>% Requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>% NVA</th><th>Mayor demora</th><th>Proceso con mayor demora</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+caseRows.map(function(r){var c=r.c;return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(r.cerrado?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+' · '+r.mayorDemoraHoras+' h</td><td>'+escapeExcel(r.procesoMayorDemora)+' · '+r.procesoMayorDemoraHoras+' h</td><td>'+escapeExcel(r.cerrado?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
+    '<h2>Demora exacta por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor</th><th>Estado cierre</th><th>Proceso actual</th><th>Estado operativo</th><th>Inicio exacto corregido</th><th>Fin exacto / corte análisis</th><th>Tipo de fin</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Demora total días</th><th>VA HH:MM:SS</th><th>VA horas</th><th>% VA</th><th>Espera HH:MM:SS</th><th>Espera horas</th><th>% Espera</th><th>Requerimientos HH:MM:SS</th><th>Requerimientos horas</th><th>% Requerimientos</th><th>NVA HH:MM:SS</th><th>NVA horas</th><th>% NVA</th><th>Mayor tipo de demora</th><th>Horas mayor demora</th><th>Proceso con mayor demora</th><th>Horas proceso mayor</th><th>Responsables</th><th>Detalle esperas/requerimientos</th></tr>'+safeExcelMapJoin(caseRows,'Demora exacta',caseDelayExcelRow,31)+'</table>'+ 
+    '<h2>Casos · tiempo completo por pedido</h2><table><tr><th>Pedido</th><th>Orden compra</th><th>Cliente</th><th>Asesor ventas</th><th>Responsables que intervinieron</th><th>Macroproceso actual</th><th>Responsable actual</th><th>Estado</th><th>Inicio corregido</th><th>Actualizado corregido</th><th>Fin / corte del análisis</th><th>Tiempo total</th><th>Horas total</th><th>Días total</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>% VA</th><th>Tiempo espera</th><th>Horas espera</th><th>% Espera</th><th>Tiempo requerimientos</th><th>Horas requerimientos</th><th>% Requerimientos</th><th>Tiempo NVA</th><th>Horas NVA</th><th>% NVA</th><th>Mayor demora</th><th>Proceso con mayor demora</th><th>SLA</th><th># Requerimientos</th><th># Cortes</th><th>Detalle esperas y requerimientos</th></tr>'+safeExcelMapJoin(caseRows,'Casos tiempo completo',function(r){var c=r.c||{};return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(salesAdvisorName(c))+'</td><td>'+escapeExcel(caseResponsibleNames(c))+'</td><td>'+escapeExcel(processTitle(c.currentProcess))+'</td><td>'+escapeExcel(c.assignedName||'')+'</td><td>'+escapeExcel(c.status||'')+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.actualizado))+'</td><td>'+escapeExcel(r.cerrado?excelDateTime(r.fin):'Abierto · corte '+excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+r.totalHoras+'</td><td>'+r.totalDias+'</td><td>'+escapeExcel(fmt(r.va))+'</td><td>'+excelHours(r.va)+'</td><td>'+r.pctVa+'%</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+r.pctEspera+'%</td><td>'+escapeExcel(fmt(r.req))+'</td><td>'+excelHours(r.req)+'</td><td>'+r.pctReq+'%</td><td>'+escapeExcel(fmt(r.nva))+'</td><td>'+excelHours(r.nva)+'</td><td>'+r.pctNva+'%</td><td>'+escapeExcel(r.mayorDemora)+' · '+r.mayorDemoraHoras+' h</td><td>'+escapeExcel(r.procesoMayorDemora)+' · '+r.procesoMayorDemoraHoras+' h</td><td>'+escapeExcel(r.cerrado?(slaOk(c)?'A tiempo':'Fuera SLA'):(isOverdue(c)?'Vencido':'Vigente'))+'</td><td>'+escapeExcel(c.totalRequirements||((c.requirements||[]).length))+'</td><td>'+escapeExcel((c.cutRequests||[]).length)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';},32)+'</table>'+ 
     '<h2>Cronología exacta por proceso</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Inicio exacto</th><th>Final exacto</th><th>Estado</th><th>Responsable(s)</th><th>Tiempo real etapa</th><th>Horas etapa</th><th>Tiempo trabajado VA</th><th>Horas VA</th><th>Tiempo en espera</th><th>Horas espera</th><th>Tiempo muerto/NVA</th><th>Horas NVA</th><th>Espera actual desde</th><th>Handoffs</th></tr>'+timelineRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor)+'</td><td>'+escapeExcel(r.procesoNombre)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(r.estado)+'</td><td>'+escapeExcel(r.responsable)+'</td><td>'+escapeExcel(fmt(r.total))+'</td><td>'+excelHours(r.total)+'</td><td>'+escapeExcel(fmt(r.activo))+'</td><td>'+excelHours(r.activo)+'</td><td>'+escapeExcel(fmt(r.espera))+'</td><td>'+excelHours(r.espera)+'</td><td>'+escapeExcel(fmt(r.muerto))+'</td><td>'+excelHours(r.muerto)+'</td><td>'+escapeExcel(excelDateTime(r.esperaDesde))+'</td><td>'+escapeExcel(r.handoffs)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Macroproceso</th><th>Desde fecha/hora exacta</th><th>Hasta fecha/hora exacta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>'+waitRows.map(function(r){return '<tr><td>'+escapeExcel(r.pedido)+'</td><td>'+escapeExcel(r.oc)+'</td><td>'+escapeExcel(r.cliente)+'</td><td>'+escapeExcel(r.asesor||'')+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(excelDateTime(r.inicio))+'</td><td>'+escapeExcel(excelDateTime(r.fin))+'</td><td>'+escapeExcel(fmt(r.duracion))+'</td><td>'+excelHours(r.duracion)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Medición individual por usuario y proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Macroproceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>VA</th><th>Horas VA</th><th>Espera</th><th>Horas espera</th><th>NVA/Muerto</th><th>Horas NVA</th><th>Requerimientos</th><th>Cortes</th></tr>'+userRows.map(function(r){return '<tr><td>'+escapeExcel(r.user)+'</td><td>'+escapeExcel(roleTitle(r.role))+'</td><td>'+escapeExcel(r.processName)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+escapeExcel(fmt(r.active))+'</td><td>'+excelHours(r.active)+'</td><td>'+escapeExcel(fmt(r.wait))+'</td><td>'+excelHours(r.wait)+'</td><td>'+escapeExcel(fmt(r.dead))+'</td><td>'+excelHours(r.dead)+'</td><td>'+r.requirements+'</td><td>'+r.cuts+'</td></tr>';}).join('')+'</table>'+ 
     '<h2>Flujo del pedido con nombres</h2><table><tr><th>Pedido</th><th>OC</th><th>Fecha y hora exacta</th><th>Macroproceso</th><th>Usuario</th><th>Rol</th><th>Tipo</th><th>Detalle</th></tr>'+data.map(function(c){return caseTraceRows(c).map(function(r){return '<tr><td>'+escapeExcel(c.reference||c.id)+'</td><td>'+escapeExcel(purchaseOrderValue(c))+'</td><td>'+escapeExcel(excelDateTime(r.rawAt))+'</td><td>'+escapeExcel(r.proceso)+'</td><td>'+escapeExcel(r.usuario)+'</td><td>'+escapeExcel(r.rol)+'</td><td>'+escapeExcel(r.tipo)+'</td><td>'+escapeExcel(r.detalle)+'</td></tr>';}).join('');}).join('')+'</table>'+ 
     '<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Bodega/CO SIESA</th><th>Estado</th><th>Responsable</th><th>Inicio exacto</th><th>Final exacto</th><th>Duración</th><th>Horas</th><th>Cierre sin corte</th><th>Foto carreto</th><th>Lote SIESA</th></tr>'+data.map(function(c){return (c.cutRequests||[]).map(function(x){var dur=durationToMs(x.durationText||x.durationMs);return '<tr><td>'+escapeExcel(c.reference||'')+'</td><td>'+escapeExcel(c.client||'')+'</td><td>'+escapeExcel(x.code||x.id)+'</td><td>'+escapeExcel(x.referencia||'')+'</td><td>'+escapeExcel(x.metrosSolicitados||'')+'</td><td>'+escapeExcel(x.siesaBodega||'')+'</td><td>'+escapeExcel(x.status||'')+'</td><td>'+escapeExcel(x.takenByName||x.finishedByName||x.completedByName||x.responsable||'')+'</td><td>'+escapeExcel(excelDateTime(x.startedAt||x.takenAt))+'</td><td>'+escapeExcel(excelDateTime(x.finishedAt||x.completedAt||x.registeredAt))+'</td><td>'+escapeExcel(x.durationText||fmt(x.durationMs||0))+'</td><td>'+excelHours(dur)+'</td><td>'+escapeExcel(x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':(x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':'No'))+'</td><td>'+escapeExcel(x.carretoRotuladoUrl||x.fotoFinalUrl?'Sí':'No')+'</td><td>'+escapeExcel(x.siesaBatchId||'Pendiente')+'</td></tr>';}).join('');}).join('')+'</table>'+ 
     '</body></html>';
-  var blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dashboard_demora_pedidos_v113_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+  downloadHtmlExcelFile('dashboard_demora_pedidos_v121_'+new Date().toISOString().slice(0,10)+'.xls',html);
 }
 function bindKpiFilters(){
   var from=qs("#kpiFrom"),to=qs("#kpiTo"),proc=qs("#kpiProcess"),user=qs("#kpiUser");
@@ -7382,7 +7448,7 @@ function exportSalesReport(){
     '<table class="kpi" border="1" cellspacing="0" cellpadding="8"><tr><th>Total pedidos</th><th>Abiertos</th><th>Cerrados</th><th>Requerimientos</th><th>Retenidos</th><th>Parciales</th></tr><tr><td>'+summary.total+'</td><td>'+summary.abiertos+'</td><td>'+summary.cerrados+'</td><td>'+summary.requerimientos+'</td><td>'+summary.retenidos+'</td><td>'+summary.parciales+'</td></tr></table>'+
     excelSectionTable('Gráfica 1 · Pedidos por asesor',byAdvisor)+excelSectionTable('Gráfica 2 · Distribución por proceso',byProcess)+excelSectionTable('Gráfica 3 · Distribución por estado',byStatus)+
     '<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>Pedido</th><th>Orden compra</th><th>Factura</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Inicio exacto corregido</th><th>Fin exacto / corte</th><th>Demora total HH:MM:SS</th><th>Demora total horas</th><th>Horas espera</th><th>Horas requerimientos</th><th>Entrega solicitada</th><th>Entrega definida</th><th>Responsables que intervinieron</th><th>Flujo con nombres</th><th>Requerimientos</th><th>Anexos</th><th>Notas y comentarios</th><th>Cierre</th></tr></thead><tbody>'+detailRows+'</tbody></table></body></html>';
-  downloadTextFile('dashboard_ventas_demora_v113_'+new Date().toISOString().slice(0,10)+'.xls',html,'application/vnd.ms-excel;charset=utf-8');
+  downloadHtmlExcelFile('dashboard_ventas_demora_v121_'+new Date().toISOString().slice(0,10)+'.xls',html);
 }
 function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
@@ -7404,7 +7470,7 @@ function bindActions(){
     if(a==="releaseSeparationPayment")openSeparationPaymentRelease(id);
     if(a==="manageNoDelivery")openNoDeliveryManagement(id);
     if(a==="salesCaseInfo")openSalesCaseInfo(id);
-    if(a==="exportSalesReport")exportSalesReport();
+    if(a==="exportSalesReport")safeExportExcel("Ventas diaria",exportSalesReport);
     if(a==="refreshSalesReports"){state.salesLoading=true;renderSalesReports();refreshSalesCasesInBackground("manual");}
     if(a==="forceRefreshCases")forceRefreshCurrentUserCases();
     if(a==="resendPending")resendPendingItems(id);
@@ -7453,7 +7519,7 @@ function bindActions(){
     if(a==="launchCut")launchCut(id,b.getAttribute("data-cut"));
     if(a==="syncCuts")syncCutBridge(id);
     if(a==="notifyOn")requestNotifications();
-    if(a==="exportKpiExcel")downloadKpiExcel();
+    if(a==="exportKpiExcel")safeExportExcel("Dashboard VSM",downloadKpiExcel);
     if(a==="exportSiesaCuts")exportSiesaPendingCuts();
     if(a==="toggleKpiCase")toggleCaseKpi(id);
     if(a==="deleteCase")deleteCaseHard(id);
@@ -7501,8 +7567,8 @@ function render(){
     var lockReason=renderShouldStayLocked();
     if(lockReason){protectedRenderBlocked(lockReason);return;}
   }
-  if(state.route==="vsm"||state.route==="kpis"||state.route==="indicadores")state.route="indicators";
-  if(state.route==="administracion"||state.route==="administrador")state.route="admin";
+  state.route=normalizeRouteKeyForNavigation(state.route);
+  if(currentUserIsSuperAdmin() && state.user && normalizeRole(state.user.role)!=="super_admin"){state.user.role="super_admin";state.user.rawRole=state.user.rawRole||"super_admin";}
   startReminderLoop();
   if(normalizeRole(state.user.role)==="proyectos" && state.route!=="projects")state.route="projects";
   if(state.route==="corte_cable"){renderCutsQueue();return;}
