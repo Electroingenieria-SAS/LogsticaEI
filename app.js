@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v126_vsm_powerbi_real";
+var storageKey = "ei_trazabilidad_v127_vsm_kpis_productividad";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -6463,16 +6463,16 @@ function enforceSiesaExportIfNeeded(c){
 
 function renderIndicators(){
   if(!canSeeKpis()){layout(header("Indicadores","Acceso restringido.")+'<div class="empty">Los KPIs consolidados solo están disponibles para jefe logístico, gerencia y super admin. Rol detectado: '+esc(state.user?state.user.role:'sin sesión')+'</div>');return;}
-  var link='./vsm-dashboard.html?v=126';
+  var link='./vsm-dashboard.html?v=127';
   var canExportSiesa=(state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role)));
   layout(header("VSM ERP · Estudios de tiempo","Panel liviano. El tablero pesado se separó en un índice independiente para evitar que la app operativa se bloquee.",'<a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir VSM optimizado</a>'+(canExportSiesa?'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>':''))+
-    '<section class="notice success"><strong>V126:</strong> el VSM lee casos y eventos reales de Firebase y calcula lead time sin depender solo de processStats. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, lead time por usuario, VA, espera, NVA/tiempo muerto y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
+    '<section class="notice success"><strong>V127:</strong> el VSM consolida usuarios por UID/correo/nombre trazado, evita duplicados por proceso y agrega KPIs de productividad y estudio de tiempos. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, productividad por usuario consolidado, usuario por proceso, VA, espera, NVA/tiempo muerto, P50/P90, throughput y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
     '<section class="grid grid-3" style="margin-top:16px">'+
       '<article class="card kpi"><span>Modo de carga</span><strong style="font-size:1.25rem">Por lotes</strong><small>No congela la app principal.</small></article>'+ 
       '<article class="card kpi"><span>Indicadores base</span><strong style="font-size:1.25rem">VSM + LT</strong><small>Proceso, usuario, pedido, esperas y requerimientos.</small></article>'+ 
       '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V125</strong><small>Tablas separadas para informe completo.</small></article>'+ 
     '</section>'+ 
-    '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=126" target="_blank" rel="noopener">Abrir y preparar exportación</a></div></section>'+ 
+    '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="noopener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=127" target="_blank" rel="noopener">Abrir y preparar exportación</a></div></section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Fórmulas aplicadas en el tablero</h3><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Fórmula funcional</th></tr></thead><tbody>'+ 
     '<tr><td>Lead Time pedido</td><td>Fin real o corte del análisis - Inicio real del pedido</td></tr>'+ 
     '<tr><td>VA</td><td>Suma de tiempos activos registrados por proceso</td></tr>'+ 

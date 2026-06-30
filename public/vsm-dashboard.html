@@ -23,7 +23,7 @@
 <body>
   <main class="shell">
     <section class="top">
-      <div><h1>VSM ERP · Power BI operativo · tiempos reales</h1><p>Tablero independiente tipo Power BI para Lead Time, VA, espera, NVA, cuello de botella, usuarios, procesos, pedidos, cortes y requerimientos sin bloquear la app operativa.</p></div>
+      <div><h1>VSM ERP · KPIs de tiempos y productividad</h1><p>Tablero independiente tipo Power BI para Lead Time, productividad, VA, espera, NVA, cuello de botella, WIP, throughput, usuarios consolidados, procesos, pedidos, cortes y requerimientos sin bloquear la app operativa.</p></div>
       <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
     </section>
     <div id="status" class="notice ok">Inicializando tablero VSM liviano...</div>
@@ -38,17 +38,17 @@
         <label class="field"><span>Buscar</span><input class="input" id="fSearch" placeholder="Pedido, OC, cliente, asesor"></label>
         <label class="field"><span>Cantidad inicial</span><select class="select" id="fLimit"><option>300</option><option selected>600</option><option>1000</option><option>1500</option></select></label>
         <label class="field"><span>Usuario / actor</span><select class="select" id="fUser"><option value="">Todos</option></select></label>
-        <label class="field"><span>Vista</span><select class="select" id="fView"><option value="principal">Principal</option><option value="procesos">Procesos</option><option value="usuarios">Usuarios</option><option value="pedidos">Pedidos</option></select></label>
+        <label class="field"><span>Vista</span><select class="select" id="fView"><option value="principal">Principal</option><option value="procesos">Procesos</option><option value="usuarios">Productividad usuarios</option><option value="usuario_proceso">Usuario por proceso</option><option value="pedidos">Pedidos</option></select></label>
       </div>
     </section>
     <div class="loading" id="loading"><span class="spin"></span><strong>Procesando por lotes...</strong><span id="progress" class="muted"></span></div>
     <section id="summary" class="grid grid-4" style="margin-top:16px"></section>
     <section class="grid grid-2" id="quickBars" style="margin-top:16px"></section>
-    <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Fórmulas usadas</h2><table><tr><td>Lead Time</td><td>Fin real/corte - inicio real</td></tr><tr><td>VA</td><td>Suma de tiempo activo por proceso</td></tr><tr><td>Espera</td><td>Espera registrada + bloqueos/requerimientos</td></tr><tr><td>NVA</td><td>Lead Time - VA - Espera</td></tr><tr><td>Eficiencia</td><td>VA / Lead Time</td></tr></table></article></section>
+    <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Fórmulas usadas</h2><table><tr><td>Lead Time</td><td>Fin real/corte - inicio real</td></tr><tr><td>P50/P90</td><td>Percentiles de lead time para lectura de variabilidad</td></tr><tr><td>Throughput</td><td>Pedidos cerrados por día del periodo analizado</td></tr><tr><td>VA</td><td>Suma de tiempo activo por proceso</td></tr><tr><td>Espera</td><td>Espera registrada + bloqueos/requerimientos</td></tr><tr><td>NVA</td><td>Lead Time - VA - Espera</td></tr><tr><td>Eficiencia</td><td>VA / Lead Time</td></tr><tr><td>Usuario</td><td>Consolidado por UID/correo/nombre normalizado; no se crean actores no trazados</td></tr></table></article></section>
     <div class="section-title"><h2 id="tableTitle">Resultados VSM</h2><span class="muted" id="rowCount"></span></div>
     <section class="table-wrap"><table id="mainTable"></table></section>
-    <p class="footer">V126 · Tablero VSM independiente. La operación de pedidos queda aislada para evitar bloqueos de la PWA principal.</p>
+    <p class="footer">V127 · Tablero VSM independiente con usuarios consolidados y KPIs de productividad. La operación de pedidos queda aislada para evitar bloqueos de la PWA principal.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=126"></script>
+  <script src="./vsm-dashboard.js?v=127"></script>
 </body>
 </html>
