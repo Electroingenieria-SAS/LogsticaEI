@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v114_carreto_completo_qa";
+var storageKey = "ei_trazabilidad_v115_separacion_pago_logistica";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -633,11 +633,27 @@ function sameSalesOwner(c){
   });
 }
 function separationActive(c){return !!(c && c.separationRequest && c.separationRequest.active===true);}
+function separationPaymentPending(c){
+  return !!(c && c.separationRequest && c.separationRequest.active===true && !c.separationRequest.paymentConfirmedAt && c.separationRequest.status!=="PAGO_CONFIRMADO_LOGISTICA" && c.separationRequest.status!=="NORMALIZADA_POR_CAJA");
+}
 function separationNeedsCashNormalization(c){
-  return !!(c && c.separationRequest && c.separationRequest.active===true && c.separationRequest.status!=="NORMALIZADA_POR_CAJA");
+  return separationPaymentPending(c);
 }
 function separationCaseWasNormalized(c){
-  return !!(c && c.separationRequest && c.separationRequest.status==="NORMALIZADA_POR_CAJA");
+  return !!(c && c.separationRequest && (c.separationRequest.status==="NORMALIZADA_POR_CAJA" || c.separationRequest.status==="PAGO_CONFIRMADO_LOGISTICA"));
+}
+function separationRetentionMs(c){
+  if(!c || !c.separationRequest)return 0;
+  var s=c.separationRequest;
+  var start=s.waitingPaymentStartedAt||s.createdAt||((c.salesHold||{}).createdAt)||c.createdAt;
+  var end=s.paymentConfirmedAt||s.releasedAt||s.normalizedAt||now();
+  var a=start?new Date(start).getTime():0, b=end?new Date(end).getTime():0;
+  return (a&&b&&b>=a)?(b-a):0;
+}
+function canReleaseSeparationPayment(c){
+  if(!state.user || !separationPaymentPending(c))return false;
+  var r=normalizeRole(state.user.role);
+  return isAdminRoleValue(r) || canSeeAll() || r==="jefe_logistica" || r==="gerencia" || r==="coordinador_logistico" || r==="lider_logistico" || r==="lider_logistica" || r==="aux_logistica" || r==="caja" || r==="cartera" || canOperateCurrentProcess(c);
 }
 function canSalesRequestSeparation(c){
   if(!isSalesRole() || !c || c.closedAt || separationActive(c))return false;
@@ -648,11 +664,12 @@ function canSalesRequestSeparation(c){
 function separationNoticePanel(c){
   if(!separationActive(c))return "";
   var s=c.separationRequest||{};
-  var inFacturacion=c.currentProcess==="facturacion";
-  var msg=inFacturacion
-    ? "El pedido ya fue separado y alistado. <b>No se puede facturar ni enviar a despacho</b> hasta que Caja/Cartera confirme pago, normalización o decisión de cartera."
-    : "Este pedido fue enviado por Ventas únicamente para separar mercancía mientras se confirma el pago. <b>Sí puede avanzar por recepción y alistamiento</b>, pero no puede facturarse ni despacharse hasta que Caja/Cartera emita pago o normalización.";
-  return '<section class="notice danger separation-notice" style="margin-top:16px"><strong>SOLO SEPARACIÓN DE PEDIDO</strong><br>'+msg+'<br><small>Solicita: '+esc(s.createdByName||'Ventas')+' · '+esc(fmtDate(s.createdAt))+(s.detail?' · '+esc(s.detail):'')+'</small></section>';
+  var pending=separationPaymentPending(c);
+  var msg=pending
+    ? "<b>Pago pendiente:</b> este pedido fue solicitado como separación. Logística puede continuar recepción y alistamiento, pero antes de facturar o despachar debe registrar que el pago ya fue confirmado."
+    : "<b>Pago confirmado:</b> la separación fue liberada y el pedido puede continuar el flujo normal.";
+  var retention=separationRetentionMs(c);
+  return '<section class="notice danger separation-notice" style="margin-top:16px"><strong>SEPARACIÓN DE PEDIDO · CONTROL DE PAGO</strong><br>'+msg+'<br><small>Solicita: '+esc(s.createdByName||'Ventas')+' · Inicio espera pago: '+esc(fmtDate(s.waitingPaymentStartedAt||s.createdAt))+(retention?' · Tiempo retenido: '+esc(fmt(retention)):'')+(s.detail?' · Nota: '+esc(s.detail):'')+'</small></section>';
 }
 function closeSeparationIfCajaReleases(c,next){
   if(!separationActive(c))return;
@@ -660,10 +677,12 @@ function closeSeparationIfCajaReleases(c,next){
     c.separationRequest.active=false;
     c.separationRequest.status=next==="facturacion"?"NORMALIZADA_POR_CAJA":"LIBERADA_POR_CAJA";
     c.separationRequest.releasedAt=now();
+    c.separationRequest.paymentConfirmedAt=c.separationRequest.paymentConfirmedAt||c.separationRequest.releasedAt;
     c.separationRequest.releasedByName=(state.user&&state.user.name)||"Caja";
     c.separationRequest.normalizedAt=c.separationRequest.releasedAt;
     c.separationRequest.normalizedByName=c.separationRequest.releasedByName;
-    addStateHistory(c,"handoff",(next==="facturacion"?"Caja/Cartera normalizó pago y devuelve directo a Facturación":"Caja liberó la solicitud de separación y el pedido continúa a logística"),{tipo_estado:"handoff",toProcess:next});
+    c.separationRequest.retentionMs=separationRetentionMs(c);
+    addStateHistory(c,"handoff",(next==="facturacion"?"Caja/Cartera normalizó pago y devuelve directo a Facturación":"Caja liberó la solicitud de separación y el pedido continúa a logística"),{tipo_estado:"handoff",toProcess:next,retentionMs:c.separationRequest.retentionMs});
   }
 }
 
@@ -3830,6 +3849,7 @@ function renderDetail(id){
   var def=processes[c.currentProcess]||processes.recepcion_pedidos, actions="", canOperate=canOperateCurrentProcess(c);
   if(!c.closedAt){
     if(canSalesRequestSeparation(c))actions+='<button class="btn btn-gold" data-action="salesSeparation" data-id="'+c.id+'">Solicitud de separación de pedido</button>';
+    if(canReleaseSeparationPayment(c) && c.currentProcess!=="facturacion")actions+='<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar separación</button>';
     if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
@@ -3846,7 +3866,7 @@ function renderDetail(id){
     if(c.status==="pendiente_gerencia"&&normalizeRole(state.user.role)==="gerencia")actions+='<button class="btn btn-success" data-action="approve" data-id="'+c.id+'">Aprobar</button><button class="btn btn-danger" data-action="reject" data-id="'+c.id+'">Rechazar</button>';
     if(c.status==="en_proceso"&&canOperate){
       if(c.currentProcess==="facturacion"){
-        if(separationNeedsCashNormalization(c))actions+='<button class="btn btn-gold" data-action="sendSeparationCash" data-id="'+c.id+'">Enviar a Caja/Cartera para normalizar pago</button>';
+        if(separationNeedsCashNormalization(c))actions+='<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar facturación</button>';
         else actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
       }
       else if(c.currentProcess==="caja"){
@@ -3878,7 +3898,7 @@ function compactDetailActions(actions){
 }
 
 function nextActionButtons(c){
-  if(separationActive(c) && c.currentProcess==="facturacion")return '<button class="btn btn-gold" data-action="sendSeparationCash" data-id="'+c.id+'">Enviar a Caja/Cartera para normalizar pago</button>';
+  if(separationNeedsCashNormalization(c) && c.currentProcess==="facturacion")return '<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar facturación</button>';
   var next=(processes[c.currentProcess]||{}).next||[];
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){
     var disabled="", label="Enviar a "+processTitle(n), cls="btn btn-primary";
@@ -3890,7 +3910,7 @@ function nextActionButtons(c){
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Separación / pago",c.separationRequest?((c.separationRequest.status||"")+(c.separationRequest.active?" · pago pendiente":" · liberado")):""],["Inicio espera pago",c.separationRequest?fmtDate(c.separationRequest.waitingPaymentStartedAt||c.separationRequest.createdAt):""],["Pago confirmado",c.separationRequest&&c.separationRequest.paymentConfirmedAt?fmtDate(c.separationRequest.paymentConfirmedAt):""],["Tiempo retenido por pago",c.separationRequest?fmt(separationRetentionMs(c)):""],["Detalle pago/separación",c.separationRequest?((c.separationRequest.paymentConfirmationDetail||c.separationRequest.detail)||""):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -6184,7 +6204,7 @@ function assignToProcess(c,next,detail,assignmentUsers){
 function openAlistamientoAssignment(id){
   var c=caseById(id);if(!c)return;
   normalizeReceptionDocumentFlow(c);
-  if(c.currentProcess==="recepcion_pedidos" && separationActive(c)){addStateHistory(c,"separacion","Recepción continúa a alistamiento bajo aviso de SOLO SEPARACIÓN; no se podrá facturar hasta normalización de Caja/Cartera.",{tipo_estado:"separacion",toProcess:"alistamiento"});}
+  if(c.currentProcess==="recepcion_pedidos" && separationActive(c)){addStateHistory(c,"pago_pendiente","Recepción continúa a alistamiento con anotación de pago pendiente. Logística liberará cuando se confirme pago.",{tipo_estado:"pago_pendiente",toProcess:"alistamiento"});}
   if(c.currentProcess==="recepcion_pedidos" && !canAssignAlistamientoFromReception(c)){alert("Este usuario no tiene permiso para enviar Recepción a Alistamiento ni asignar responsables.");return;}
   if(c.currentProcess==="recepcion_pedidos" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: falta "+(receptionPdfMissingReason(c)||"completar la validación documental")+". La validación ahora solo bloquea si realmente faltan líneas, PDF leído/cargado o compromiso; no bloquea por nombre de campo Drive.");return;}
   if(c.currentProcess!=="recepcion_pedidos" && c.currentProcess!=="alistamiento"){alert("La asignación individual solo aplica al paso de Alistamiento.");return;}
@@ -6426,26 +6446,53 @@ function openCashInvoiceBox(id){
     }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(submitBtn){submitBtn.disabled=false;submitBtn.textContent="Reintentar subir factura";}if(statusEl)statusEl.textContent="No fue posible cargar la factura. La app no quedó bloqueada; puede reintentar desde este mismo formulario. Detalle: "+(err.message||err);showError(err.message||err);});
   };
 }
-function sendSeparationToCash(id){
+function openSeparationPaymentRelease(id){
   var c=caseById(id);if(!c)return;
-  if(!separationNeedsCashNormalization(c)){alert("Este pedido no tiene una separación activa pendiente de Caja/Cartera.");return;}
-  if(c.currentProcess!=="facturacion"){alert("La normalización por Caja/Cartera se solicita cuando el pedido ya llegó a Facturación.");return;}
-  c.separationRequest=c.separationRequest||{};
-  c.separationRequest.status="PENDIENTE_NORMALIZACION_CAJA";
-  c.separationRequest.sentToCashAt=now();
-  c.separationRequest.sentToCashByName=(state.user&&state.user.name)||"Facturación";
-  c.salesHold=c.salesHold||{history:[]};
-  c.salesHold.status="SEPARACION_PENDIENTE_NORMALIZACION_CAJA";
-  c.salesHold.reason=c.salesHold.reason||"Pedido de solo separación pendiente de pago/normalización antes de facturar";
-  c.salesHold.history=c.salesHold.history||[];
-  c.salesHold.history.push({at:now(),by:(state.user&&state.user.name)||"Facturación",action:"Enviado a Caja/Cartera para normalización",detail:"No facturar ni despachar hasta que Caja/Cartera confirme pago, normalización o decisión."});
-  assignToProcess(c,"caja","Pedido de solo separación enviado a Caja/Cartera. Debe confirmar pago, normalización o si sigue en mora; al resolver vuelve directo a Facturación.").then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  if(!separationPaymentPending(c)){alert("Este pedido no tiene una separación activa pendiente de pago.");return;}
+  if(!canReleaseSeparationPayment(c)){alert("Solo Logística, Caja/Cartera, Jefatura o Super Admin pueden registrar el pago de esta separación.");return;}
+  var s=c.separationRequest||{};
+  drawer(modal('Registrar pago de separación','<form class="form" id="separationPayForm"><div class="notice danger"><strong>Pedido en separación:</strong> registre aquí cuando Logística/Caja confirme que el pago ya fue realizado o normalizado. Esto libera el bloqueo de facturación y deja trazado cuánto tiempo duró retenido por pago.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>OC: '+esc(c.purchaseOrder||'—')+' · Cliente: '+esc(c.client||'—')+'</p><p><b>Nota de Ventas:</b> '+esc(s.detail||((c.salesHold||{}).reason)||'Pago pendiente por confirmar.')+'</p><p><b>Inicio espera pago:</b> '+esc(fmtDate(s.waitingPaymentStartedAt||s.createdAt))+' · <b>Tiempo retenido actual:</b> '+esc(fmt(separationRetentionMs(c)))+'</p></section><label class="field"><span>Confirmación de pago / normalización *</span><textarea class="textarea" name="detail" required placeholder="Ej.: Pago confirmado por cartera, recaudo validado, autorización de despacho o normalización realizada."></textarea></label><button class="btn btn-primary" type="submit">Registrar pago y liberar</button></form>'));
+  qs('#separationPayForm').onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target), detail=String(fd.get('detail')||'').trim();
+    if(!detail){alert('Registre el detalle de la confirmación del pago.');return;}
+    var paidAt=now();
+    c.separationRequest=c.separationRequest||{};
+    c.separationRequest.active=false;
+    c.separationRequest.status='PAGO_CONFIRMADO_LOGISTICA';
+    c.separationRequest.paymentConfirmedAt=paidAt;
+    c.separationRequest.paymentConfirmedBy=state.user.uid;
+    c.separationRequest.paymentConfirmedByName=state.user.name;
+    c.separationRequest.paymentConfirmationDetail=detail;
+    c.separationRequest.releasedAt=paidAt;
+    c.separationRequest.releasedByName=state.user.name;
+    c.separationRequest.retentionMs=separationRetentionMs(c);
+    c.salesHold=c.salesHold||{history:[]};
+    c.salesHold.status='PAGO_CONFIRMADO_LOGISTICA';
+    c.salesHold.closedAt=paidAt;
+    c.salesHold.closedByName=state.user.name;
+    c.salesHold.normalizationDetail=detail;
+    c.salesHold.retentionMs=c.separationRequest.retentionMs;
+    c.salesHold.history=c.salesHold.history||[];
+    c.salesHold.history.push({at:paidAt,by:state.user.name,action:'Pago confirmado y separación liberada',detail:detail,retentionMs:c.separationRequest.retentionMs});
+    c.salesNotes=c.salesNotes||[];
+    c.salesNotes.push({id:uid('SN'),type:'Pago confirmado separación',detail:detail+' · Tiempo retenido: '+fmt(c.separationRequest.retentionMs),createdAt:paidAt,createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||''});
+    addStateHistory(c,'pago_confirmado','Logística/Caja registra pago o normalización de separación. Tiempo retenido por pago: '+fmt(c.separationRequest.retentionMs)+'. '+detail,{tipo_estado:'pago_confirmado',retentionMs:c.separationRequest.retentionMs,fecha_hora_fin_estado:paidAt});
+    if(c.currentProcess==='caja'){
+      assignToProcess(c,'facturacion','Pago de separación confirmado y pedido devuelto a Facturación: '+detail).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+      return;
+    }
+    persistCase(c,{type:'SEPARATION_PAYMENT_RELEASED',detail:detail,retentionMs:c.separationRequest.retentionMs,visibleRoles:['ventas','coordinador_logistico','lider_logistico','lider_logistica','aux_logistica','jefe_logistica','caja','cartera','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  };
+}
+function sendSeparationToCash(id){
+  openSeparationPaymentRelease(id);
 }
 function openDelivery(id){
   var c=caseById(id);
   if(c && c.currentProcess==="facturacion" && separationNeedsCashNormalization(c)){
-    alert("Este pedido es SOLO SEPARACIÓN. Primero debe ir a Caja/Cartera para confirmar pago o normalización. No se puede facturar ni enviar a despacho todavía.");
-    sendSeparationToCash(id);
+    alert("Este pedido tiene pago pendiente por separación. Registre la confirmación del pago para liberar facturación.");
+    openSeparationPaymentRelease(id);
     return;
   }
   var isCaja = c.currentProcess === "caja";
@@ -6645,7 +6692,7 @@ function transfer(id,next){
   normalizeReceptionDocumentFlow(c);
   if(!canOperateCurrentProcess(c)){alert("Este pedido tiene asignación individual o no pertenece a su macroproceso.");return;}
   if(separationActive(c) && c.currentProcess==="recepcion_pedidos" && next==="alistamiento"){
-    addStateHistory(c,"separacion","Recepción envía a alistamiento bajo aviso de SOLO SEPARACIÓN. Se permite alistar, pero queda bloqueada la facturación hasta Caja/Cartera.",{tipo_estado:"separacion",toProcess:"alistamiento"});
+    addStateHistory(c,"pago_pendiente","Recepción envía a alistamiento con anotación de pago pendiente. El proceso continúa y la liberación de pago quedará trazada por Logística/Caja.",{tipo_estado:"pago_pendiente",toProcess:"alistamiento"});
   }
   if(c.currentProcess==="recepcion_pedidos" && next!=="alistamiento"){alert("El flujo obligatorio es: Recepción de pedidos → Alistamiento. El compromiso de mercancía se registra dentro de Recepción.");return;}
   if(next==="alistamiento" && !receptionPdfIsComplete(c)){alert("Recepción no puede avanzar: falta "+(receptionPdfMissingReason(c)||"completar la validación documental")+".");return;}
@@ -6660,9 +6707,10 @@ function transfer(id,next){
   }
   var detail="Relevo a "+processTitle(next);
   if(separationActive(c) && c.currentProcess==="alistamiento" && next==="facturacion"){
-    c.separationRequest.status="ALISTADO_PENDIENTE_CAJA";
+    c.separationRequest.status="ALISTADO_PAGO_PENDIENTE";
     c.separationRequest.arrivedToBillingAt=now();
-    detail="Pedido de solo separación alistado. Pasa a Facturación, pero queda pendiente de Caja/Cartera para pago o normalización.";
+    addStateHistory(c,"pago_pendiente","Pedido alistado con pago pendiente. Facturación queda pendiente hasta que Logística/Caja registre pago confirmado.",{tipo_estado:"pago_pendiente",toProcess:"facturacion"});
+    detail="Pedido de separación alistado. Pasa a Facturación con anotación de pago pendiente; Logística/Caja debe registrar pago confirmado para liberar.";
   }
   assignToProcess(c,next,detail).then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
@@ -6861,32 +6909,32 @@ function openBoxHold(id){
 function openSalesSeparation(id){
   var c=caseById(id);if(!c)return;
   if(!canSalesRequestSeparation(c)){alert("Solo el asesor de Ventas del pedido puede solicitar separación, y solo si no existe una separación activa.");return;}
-  drawer(modal('Solicitud de separación de pedido','<form class="form" id="salesSeparationForm"><div class="notice danger"><strong>Solicitud para Recepción:</strong> este envío es para separar mercancía mientras se confirma el pago. <b>Recepción y Alistamiento sí pueden avanzar</b>, pero el pedido no puede facturarse ni despacharse hasta que Caja/Cartera confirme pago o normalización.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>Cliente: '+esc(c.client||'—')+' · OC: '+esc(c.purchaseOrder||'—')+'</p></section><label class="field"><span>Motivo / anotación obligatoria</span><textarea class="textarea" name="detail" required placeholder="Ej.: cliente pendiente de pago; favor separar mercancía mientras Caja confirma recaudo. No alistar ni despachar todavía."></textarea></label><button class="btn btn-primary" type="submit">Enviar solicitud a Recepción de pedidos</button></form>'));
+  drawer(modal('Solicitud de separación de pedido','<form class="form" id="salesSeparationForm"><div class="notice danger"><strong>Nota para Recepción y Logística:</strong> este pedido está pendiente de pago. <b>Recepción y Alistamiento pueden avanzar normalmente</b>. La anotación solo informa que no debe facturarse ni despacharse hasta que Logística/Caja registre que el pago fue confirmado.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>Cliente: '+esc(c.client||'—')+' · OC: '+esc(c.purchaseOrder||'—')+'</p></section><label class="field"><span>Anotación obligatoria de pago pendiente</span><textarea class="textarea" name="detail" required placeholder="Ej.: pedido pendiente de pago; favor separar y alistar mientras se confirma el recaudo. Logística liberará cuando se confirme pago."></textarea></label><button class="btn btn-primary" type="submit">Enviar anotación de separación a Recepción</button></form>'));
   qs('#salesSeparationForm').onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target),detail=String(fd.get('detail')||'');
     stopActive(c);stopWait(c);
-    c.separationRequest={active:true,status:'ACTIVA',createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,detail:detail,reason:'Pedido pendiente de pago; separar y alistar sin facturar',releaseCondition:'Puede separar y alistar; Facturación queda bloqueada hasta normalización de Caja/Cartera'};
+    c.separationRequest={active:true,status:'PAGO_PENDIENTE_LOGISTICA',createdAt:now(),waitingPaymentStartedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,detail:detail,reason:'Pedido pendiente de pago; separar y alistar con aviso operativo',releaseCondition:'Puede separar y alistar; Logística/Caja registra pago confirmado antes de facturar o despachar'};
     c.salesHold=c.salesHold||{history:[]};
-    c.salesHold.status='SEPARACION_SOLICITADA_PAGO_PENDIENTE';
+    c.salesHold.status='SEPARACION_PAGO_PENDIENTE_LOGISTICA';
     c.salesHold.reason=detail;
-    c.salesHold.createdAt=c.salesHold.createdAt||now();
+    c.salesHold.createdAt=c.salesHold.createdAt||now();c.salesHold.paymentWaitingStartedAt=c.salesHold.paymentWaitingStartedAt||c.separationRequest.waitingPaymentStartedAt;
     c.salesHold.createdByName=c.salesHold.createdByName||state.user.name;
     c.salesHold.history=c.salesHold.history||[];
-    c.salesHold.history.push({at:now(),by:state.user.name,action:'Solicitud de separación de pedido',detail:detail});
+    c.salesHold.history.push({at:now(),by:state.user.name,action:'Anotación de separación por pago pendiente',detail:detail});
     c.salesNotes=c.salesNotes||[];
     c.salesNotes.push({id:uid('SN'),type:'Solicitud de separación de pedido',detail:detail,createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||''});
     c.currentProcess='recepcion_pedidos';
     c.status='asignado';
     c.assignedRole='coordinador_logistico';
-    c.assignedName='Recepción de pedidos · SOLO SEPARACIÓN';
+    c.assignedName='Recepción de pedidos · separación pago pendiente';
     c.assignedTo='';c.assignedUid='';c.assignedUsers=[];c.assignedUserIds=[];
     c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.openRequirement=null;
     c.checklist=c.checklist||{};
     (processes.recepcion_pedidos.checklist||[]).forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});
     procStats(c,'recepcion_pedidos').startedAt=procStats(c,'recepcion_pedidos').startedAt||now();
-    addStateHistory(c,'asignado','Ventas solicita separación de pedido en Recepción. Se permite separar y alistar; Facturación queda bloqueada hasta Caja/Cartera.',{tipo_estado:'separacion',targetProcess:'recepcion_pedidos'});
-    persistCase(c,{type:'SALES_SEPARATION_REQUEST',detail:detail,targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','lider_logistico','jefe_logistica','caja','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    addStateHistory(c,'pago_pendiente','Ventas registra anotación de separación por pago pendiente. Recepción y Alistamiento pueden avanzar; Logística/Caja liberará el bloqueo cuando se confirme pago.',{tipo_estado:'pago_pendiente',targetProcess:'recepcion_pedidos',fecha_hora_inicio_estado:c.separationRequest.waitingPaymentStartedAt});
+    persistCase(c,{type:'SALES_SEPARATION_PAYMENT_PENDING',detail:detail,targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','lider_logistico','lider_logistica','aux_logistica','jefe_logistica','caja','cartera','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
 
@@ -7155,7 +7203,8 @@ function bindActions(){
     if(a==="boxHold")openBoxHold(id);
     if(a==="salesNoDelivery")openSalesNoDelivery(id);
     if(a==="salesSeparation")openSalesSeparation(id);
-    if(a==="sendSeparationCash")sendSeparationToCash(id);
+    if(a==="sendSeparationCash")openSeparationPaymentRelease(id);
+    if(a==="releaseSeparationPayment")openSeparationPaymentRelease(id);
     if(a==="manageNoDelivery")openNoDeliveryManagement(id);
     if(a==="salesCaseInfo")openSalesCaseInfo(id);
     if(a==="exportSalesReport")exportSalesReport();
