@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v118_corte_acciones_diferenciadas_qa";
+var storageKey = "ei_trazabilidad_v119_firebase_loader_resistente";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -926,26 +926,56 @@ function activeMs(c){var total=0;Object.keys(c.processStats||{}).forEach(functio
 function waitMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].waitMs||0);});if((c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja")&&c.waitStartedAt)total+=msSince(c.waitStartedAt);return total;}
 function deadMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].deadMs||0);});if(c.status==="asignado"&&c.deadStartedAt)total+=msSince(c.deadStartedAt);return total;}
 function progress(c){var def=processes[c.currentProcess];var list=def?def.checklist:[];var total=list.length||1;var done=0;for(var k in c.checklist){if(c.checklist[k]==="ok"||c.checklist[k]==="na")done++;}return clamp(Math.round(done/total*100),0,100);}
-function showError(msg){appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo.</p><pre>'+esc(msg)+'</pre><button class="btn btn-primary" onclick="location.reload()">Recargar</button></section></main>';}
+function showError(msg){appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo. Si el problema es caché o carga externa de Firebase, use limpiar caché y recargar.</p><pre>'+esc(msg)+'</pre><div class="top-actions"><button class="btn btn-primary" onclick="location.reload()">Recargar</button><button class="btn" onclick="clearPwaCachesAndReload()">Limpiar caché y recargar</button></div></section></main>';}
 
-function loadScriptOnce(src,id){
+function loadScriptOnce(src,id,timeoutMs){
+  timeoutMs=timeoutMs||15000;
   return new Promise(function(resolve,reject){
+    var finished=false, timer=null;
+    function done(ok,err,el){
+      if(finished)return;
+      finished=true;
+      if(timer)clearTimeout(timer);
+      if(ok){if(el)el.setAttribute("data-loaded","1");resolve();}
+      else{if(el){el.setAttribute("data-error","1");try{el.parentNode&&el.parentNode.removeChild(el);}catch(e){}}reject(err||new Error("No se pudo cargar "+src));}
+    }
     if(id && document.getElementById(id)){
       var existing=document.getElementById(id);
       if(existing.getAttribute("data-loaded")==="1")return resolve();
-      existing.addEventListener("load",function(){resolve();},{once:true});
-      existing.addEventListener("error",function(){reject(new Error("No se pudo cargar "+src));},{once:true});
-      return;
+      if(existing.getAttribute("data-error")==="1"){try{existing.parentNode&&existing.parentNode.removeChild(existing);}catch(e){}}
+      else{
+        existing.addEventListener("load",function(){done(true,null,existing);},{once:true});
+        existing.addEventListener("error",function(){done(false,new Error("No se pudo cargar "+src),existing);},{once:true});
+        timer=setTimeout(function(){done(false,new Error("Tiempo agotado cargando "+src),existing);},timeoutMs);
+        return;
+      }
     }
     var sc=document.createElement("script");
     if(id)sc.id=id;
     sc.async=false;
     sc.defer=false;
+    sc.crossOrigin="anonymous";
+    sc.referrerPolicy="no-referrer";
     sc.src=src;
-    sc.onload=function(){sc.setAttribute("data-loaded","1");resolve();};
-    sc.onerror=function(){reject(new Error("No se pudo cargar "+src));};
+    sc.onload=function(){done(true,null,sc);};
+    sc.onerror=function(){done(false,new Error("No se pudo cargar "+src),sc);};
+    timer=setTimeout(function(){done(false,new Error("Tiempo agotado cargando "+src),sc);},timeoutMs);
     document.head.appendChild(sc);
   });
+}
+function loadScriptFallback(urls,idBase,checkFn,label){
+  if(checkFn&&checkFn())return Promise.resolve();
+  var errors=[];
+  function attempt(i){
+    if(checkFn&&checkFn())return Promise.resolve();
+    if(i>=urls.length){throw new Error((label||"Script")+" no cargó. Rutas probadas: "+urls.join(" | ")+". Último error: "+(errors[errors.length-1]||"sin detalle"));}
+    return loadScriptOnce(urls[i],idBase+"-"+i,15000).then(function(){
+      if(checkFn&&checkFn())return true;
+      errors.push("La ruta cargó, pero no dejó disponible "+(label||idBase));
+      return attempt(i+1);
+    }).catch(function(e){errors.push((e&&e.message)||String(e));return attempt(i+1);});
+  }
+  return attempt(0);
 }
 function ensureFirebaseConfigLoaded(){
   if(window.firebaseConfig)return Promise.resolve();
@@ -955,11 +985,27 @@ function ensureFirebaseConfigLoaded(){
 }
 function ensureFirebaseSdkLoaded(){
   if(window.firebase && window.firebase.initializeApp && window.firebase.auth && window.firebase.firestore)return Promise.resolve();
-  return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js","firebase-app-compat-retry")
-    .then(function(){return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js","firebase-auth-compat-retry");})
-    .then(function(){return loadScriptOnce("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js","firebase-firestore-compat-retry");})
+  var v="10.12.5";
+  var appUrls=[
+    "https://www.gstatic.com/firebasejs/"+v+"/firebase-app-compat.js",
+    "https://cdn.jsdelivr.net/npm/firebase@"+v+"/firebase-app-compat.js",
+    "https://unpkg.com/firebase@"+v+"/firebase-app-compat.js"
+  ];
+  var authUrls=[
+    "https://www.gstatic.com/firebasejs/"+v+"/firebase-auth-compat.js",
+    "https://cdn.jsdelivr.net/npm/firebase@"+v+"/firebase-auth-compat.js",
+    "https://unpkg.com/firebase@"+v+"/firebase-auth-compat.js"
+  ];
+  var firestoreUrls=[
+    "https://www.gstatic.com/firebasejs/"+v+"/firebase-firestore-compat.js",
+    "https://cdn.jsdelivr.net/npm/firebase@"+v+"/firebase-firestore-compat.js",
+    "https://unpkg.com/firebase@"+v+"/firebase-firestore-compat.js"
+  ];
+  return loadScriptFallback(appUrls,"firebase-app-compat-fallback",function(){return !!(window.firebase&&window.firebase.initializeApp);},"Firebase App")
+    .then(function(){return loadScriptFallback(authUrls,"firebase-auth-compat-fallback",function(){return !!(window.firebase&&window.firebase.auth);},"Firebase Auth");})
+    .then(function(){return loadScriptFallback(firestoreUrls,"firebase-firestore-compat-fallback",function(){return !!(window.firebase&&window.firebase.firestore);},"Firebase Firestore");})
     .then(function(){
-      if(!window.firebase || !window.firebase.initializeApp)throw new Error("El SDK de Firebase no quedó disponible. Revise internet, bloqueo del navegador o ahorro de datos del celular.");
+      if(!window.firebase || !window.firebase.initializeApp || !window.firebase.auth || !window.firebase.firestore)throw new Error("El SDK de Firebase no quedó disponible. Revise conexión, bloqueo del navegador, DNS o red corporativa.");
     });
 }
 function initFirebase(){
