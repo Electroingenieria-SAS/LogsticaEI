@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v115_separacion_pago_logistica";
+var storageKey = "ei_trazabilidad_v116_cortes_recepcion_simplificado";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -4457,7 +4457,7 @@ function receptionItemRowHtml(it, idx){
   var edit=!!it._editing || !!it.manualEntry;
   var decision=it.posibleCorte?'<select class="select" name="itemDecision_'+idx+'"><option value="MANDAR_CORTE" '+(it.decisionCorteRecepcion!=="CARRETO_COMPLETO"?'selected':'')+'>Enviar a corte</option><option value="CARRETO_COMPLETO" '+(it.decisionCorteRecepcion==="CARRETO_COMPLETO"?'selected':'')+'>No cortar · carreto completo</option></select>':'<span class="chip info">Alistamiento</span><input type="hidden" name="itemDecision_'+idx+'" value="NO_APLICA">';
   var cells='';
-  cells+='<td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label></td>';
+  cells+='<td><label class="check-inline"><input type="checkbox" name="itemUse_'+idx+'" checked> Usar</label><input type="hidden" name="itemId_'+idx+'" value="'+esc(it.id||'')+'"></td>';
   if(edit){
     cells+='<td>'+receptionEditCell('itemRef',idx,it.referencia,'Referencia')+'</td>';
     cells+='<td>'+receptionEditCell('itemDesc',idx,it.descripcion,'Descripción completa del material','input-desc')+'</td>';
@@ -4511,7 +4511,7 @@ function collectReceptionItemsFromForm(fd, keepBlank){
   for(var i=0;i<count;i++){
     if(!fd.get('itemUse_'+i))continue;
     var it={
-      id:uid('LIN'),
+      id:fd.get('itemId_'+i)||uid('LIN'),
       referencia:fd.get('itemRef_'+i)||'',
       descripcion:fd.get('itemDesc_'+i)||'',
       cantidad:fd.get('itemQty_'+i)||'',
@@ -4646,25 +4646,73 @@ function openReceptionPdf(id){
     }).then(function(){if(previewUrl)URL.revokeObjectURL(previewUrl);closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
+function cutOperationalDoneForSync(cut){
+  return cut && ["FINALIZADO","REGISTRADO","NO_REQUIERE_CORTE","MEDIDA_COMPLETA","CANCELADO"].indexOf(String(cut.status||""))>=0;
+}
+function receptionLineStableId(c,it,idx){
+  it=it||{};
+  if(it.id)return String(it.id);
+  var parts=[c&&c.id,c&&c.reference,idx,it.referencia,it.descripcion,it.cantidad,it.unidad,it.ubicacion,it.bodega,it.ext1,it.ext2];
+  return "LIN_"+normalizeRefText(parts.join("_"));
+}
+function cutSourceKeyFromItem(c,it,idx){
+  it=it||{};
+  return [c&&c.id,c&&c.reference,idx,it.id,it.referencia,it.descripcion,it.cantidad,it.unidad,it.ubicacion,it.bodega,it.ext1,it.ext2].map(function(x){return normalizeRefText(x||"");}).join("|");
+}
+function normalizeReceptionLinesForFlow(c){
+  c.orderItems=c.orderItems||[];
+  c.orderItems.forEach(function(it,idx){
+    it.id=receptionLineStableId(c,it,idx);
+    if(!it.estado)it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";
+    if(it.requiereCorte){it.estado="PENDIENTE_CORTE";it.decisionCorteRecepcion=it.decisionCorteRecepcion||"MANDAR_CORTE";}
+    else if(it.decisionCorteRecepcion==="CARRETO_COMPLETO"){it.estado="PENDIENTE_ALISTAMIENTO";}
+  });
+}
 function autoCreateCutsFromItems(c,createdByName){
   c.cutRequests=c.cutRequests||[];
-  var activeLineIds={};
-  (c.orderItems||[]).forEach(function(it){if(it.requiereCorte)activeLineIds[it.id]=true;});
-  c.cutRequests=c.cutRequests.filter(function(x){
-    if(!x.sourceLineId || activeLineIds[x.sourceLineId])return true;
-    if(x.generatedBy==="PDF_AUTO_CABLE_METROS" && ["PENDIENTE_CORTE","REVISAR"].indexOf(x.status||"")>=0)return false;
-    return true;
-  });
-  var added=0;
-  (c.orderItems||[]).forEach(function(it){
+  normalizeReceptionLinesForFlow(c);
+  var activeLineIds={}, activeKeys={};
+  (c.orderItems||[]).forEach(function(it,idx){
     if(!it.requiereCorte)return;
-    var exists=c.cutRequests.some(function(x){return x.sourceLineId===it.id;});
-    if(exists)return;
+    var lineId=receptionLineStableId(c,it,idx);
+    var key=cutSourceKeyFromItem(c,it,idx);
+    it.id=lineId;it.cutSourceKey=key;
+    activeLineIds[lineId]=true;activeKeys[key]=true;
+  });
+  c.cutRequests=c.cutRequests.filter(function(x){
+    if(!(x.generatedBy==="PDF_AUTO_CABLE_METROS"||x.generatedBy==="ALISTAMIENTO"))return true;
+    if(cutOperationalDoneForSync(x))return true;
+    var sid=String(x.sourceLineId||"");
+    var sk=String(x.sourceLineKey||"");
+    if((sid && activeLineIds[sid]) || (sk && activeKeys[sk]))return true;
+    return false;
+  });
+  var added=0, updated=0;
+  (c.orderItems||[]).forEach(function(it,idx){
+    if(!it.requiereCorte)return;
+    var lineId=receptionLineStableId(c,it,idx), key=cutSourceKeyFromItem(c,it,idx);
+    var existing=null;
+    (c.cutRequests||[]).forEach(function(x){
+      if(existing)return;
+      if(String(x.sourceLineId||"")===lineId || String(x.sourceLineKey||"")===key)existing=x;
+    });
+    if(existing){
+      if(!cutOperationalDoneForSync(existing)){
+        existing.sourceLineId=lineId;existing.sourceLineKey=key;existing.caseId=c.id;existing.pedido=c.reference;existing.cliente=c.client||"";
+        existing.referencia=it.referencia||existing.referencia||"";existing.descripcion=it.descripcion||existing.descripcion||"";
+        existing.metrosSolicitados=it.cantidad||existing.metrosSolicitados||"";existing.unidad=it.unidad||existing.unidad||"M";
+        existing.ubicacion=it.ubicacion||existing.ubicacion||"";existing.bodega=it.bodega||existing.bodega||"";
+        existing.status=existing.status||"PENDIENTE_CORTE";existing.generatedBy=existing.generatedBy||"PDF_AUTO_CABLE_METROS";
+        updated++;
+      }
+      return;
+    }
     var idc=uid("CUT");
     c.cutRequests.push({
       id:idc,
       code:"CT-"+String(c.cutRequests.length+1).padStart(3,"0"),
-      sourceLineId:it.id,
+      sourceLineId:lineId,
+      sourceLineKey:key,
       caseId:c.id,
       pedido:c.reference,
       cliente:c.client||"",
@@ -4673,24 +4721,34 @@ function autoCreateCutsFromItems(c,createdByName){
       descripcion:it.descripcion||"",
       metrosSolicitados:it.cantidad||"",
       unidad:it.unidad||"M",
+      ubicacion:it.ubicacion||"",
+      bodega:it.bodega||"",
       disponibleAntes:"",
       status:"PENDIENTE_CORTE",
       createdAt:now(),
       createdByName:createdByName||state.user.name,
       generatedBy:"PDF_AUTO_CABLE_METROS",
-      detectionReason:it.detectionReason||"Cable en metros detectado desde PDF",
+      detectionReason:it.detectionReason||"Cable en metros detectado desde PDF y confirmado por Recepción",
       siesaExportStatus:"PENDIENTE",
       siesaExportedAt:"",
       siesaBatchId:""
     });
     added++;
   });
-  if(added){
-    c.hasCuts=true;
-    var st=procStats(c,"corte_cable");st.startedAt=st.startedAt||now();
+  var pendingCuts=(c.cutRequests||[]).filter(function(x){return !cutOperationalDoneForSync(x);});
+  c.hasCuts=pendingCuts.length>0 || (c.orderItems||[]).some(function(it){return !!it.requiereCorte;});
+  if(c.hasCuts){
+    var st=procStats(c,"corte_cable");
+    st.startedAt=st.startedAt||now();
   }
+  c.documentFlow=c.documentFlow||{};
+  c.documentFlow.cutSyncLastAt=now();
+  c.documentFlow.cutSyncAdded=added;
+  c.documentFlow.cutSyncUpdated=updated;
+  c.documentFlow.cutSyncTotal=(c.cutRequests||[]).length;
   return added;
 }
+
 function openCutsPlanner(id){
   var c=caseById(id);if(!c)return;if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}var items=c.orderItems||[];
   var rows=items.length?items.map(function(it,i){var checked=it.requiereCorte?'checked':'';var decision=it.posibleCorte?(it.requiereCorte?'Recepción: enviar a corte':'Recepción: no cortar · carreto completo'):'No aplica';return'<tr><td><input type="checkbox" name="cut_'+i+'" '+checked+'></td><td>'+esc(it.referencia)+'</td><td>'+esc(it.descripcion)+'</td><td>'+esc(it.cantidad||"")+'</td><td>'+esc(it.unidad||"")+'</td><td>'+esc(decision)+'</td><td><input class="input" name="meters_'+i+'" value="'+esc(it.cantidad||"")+'"></td><td><input class="input" name="available_'+i+'" placeholder="Metros disponibles si ya se conoce"></td></tr>';}).join(""):'<tr><td colspan="8">No hay líneas del PDF. Puede crear un corte manual.</td></tr>';
@@ -4866,7 +4924,7 @@ function openCutModule(id,cutId){
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-gold" data-cut-action="requestApproval">Abrir autorización de corte</button>';}
   if(canOperate && !finished){approvalActions+='<button type="button" class="btn btn-success" data-cut-action="approveCut">Aprobar autorización de corte</button>';}
   if(canApproveNow){approvalActions+='<button type="button" class="btn btn-danger" data-cut-action="rejectCut">Rechazar autorización y enviar a Ventas</button>';}
-  var info='<section class="grid grid-3"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Tiempo real</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section>'+cutPendingUploadNotice(cut)+pdfDocumentCard(c,true);
+  var info='<section class="grid grid-3 cut-simple-head"><article class="card kpi"><span>Pedido</span><strong style="font-size:1.15rem">'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></article><article class="card kpi"><span>Referencia</span><strong style="font-size:1.15rem">'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article><article class="card kpi"><span>Estado</span><strong id="cutLiveTimer" style="font-size:1.15rem">'+esc(timerText)+'</strong><small>'+esc(statusLabel)+'</small></article></section><section class="notice success cut-quick-note"><strong>Corte simple:</strong> si el carreto se entrega completo o no requiere corte, use <b>No necesita corte</b>. Si debe cortarse, use iniciar/finalizar y registre foto del carreto al final.</section>'+cutPendingUploadNotice(cut)+pdfDocumentCard(c,true);
   var form='<form class="cut-full form" id="cutFullForm" style="margin-top:16px">'+
     '<fieldset><legend>Datos del corte</legend><div class="cut-grid">'+
       '<label class="field"><span>Tipo de pedido *</span><select class="select" name="tipoPedido" '+(started||finished?'disabled':'')+'><option value="VENTAS" '+(cut.tipoPedido!=="ALUMBRADO"?'selected':'')+'>Ventas</option><option value="ALUMBRADO" '+(cut.tipoPedido==="ALUMBRADO"?'selected':'')+'>Alumbrado</option></select></label>'+
@@ -4897,7 +4955,7 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-1">'+
       '<label class="field"><span>Foto del carreto rotulado obligatoria para registrar</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+(cut.carretoRotuladoUrl?'Foto del carreto rotulado cargada: '+fmtDate(cut.carretoRotuladoAt)+(cut.carretoRotuladoUrl?' · Drive OK':''):(cut.carretoRotuladoPendingUpload?'Foto del carreto tomada. Pendiente subir a Drive; el flujo no se bloquea.':'Cuando finalice el corte, tome una sola foto del carreto rotulado y pulse Registrar corte.'))+'</small></label>'+ 
-    '</div><div class="top-actions"><button type="button" class="btn btn-success" data-cut-action="completeMeasure" '+(finished?'disabled':'')+'>Medida completa</button><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
+    '</div><div class="top-actions"><button type="button" class="btn btn-success" data-cut-action="noCutNeeded" '+(finished?'disabled':'')+'>No necesita corte</button><button type="button" class="btn btn-success" data-cut-action="completeMeasure" '+(finished?'disabled':'')+'>Medida completa</button><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · módulo completo",info+form));
   function refreshPreview(){
@@ -4955,13 +5013,15 @@ function handleCutAction(c,cut,action){
     applyCutRequirementPayload({caseId:c.id,cutId:cut.id,reason:"Otros",detail:"Aprobación de corte rechazada. Ventas debe revisar o ajustar el pedido.",responsable:state.user.name,responsableUid:state.user.uid}).then(function(){closeDrawer();renderApprovals();}).catch(function(e){showError(e.message||e);});
     return;
   }
-  if(action==="completeMeasure"){
-    var ok=confirm("¿Confirmar Medida completa? Use esta opción solo cuando encontraron un carreto exacto y no se requiere cronómetro ni corte físico.");
+  if(action==="completeMeasure" || action==="noCutNeeded"){
+    var noCutNeededAction=action==="noCutNeeded";
+    var ok=confirm(noCutNeededAction?"¿Confirmar que NO necesita corte? El material pasará de inmediato a Alistamiento como carreto completo / sin corte físico.":"¿Confirmar Medida completa? Use esta opción solo cuando encontraron un carreto exacto y no se requiere cronómetro ni corte físico.");
     if(!ok)return;
     var completeAt=now();
     cut.status="FINALIZADO";
-    cut.measureComplete=true;
-    cut.medidaCompleta=true;
+    cut.noCutNeeded=!!noCutNeededAction;
+    cut.measureComplete=!noCutNeededAction;
+    cut.medidaCompleta=!noCutNeededAction;
     cut.measureCompleteAt=completeAt;
     cut.measureCompleteBy=state.user.uid;
     cut.measureCompleteByName=state.user.name;
@@ -4980,8 +5040,8 @@ function handleCutAction(c,cut,action){
     cut.metrajeFinal=cut.metrajeFinal||cut.metrosSolicitados||"";
     if(!cut.disponibleAntes)cut.disponibleAntes=cut.metrosSolicitados||cut.metrajeFinal||"";
     cut.remanenteReal="0";
-    cut.siesaExportStatus="NO_APLICA_MEDIDA_COMPLETA";
-    cut.siesaBatchId="MEDIDA_COMPLETA";
+    cut.siesaExportStatus=noCutNeededAction?"NO_APLICA_NO_NECESITA_CORTE":"NO_APLICA_MEDIDA_COMPLETA";
+    cut.siesaBatchId=noCutNeededAction?"NO_NECESITA_CORTE":"MEDIDA_COMPLETA";
     cut.siesaExportedAt=completeAt;
     cut.siesaExportedByName=state.user.name;
     cut.corteUniforme=true;
@@ -4994,15 +5054,15 @@ function handleCutAction(c,cut,action){
       id:uid("CRA"),
       cutId:cut.id,
       cutCode:cut.code||cut.id,
-      reference:cut.referencia||cut.descripcion||"Medida completa",
+      reference:cut.referencia||cut.descripcion||(noCutNeededAction?"No necesita corte":"Medida completa"),
       meters:cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||""),
       returnedAt:completeAt,
       returnedBy:state.user.name,
       status:"DISPONIBLE_PARA_EMPALETAR",
-      detail:"Medida completa: se encontró carreto exacto. No requirió cronómetro ni corte físico. Llevar a alistamiento y empaletar para facturación."
+      detail:noCutNeededAction?"No necesita corte: Recepción/Corte confirmó carreto completo o material sin corte físico. Llevar a alistamiento y empaletar para facturación.":"Medida completa: se encontró carreto exacto. No requirió cronómetro ni corte físico. Llevar a alistamiento y empaletar para facturación."
     });
     if(c.cutReturnAlerts.length>25)c.cutReturnAlerts=c.cutReturnAlerts.slice(-25);
-    var event={type:"CUT_MEASURE_COMPLETE",detail:"Medida completa registrada: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. Se encontró carreto exacto; no requirió cronómetro ni corte físico. Alistamiento debe continuar el proceso normal.",targetRole:primaryOwnerRole("alistamiento"),visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]};
+    var event={type:noCutNeededAction?"CUT_NO_NEEDED":"CUT_MEASURE_COMPLETE",detail:(noCutNeededAction?"No necesita corte registrado: ":"Medida completa registrada: ")+(cut.referencia||cut.descripcion||cut.code||cut.id)+" · "+cutNormalizeDecimal(cut.metrajeFinal||cut.metrosSolicitados||"")+" m. "+(noCutNeededAction?"El material continúa directo a Alistamiento como carreto completo / sin corte físico.":"Se encontró carreto exacto; no requirió cronómetro ni corte físico. Alistamiento debe continuar el proceso normal."),targetRole:primaryOwnerRole("alistamiento"),visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","auxiliar_corte","jefe_logistica","admin","super_admin"]};
     stopWait(c);stopActive(c);procStats(c,"corte_cable").completedAt=pending.length===0?(procStats(c,"corte_cable").completedAt||completeAt):procStats(c,"corte_cable").completedAt;
     c.currentProcess="alistamiento";
     c.status="en_proceso";
@@ -5016,7 +5076,7 @@ function handleCutAction(c,cut,action){
     processes.alistamiento.checklist.forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]="pending";});
     if(c.checklist["Cortes terminados o en seguimiento"]!==undefined)c.checklist["Cortes terminados o en seguimiento"]=pending.length===0?"ok":"pending";
     if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
-    if(pending.length){event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero esta medida completa ya queda liberada para empaletar.";}
+    if(pending.length){event.detail+=" Quedan "+pending.length+" corte(s) pendiente(s), pero esta línea ya queda liberada para empaletar.";}
     else{event.detail+=" Todos los cortes del pedido quedaron registrados; Alistamiento debe terminar validación y enviar a Facturación.";}
     persistCase(c,event).then(function(){closeDrawer();renderCutsQueue();}).catch(function(e){showError(e.message||e);});
     return;
@@ -5269,8 +5329,17 @@ function modal(title,body){
   return '<section class="modal"><div class="modal-head"><div><h3>'+esc(title||'Detalle')+'</h3></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+(body||'')+'</section>';
 }
 
+
+function ensureV116CutUiFixes(){
+  if(document.getElementById('ei-v116-cut-ui-fixes'))return;
+  var st=document.createElement('style');st.id='ei-v116-cut-ui-fixes';
+  st.textContent='.cut-simple-head{gap:10px}.cut-quick-note{font-size:.95rem}.cut-full fieldset{margin-top:12px;padding:14px;border-radius:18px}.cut-full legend{font-weight:900;color:#061b46}.cut-full .top-actions{gap:8px;flex-wrap:wrap}.cut-full .top-actions .btn{min-height:42px}.cut-full .btn[data-cut-action="noCutNeeded"]{font-weight:900}.cut-timer-card{padding:12px}.compact-lines-table td,.compact-lines-table th{vertical-align:top}.drawer .modal{max-width:min(1040px,96vw)}@media(max-width:720px){.drawer .modal{width:96vw;max-height:94vh;border-radius:22px}.modal-head{position:sticky;top:0;z-index:3;background:#fff}.cut-full fieldset{padding:12px}.cut-full .top-actions{display:grid;grid-template-columns:1fr;gap:8px}.cut-full .top-actions .btn{width:100%;justify-content:center}.cut-grid,.cut-grid-2,.cut-grid-3,.cut-grid-4{grid-template-columns:1fr!important}.cut-simple-head{grid-template-columns:1fr!important}.cut-timer{font-size:1.5rem}}';
+  document.head.appendChild(st);
+}
+
 function drawer(html){
   ensureV104UiFixes();
+  ensureV116CutUiFixes();
   var d=qs('#drawer');
   if(!d){d=document.createElement('div');d.id='drawer';d.className='drawer';document.body.appendChild(d);}
   d.innerHTML=html||'';
