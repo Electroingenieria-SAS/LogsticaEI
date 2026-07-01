@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v130_reportes_asesor_responsable";
+var storageKey = "ei_trazabilidad_v131_cancelacion_pedido_soporte_vsm";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -774,6 +774,29 @@ function canCloseCaseFromRole(c){
     if(canOperateCurrentProcess(c))return true;
   }
   return c.status==="en_proceso" && canOperateCurrentProcess(c) && canCloseHere(c);
+}
+function canCancelOrderWithSupport(c){
+  if(!state.user || !c)return false;
+  if(c.closedAt || String(c.status||"")==="cancelado" || c.cancelledAt)return false;
+  var r=normalizeRole(state.user.role);
+  var logistics=["coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","aux_logistica"];
+  return isAdminRoleValue(r) || logistics.indexOf(r)>=0 || currentUserIsSuperAdmin();
+}
+function cancellationNoticePanel(c){
+  if(!c || !(c.cancelledAt || c.status==="cancelado"))return "";
+  var ce=c.cancellationEvidence||{};
+  var typ=c.cancellationTypeLabel||c.cancelStatusLabel||"Pedido cancelado";
+  var link=ce.url||ce.driveUrl||"";
+  return '<section class="notice danger" style="margin-top:16px"><strong>'+esc(typ)+'</strong><br>'+esc(c.cancellationReason||c.cancellationDetail||'Pedido cerrado por cancelación operativa.')+'<br><small>Cancelado por: '+esc(c.cancelledByName||'')+' · '+esc(fmtDate(c.cancelledAt||c.closedAt))+(c.excludeFromKpi?' · Excluido automáticamente del VSM':'')+'</small>'+(link?'<br><a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(link)+'">Abrir PDF soporte de correo</a>':'')+'</section>';
+}
+function closePendingRequirementsBecauseCancelled(c,detail){
+  if(!c)return;
+  (c.requirements||[]).forEach(function(req){
+    if(req && req.status!=="resuelto" && req.status!=="cancelado"){
+      req.status="cancelado";req.closedAt=now();req.answeredAt=req.answeredAt||now();req.answeredBy=state.user?state.user.uid:"";req.answeredByName=state.user?state.user.name:"";req.answer="Pedido cancelado / anulado. "+(detail||"");
+    }
+  });
+  c.openRequirement=null;
 }
 function resolveNoDeliveryRequirements(c,answer){
   (c.requirements||[]).forEach(function(req){
@@ -3977,6 +4000,7 @@ function renderDetail(id){
     if(canReleaseSeparationPayment(c) && c.currentProcess!=="facturacion")actions+='<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar separación</button>';
     if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
+    if(canCancelOrderWithSupport(c))actions+='<button class="btn btn-danger" data-action="cancelOrder" data-id="'+c.id+'">Cancelar pedido</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-danger" data-action="reportNonConformity" data-id="'+c.id+'">Reportar inconformidad</button>';
     if(canAccessReportsModule())actions+='<button class="btn btn-gold" data-action="generalReport" data-id="'+c.id+'">Reportar novedad interna</button>';
@@ -4012,7 +4036,7 @@ function renderDetail(id){
   var detailPanels=checklistPanel?'<section class="grid grid-2 detail-panels" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section class="mobile-desktop-extra" style="margin-top:16px">'+caseDataPanel+'</section>';
   var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
   var headerActions=compactDetailActions(actions);
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+salesNotesPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+cancellationNoticePanel(c)+salesNotesPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.55rem">'+fmt(totalMs(c))+'</strong><small>Desde ventas</small></article><article class="card kpi"><span>VA</span><strong style="font-size:1.55rem">'+fmt(activeMs(c))+'</strong><small>Tiempo activo</small></article><article class="card kpi"><span>NVA</span><strong style="font-size:1.55rem">'+fmt(waitMs(c)+deadMs(c))+'</strong><small>Espera + muerto</small></article><article class="card kpi"><span>Avance</span><strong>'+progress(c)+'%</strong><small>Checklist</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
 }
 
 
@@ -4021,7 +4045,7 @@ function compactDetailActions(actions){
   if(!actions)return back;
   var btns=(String(actions).match(/<button[\s\S]*?<\/button>/g)||[]);
   if(!btns.length)return back+actions;
-  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,close:11,transfer:12};
+  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,cancelOrder:11,close:12,transfer:13};
   var primary=[],secondary=[];
   btns.forEach(function(html){
     var m=html.match(/data-action="([^"]+)"/),a=m?m[1]:"";
@@ -4047,7 +4071,7 @@ function nextActionButtons(c){
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Separación / pago",c.separationRequest?((c.separationRequest.status||"")+(c.separationRequest.active?" · pago pendiente":" · liberado")):""],["Inicio espera pago",c.separationRequest?fmtDate(c.separationRequest.waitingPaymentStartedAt||c.separationRequest.createdAt):""],["Pago confirmado",c.separationRequest&&c.separationRequest.paymentConfirmedAt?fmtDate(c.separationRequest.paymentConfirmedAt):""],["Tiempo retenido por pago",c.separationRequest?fmt(separationRetentionMs(c)):""],["Detalle pago/separación",c.separationRequest?((c.separationRequest.paymentConfirmationDetail||c.separationRequest.detail)||""):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Cancelación / anulación",c.cancelledAt?((c.cancellationTypeLabel||c.cancelStatusLabel||"Pedido cancelado")+" · "+fmtDate(c.cancelledAt)):""],["Motivo cancelación",c.cancellationReason||c.cancellationDetail||""],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Separación / pago",c.separationRequest?((c.separationRequest.status||"")+(c.separationRequest.active?" · pago pendiente":" · liberado")):""],["Inicio espera pago",c.separationRequest?fmtDate(c.separationRequest.waitingPaymentStartedAt||c.separationRequest.createdAt):""],["Pago confirmado",c.separationRequest&&c.separationRequest.paymentConfirmedAt?fmtDate(c.separationRequest.paymentConfirmedAt):""],["Tiempo retenido por pago",c.separationRequest?fmt(separationRetentionMs(c)):""],["Detalle pago/separación",c.separationRequest?((c.separationRequest.paymentConfirmationDetail||c.separationRequest.detail)||""):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -5930,7 +5954,7 @@ function submitGeneralReport(id,fd){
 function kpiFilteredCases(){
   var f=state.kpiFilters||{from:"",to:"",process:"",user:""};
   return state.cases.filter(function(c){
-    if(c.excludeFromKpi===true)return false;
+    if(c.excludeFromKpi===true || c.excludeFromVsm===true || isCancelled(c))return false;
     var d=new Date(c.createdAt||c.updatedAt||now());
     if(f.from && d<new Date(f.from+"T00:00:00"))return false;
     if(f.to && d>new Date(f.to+"T23:59:59"))return false;
@@ -6981,6 +7005,53 @@ function openClose(id){
     addStateHistory(c,c.status==="cancelado"?"cancelacion":"cierre",detail||c.status,{tipo_estado:c.status==="cancelado"?"cancelacion":"cierre",fecha_hora_fin_estado:c.closedAt,motivo_novedad:isNoDelivery?"Cierre de no entrega":""});
     persistCase(c,{type:isNoDelivery?"NO_DELIVERY_CLOSED":"CASE_CLOSED",detail:detail,visibleRoles:isNoDelivery?noDeliveryVisibleRoles():undefined}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
+function openCancelOrder(id){
+  var c=caseById(id);
+  if(!c)return;
+  if(!canCancelOrderWithSupport(c)){alert("No tiene permiso para cancelar/anular este pedido o el pedido ya está cerrado.");return;}
+  drawer(modal("Cancelar / anular pedido",'<form class="form" id="cancelOrderForm"><div class="notice danger"><strong>Cancelación trazada:</strong> esta acción no elimina el pedido. Lo deja en estado cancelado/anulado, adjunta el PDF del correo soporte y lo excluye automáticamente del VSM.</div><label class="field"><span>Estado final *</span><select class="select" name="cancelType" required><option value="PEDIDO_CANCELADO">Pedido cancelado</option><option value="PEDIDO_ANULADO">Pedido anulado</option></select></label><label class="field"><span>PDF del correo soporte *</span><input class="input" type="file" name="supportPdf" id="cancelSupportPdf" accept="application/pdf,.pdf" required><small>Adjunte el PDF del correo donde se evidencia por qué se canceló o anuló el pedido.</small></label><label class="field"><span>Motivo / resumen *</span><textarea class="textarea" name="detail" required placeholder="Explique brevemente por qué se cancela/anula el pedido y quién lo solicitó."></textarea></label><div class="notice" id="cancelOrderStatus">El pedido solo cambia de estado cuando el PDF quede cargado y registrado.</div><button class="btn btn-danger" type="submit">Confirmar cancelación con soporte</button></form>'));
+  qs("#cancelOrderForm").onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target), file=qs("#cancelSupportPdf").files&&qs("#cancelSupportPdf").files[0];
+    var detail=String(fd.get("detail")||"").trim();
+    var cancelType=String(fd.get("cancelType")||"PEDIDO_CANCELADO");
+    var label=cancelType==="PEDIDO_ANULADO"?"Pedido anulado":"Pedido cancelado";
+    if(!file){alert("Adjunte el PDF del correo soporte.");return;}
+    if(!/\.pdf$/i.test(file.name||"") && file.type!=="application/pdf"){alert("El soporte debe ser un PDF del correo.");return;}
+    if(!detail){alert("Explique el motivo de la cancelación/anulación.");return;}
+    var statusEl=qs("#cancelOrderStatus");if(statusEl)statusEl.textContent="Subiendo PDF soporte a Drive...";
+    uploadFileToDrive(file,c,{processName:"Cancelación de pedido",processKey:c.currentProcess||"cancelacion",fileName:(c.reference||c.id)+"_soporte_"+cancelType+"_"+(file.name||"correo.pdf"),evidenceType:"SOPORTE_CANCELACION_PEDIDO",feedbackMessage:"Subiendo PDF soporte de cancelación. Espere la confirmación antes de continuar."}).then(function(up){
+      var stamp=now();
+      appendEvidence(c,up,label+": "+detail);
+      stopActive(c);stopWait(c);
+      if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}
+      procStats(c,c.currentProcess).completedAt=procStats(c,c.currentProcess).completedAt||stamp;
+      closePendingRequirementsBecauseCancelled(c,detail);
+      c.status="cancelado";
+      c.cancelStatus=cancelType;
+      c.cancelStatusLabel=label;
+      c.cancellationType=cancelType;
+      c.cancellationTypeLabel=label;
+      c.cancellationReason=detail;
+      c.cancellationDetail=detail;
+      c.cancelledAt=stamp;
+      c.cancelledBy=state.user.uid;
+      c.cancelledByName=state.user.name;
+      c.closedAt=stamp;
+      c.closedBy=state.user.uid;
+      c.closedByName=state.user.name;
+      c.excludeFromKpi=true;
+      c.excludeFromVsm=true;
+      c.vsmExcludedAt=stamp;
+      c.vsmExcludedByName=state.user.name;
+      c.vsmExcludedReason=label+" con soporte PDF";
+      c.cancellationEvidence={url:up.url||"",driveUrl:up.url||"",fileId:up.fileId||"",fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:up.uploadedAt||stamp,uploadedByName:state.user.name};
+      addStateHistory(c,"cancelacion",label+". "+detail,{tipo_estado:"cancelacion",fecha_hora_fin_estado:stamp,motivo_novedad:detail,evidenceFileName:c.cancellationEvidence.fileName,excludeFromKpi:true});
+      if(statusEl)statusEl.textContent="PDF cargado. Guardando cancelación del pedido...";
+      return persistCase(c,{type:"ORDER_CANCELLED_WITH_SUPPORT",detail:label+": "+detail,targetRole:"coordinador_logistico",visibleRoles:["coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador","ventas"],excludeFromKpi:true}).then(function(){return persistEvidenceDocument(c,up,label+": "+detail);});
+    }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(statusEl)statusEl.textContent="No se pudo cancelar: "+((err&&err.message)||err);showError((err&&err.message)||err||"No se pudo cancelar el pedido con soporte.");});
+  };
+}
 function openSupervisorNote(id){
   var c=caseById(id);
   drawer(modal("Observación jefe de logística",'<form class="form" id="supForm"><label class="field"><span>Tipo de intervención</span><select class="select" name="type"><option value="SUPERVISION">Seguimiento</option><option value="APPROVAL">Aprobación logística</option><option value="EXCEPTION">Excepción autorizada</option><option value="REASSIGNMENT_NOTE">Nota de reasignación</option><option value="RISK">Riesgo de atraso</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail" required></textarea></label><button class="btn btn-primary" type="submit">Registrar trazabilidad</button></form>'));
@@ -7660,6 +7731,7 @@ function bindActions(){
     if(a==="transfer")transfer(id,b.getAttribute("data-next"));
     if(a==="assignAlistamiento")openAlistamientoAssignment(id);
     if(a==="close")openClose(id);
+    if(a==="cancelOrder")openCancelOrder(id);
     if(a==="approve")approve(id);
     if(a==="reject")reject(id);
     if(a==="userModal")openUserModal();
