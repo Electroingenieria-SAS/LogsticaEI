@@ -25,7 +25,7 @@
 <body>
   <main class="shell">
     <section class="top">
-      <div><h1>VSM ERP · KPIs de tiempos, productividad y eficiencia operativa</h1><p>Tablero independiente tipo Power BI para Lead Time, productividad, VA, espera, NVA, cuello de botella, WIP, throughput, usuarios por nombre trazado, procesos, pedidos, cortes y requerimientos sin bloquear la app operativa.</p></div>
+      <div><h1>VSM ERP · KPIs de tiempos, productividad y eficiencia operativa</h1><p>Tablero independiente tipo Power BI para Lead Time, productividad, VA, espera, NVA, cuello de botella, WIP, throughput, usuarios por nombre trazado, procesos, pedidos, cortes, requerimientos y control separado de pedidos cancelados/anulados sin bloquear la app operativa.</p></div>
       <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
     </section>
     <div id="status" class="notice ok">Inicializando tablero VSM liviano...</div>
@@ -34,13 +34,13 @@
         <label class="field"><span>Desde inicio real del pedido</span><input class="input" type="date" id="fFrom"></label>
         <label class="field"><span>Hasta</span><input class="input" type="date" id="fTo"></label>
         <label class="field"><span>Macroproceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label>
-        <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">Abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera / requerimiento</option></select></label>
+        <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">Abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera / requerimiento</option><option value="cancelled">Cancelados / anulados</option></select></label>
       </div>
       <div class="grid grid-4" style="margin-top:10px">
         <label class="field"><span>Buscar</span><input class="input" id="fSearch" placeholder="Pedido, OC, cliente, asesor"></label>
         <label class="field"><span>Cantidad inicial</span><select class="select" id="fLimit"><option>300</option><option selected>600</option><option>1000</option><option>1500</option></select></label>
         <label class="field"><span>Usuario / actor</span><select class="select" id="fUser"><option value="">Todos</option></select></label>
-        <label class="field"><span>Vista</span><select class="select" id="fView"><option value="principal">Principal</option><option value="procesos">Procesos</option><option value="usuarios">Productividad usuarios</option><option value="usuario_proceso">Usuario por proceso</option><option value="pedidos">Pedidos</option></select></label>
+        <label class="field"><span>Vista</span><select class="select" id="fView"><option value="principal">Principal</option><option value="procesos">Procesos</option><option value="usuarios">Productividad usuarios</option><option value="usuario_proceso">Usuario por proceso</option><option value="pedidos">Pedidos</option><option value="cancelados">Cancelados / anulados</option></select></label>
       </div>
     </section>
     <div class="loading" id="loading"><span class="spin"></span><strong>Procesando por lotes...</strong><span id="progress" class="muted"></span></div>
