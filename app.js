@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v131_cancelacion_pedido_soporte_vsm";
+var storageKey = "ei_trazabilidad_v132_cancelados_solicitud_cancelacion";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -782,6 +782,33 @@ function canCancelOrderWithSupport(c){
   var logistics=["coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","aux_logistica"];
   return isAdminRoleValue(r) || logistics.indexOf(r)>=0 || currentUserIsSuperAdmin();
 }
+function canRequestOrderCancellation(c){
+  if(!state.user || !c)return false;
+  if(c.closedAt || String(c.status||"")==="cancelado" || c.cancelledAt)return false;
+  var r=normalizeRole(state.user.role);
+  if(r==="ventas")return caseBelongsToCurrentSalesUser(c);
+  if(r==="caja")return c.currentProcess==="caja" || normalizeRole(c.assignedRole)==="caja" || !!c.cashBilling || !!c.salesHold;
+  return false;
+}
+function reportIsCancellationRequest(r){
+  return !!(r && (r.cancellationRequest===true || r.sourceModule==="solicitud_cancelacion_pedido" || /cancelaci[oó]n|anulaci[oó]n/i.test(String(r.category||"")+" "+String(r.title||""))));
+}
+function canManageCancellationReport(r){
+  if(!state.user || !reportIsCancellationRequest(r))return false;
+  var role=normalizeRole(state.user.role);
+  var logistics=["coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","aux_logistica"];
+  return currentUserIsAdminOrSuper() || isAdminRoleValue(role) || role==="gerencia" || logistics.indexOf(role)>=0;
+}
+function reportTargetCaption(r){
+  if(reportIsCancellationRequest(r))return "Debe gestionar Logística";
+  return "Debe responder este asesor";
+}
+function cancellationRequestOpenForCase(c){
+  if(!c)return false;
+  return (state.reports||[]).some(function(r){
+    return reportIsCancellationRequest(r) && reportBelongsToCase(r,c) && String(r.status||"").indexOf("CERRADO")<0 && String(r.status||"").indexOf("CANCELADO")<0;
+  });
+}
 function cancellationNoticePanel(c){
   if(!c || !(c.cancelledAt || c.status==="cancelado"))return "";
   var ce=c.cancellationEvidence||{};
@@ -797,6 +824,13 @@ function closePendingRequirementsBecauseCancelled(c,detail){
     }
   });
   c.openRequirement=null;
+}
+function closeCancellationReportsBecauseCancelled(c,label,detail,stamp,evidence){
+  var linked=(state.reports||[]).filter(function(r){return reportIsCancellationRequest(r) && reportBelongsToCase(r,c) && String(r.status||"").indexOf("CERRADO")<0;});
+  if(!linked.length)return Promise.resolve([]);
+  var payload={status:"CERRADO",finalStatus:label,closureComment:detail,closedAt:stamp,closedBy:state.user?state.user.uid:"",closedByName:state.user?state.user.name:"",cancellationClosedByOrder:true,cancellationEvidence:evidence||{},updatedAt:now()};
+  linked.forEach(function(r){Object.assign(r,payload);});
+  return Promise.all(linked.map(function(r){return db.collection("reportes_novedad").doc(r.id).update(payload).catch(function(){return null;});}));
 }
 function resolveNoDeliveryRequirements(c,answer){
   (c.requirements||[]).forEach(function(req){
@@ -841,7 +875,7 @@ function reportAssignedToCurrentSalesUser(r){
     return (email && nv===email) || (name && nv===name) || samePersonText(v,state.user.name) || samePersonText(v,state.user.email);
   });
 }
-function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report);}
+function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report)||canManageCancellationReport(report);}
 function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
 
 function reportCaseIdentifiers(r){
@@ -4001,6 +4035,7 @@ function renderDetail(id){
     if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
     if(canCancelOrderWithSupport(c))actions+='<button class="btn btn-danger" data-action="cancelOrder" data-id="'+c.id+'">Cancelar pedido</button>';
+    if(canRequestOrderCancellation(c))actions+='<button class="btn btn-danger" data-action="requestCancelOrder" data-id="'+c.id+'">Enviar pedido a cancelar</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-danger" data-action="reportNonConformity" data-id="'+c.id+'">Reportar inconformidad</button>';
     if(canAccessReportsModule())actions+='<button class="btn btn-gold" data-action="generalReport" data-id="'+c.id+'">Reportar novedad interna</button>';
@@ -4045,7 +4080,7 @@ function compactDetailActions(actions){
   if(!actions)return back;
   var btns=(String(actions).match(/<button[\s\S]*?<\/button>/g)||[]);
   if(!btns.length)return back+actions;
-  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,cancelOrder:11,close:12,transfer:13};
+  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,requestCancelOrder:11,cancelOrder:12,close:13,transfer:13};
   var primary=[],secondary=[];
   btns.forEach(function(html){
     var m=html.match(/data-action="([^"]+)"/),a=m?m[1]:"";
@@ -5836,7 +5871,7 @@ function deleteReceptionGoods(id){
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el ingreso.");});
 }
 
-function reportTargetName(r){return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin asesor asignado";}
+function reportTargetName(r){if(reportIsCancellationRequest(r))return (r&&(r.targetLogisticsName||r.assignedLogisticsName))||"Logística / Super Admin";return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin asesor asignado";}
 function reportSalesUserCandidates(c){
   var map={};
   function add(uid,name,email,role,source){
@@ -5888,19 +5923,24 @@ function renderReports(){
   var rows=list.map(function(r){
     var manage=canCommentReports(r)?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';
     if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
-    return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>Debe responder este asesor</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
+    return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
   }).join('');
-  layout(header("Reportes y novedades","Cada reporte operativo debe quedar asignado a un asesor de Ventas. Ese asesor responde y la trazabilidad queda registrada en la bandeja.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Asesor responde</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Los reportes operativos quedan trazados al asesor o a Logística según el caso. Las solicitudes de cancelación no cancelan automáticamente: Logística debe validar y adjuntar el PDF soporte.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
   var comments=(r.managementComments||[]).map(function(c){return '<article class="notice"><strong>'+esc(c.userName||'Gestor')+':</strong> '+esc(c.comment||'')+'<br><small>'+fmtDate(c.createdAt)+' · '+esc(c.status||'')+'</small></article>';}).join('')||'<div class="empty">Sin comentarios de gestión.</div>';
   var sourceBtn='';
   if(r.sourceModule==="recepcion_mercancia" && canAccessReceptionGoods())sourceBtn='<button class="btn btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.sourceId)+'">Abrir ingreso de recepción</button>';
+  var linkedCase=caseById(r.sourceId||r.caseId||r.sourceCaseId||"");
+  if(linkedCase){
+    sourceBtn+='<button class="btn btn-primary" data-action="open" data-id="'+esc(linkedCase.id)+'">Abrir pedido</button>';
+    if(reportIsCancellationRequest(r) && canCancelOrderWithSupport(linkedCase))sourceBtn+='<button class="btn btn-danger" data-action="cancelOrder" data-id="'+esc(linkedCase.id)+'">Cancelar pedido con PDF</button>';
+  }
   var actions='';
   if(canCommentReports(r))actions+='<button class="btn btn-gold" data-action="manageReport" data-id="'+esc(r.id)+'">Responder / agregar gestión</button>';
   if(canDeleteReports())actions+='<button class="btn btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar reporte</button>';
-  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p><p><strong>Asesor responsable de respuesta:</strong> '+esc(reportTargetName(r))+'</p>'+(r.salesResponseAt?'<p><strong>Última respuesta de asesor:</strong> '+esc(r.salesResponseByName||'')+' · '+fmtDate(r.salesResponseAt)+'</p>':'')+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
+  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p><p><strong>Responsable de gestión:</strong> '+esc(reportTargetName(r))+'</p>'+(r.salesResponseAt?'<p><strong>Última respuesta de asesor:</strong> '+esc(r.salesResponseByName||'')+' · '+fmtDate(r.salesResponseAt)+'</p>':'')+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
 }
 function deleteReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];
@@ -5915,16 +5955,17 @@ function deleteReport(id){
 
 function openManageReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  if(!canCommentReports(r)){alert("Solo el asesor asignado al reporte o los responsables autorizados pueden responder esta novedad.");return;}
+  if(!canCommentReports(r)){alert("Solo el responsable asignado al reporte o los roles autorizados pueden responder esta novedad.");return;}
   var receptionLocked=r.sourceModule==="recepcion_mercancia" && r.closeOnlyFromReception===true && !canCloseReceptionNovelty();
   var isTargetSales=reportAssignedToCurrentSalesUser(r);
-  var statusOptions=receptionLocked?'<option value="EN_REVISION">En revisión</option><option value="PENDIENTE_RECEPCION">Pendiente decisión de recepción</option>':(isTargetSales?'<option value="RESPONDIDO_ASESOR">Respondido por asesor</option><option value="EN_REVISION">En revisión</option><option value="CERRADO">Cerrado</option>':'<option value="EN_REVISION">En revisión</option><option value="GESTIONADO">Gestionado</option><option value="CERRADO">Cerrado</option>');
-  drawer(modal("Gestionar reporte",'<form class="form" id="manageReportForm"><div class="notice '+(receptionLocked?'warning':'')+'"><strong>'+esc(r.title||id)+'</strong><br>'+(receptionLocked?'Este reporte corresponde a recepción retenida. Gerencia/Jefe Logístico pueden comentar o dejarlo en revisión, pero el cierre definitivo se hace desde el ingreso de mercancía con evidencia.':(isTargetSales?'Usted es el asesor asignado para responder esta novedad. La respuesta quedará trazada a su nombre.':'Actualice el estado o deje comentario de gestión.'))+'<br><strong>Asesor responsable:</strong> '+esc(reportTargetName(r))+'</div><label class="field"><span>Estado</span><select class="select" name="status">'+statusOptions+'</select></label><label class="field"><span>Comentario de gestión *</span><textarea class="textarea" name="comment" required placeholder="Indique revisión, respuesta del asesor, decisión, responsable o siguiente acción."></textarea></label><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
+  var isCancelReport=reportIsCancellationRequest(r);
+  var statusOptions=receptionLocked?'<option value="EN_REVISION">En revisión</option><option value="PENDIENTE_RECEPCION">Pendiente decisión de recepción</option>':(isCancelReport?'<option value="PENDIENTE_LOGISTICA">Pendiente logística</option><option value="EN_REVISION">En revisión</option><option value="VALIDADO_PARA_CANCELAR">Validado para cancelar</option><option value="CERRADO">Cerrado</option>':(isTargetSales?'<option value="RESPONDIDO_ASESOR">Respondido por asesor</option><option value="EN_REVISION">En revisión</option><option value="CERRADO">Cerrado</option>':'<option value="EN_REVISION">En revisión</option><option value="GESTIONADO">Gestionado</option><option value="CERRADO">Cerrado</option>'));
+  drawer(modal("Gestionar reporte",'<form class="form" id="manageReportForm"><div class="notice '+(receptionLocked?'warning':'')+'"><strong>'+esc(r.title||id)+'</strong><br>'+(receptionLocked?'Este reporte corresponde a recepción retenida. Gerencia/Jefe Logístico pueden comentar o dejarlo en revisión, pero el cierre definitivo se hace desde el ingreso de mercancía con evidencia.':(isCancelReport?'Esta es una solicitud para cancelar/anular pedido. Logística debe validar la novedad y, si procede, abrir el pedido y usar Cancelar pedido con PDF soporte.':(isTargetSales?'Usted es el asesor asignado para responder esta novedad. La respuesta quedará trazada a su nombre.':'Actualice el estado o deje comentario de gestión.')))+'<br><strong>Responsable:</strong> '+esc(reportTargetName(r))+'</div><label class="field"><span>Estado</span><select class="select" name="status">'+statusOptions+'</select></label><label class="field"><span>Comentario de gestión *</span><textarea class="textarea" name="comment" required placeholder="Indique revisión, respuesta del asesor, decisión, responsable o siguiente acción."></textarea></label><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
   qs("#manageReportForm").onsubmit=function(e){e.preventDefault();submitManageReport(id,new FormData(e.target));};
 }
 function submitManageReport(id,fd){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  if(!canCommentReports(r)){alert("Solo el asesor asignado al reporte o los responsables autorizados pueden responder esta novedad.");return;}
+  if(!canCommentReports(r)){alert("Solo el responsable asignado al reporte o los roles autorizados pueden responder esta novedad.");return;}
   var comment=String(fd.get("comment")||"").trim();if(!comment){alert("Debe escribir comentario de gestión.");return;}
   var status=fd.get("status")||"EN_REVISION";
   if(r.sourceModule==="recepcion_mercancia" && r.closeOnlyFromReception===true && !canCloseReceptionNovelty() && status==="CERRADO")status="PENDIENTE_RECEPCION";
@@ -7005,6 +7046,31 @@ function openClose(id){
     addStateHistory(c,c.status==="cancelado"?"cancelacion":"cierre",detail||c.status,{tipo_estado:c.status==="cancelado"?"cancelacion":"cierre",fecha_hora_fin_estado:c.closedAt,motivo_novedad:isNoDelivery?"Cierre de no entrega":""});
     persistCase(c,{type:isNoDelivery?"NO_DELIVERY_CLOSED":"CASE_CLOSED",detail:detail,visibleRoles:isNoDelivery?noDeliveryVisibleRoles():undefined}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
+function openRequestCancelOrder(id){
+  var c=caseById(id);
+  if(!c)return;
+  if(!canRequestOrderCancellation(c)){alert("Solo Ventas o Caja pueden enviar este pedido a cancelar cuando les corresponde. Si usted es Logística, use Cancelar pedido con PDF soporte.");return;}
+  var existing=cancellationRequestOpenForCase(c);
+  drawer(modal("Enviar pedido a cancelar",'<form class="form" id="requestCancelOrderForm"><div class="notice warning"><strong>Solicitud a Logística:</strong> esta acción no cancela el pedido. Crea una novedad para que Logística valide y, si procede, cancele/anule con PDF soporte.</div>'+(existing?'<div class="notice danger"><strong>Ya existe una solicitud abierta:</strong> puede crear una nueva solo si hay una novedad adicional clara.</div>':'')+'<label class="field"><span>Tipo solicitado *</span><select class="select" name="cancelType" required><option value="PEDIDO_CANCELADO">Pedido cancelado</option><option value="PEDIDO_ANULADO">Pedido anulado</option></select></label><label class="field"><span>Motivo / soporte informado *</span><textarea class="textarea" name="detail" required placeholder="Explique quién solicitó cancelar/anular, por qué, fecha del correo o soporte, y cualquier instrucción para logística."></textarea></label><button class="btn btn-danger" type="submit">Enviar a novedades de Logística</button></form>'));
+  qs("#requestCancelOrderForm").onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(e.target);
+    var detail=String(fd.get("detail")||"").trim();
+    var cancelType=String(fd.get("cancelType")||"PEDIDO_CANCELADO");
+    var label=cancelType==="PEDIDO_ANULADO"?"Pedido anulado":"Pedido cancelado";
+    if(!detail){alert("Explique el motivo de la solicitud de cancelación/anulación.");return;}
+    var stamp=now();
+    var report={id:uid("REP"),title:"Solicitud de cancelación · "+(c.reference||c.id),category:"Solicitud de cancelación/anulación",sourceModule:"solicitud_cancelacion_pedido",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"PENDIENTE_LOGISTICA",severity:"Alta",description:label+" solicitado por "+(state.user.name||"Usuario")+". "+detail,detail:detail,caseClient:c.client||"",createdAt:stamp,updatedAt:stamp,createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],cancellationRequest:true,requestedCancellationType:cancelType,requestedCancellationLabel:label,cancellationRequestedAt:stamp,cancellationRequestedBy:state.user.uid,cancellationRequestedByName:state.user.name,targetLogisticsName:"Logística / Super Admin",assignedLogisticsName:"Logística / Super Admin",reportTo:["coordinador_logistico","lider_logistico","jefe_logistica","aux_logistica","admin","super_admin"],visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","ventas","caja",c.assignedRole].filter(Boolean)};
+    c.cancellationRequests=c.cancellationRequests||[];
+    c.cancellationRequests.push({id:report.id,type:cancelType,label:label,detail:detail,status:"PENDIENTE_LOGISTICA",createdAt:stamp,createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role});
+    c.cancellationRequestStatus="PENDIENTE_LOGISTICA";
+    c.lastCancellationRequestId=report.id;
+    c.lastCancellationRequestAt=stamp;
+    addStateHistory(c,"solicitud_cancelacion",label+" solicitado a Logística. "+detail,{tipo_estado:"novedad",motivo_novedad:"Solicitud de cancelación/anulación",fecha_hora_inicio_estado:stamp});
+    saveReportDocument(report).then(function(){return persistCase(c,{type:"ORDER_CANCELLATION_REQUESTED",detail:label+" solicitado por "+state.user.name+": "+detail,targetRole:"coordinador_logistico",visibleRoles:report.visibleRoles});}).then(function(){return createEvent({type:"ORDER_CANCELLATION_REQUESTED",caseId:c.id,detail:label+" solicitado para "+(c.reference||c.id)+" por "+state.user.name,targetRole:"coordinador_logistico",visibleRoles:report.visibleRoles}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo enviar el pedido a cancelar.");});
+  };
+}
+
 function openCancelOrder(id){
   var c=caseById(id);
   if(!c)return;
@@ -7048,7 +7114,7 @@ function openCancelOrder(id){
       c.cancellationEvidence={url:up.url||"",driveUrl:up.url||"",fileId:up.fileId||"",fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:up.uploadedAt||stamp,uploadedByName:state.user.name};
       addStateHistory(c,"cancelacion",label+". "+detail,{tipo_estado:"cancelacion",fecha_hora_fin_estado:stamp,motivo_novedad:detail,evidenceFileName:c.cancellationEvidence.fileName,excludeFromKpi:true});
       if(statusEl)statusEl.textContent="PDF cargado. Guardando cancelación del pedido...";
-      return persistCase(c,{type:"ORDER_CANCELLED_WITH_SUPPORT",detail:label+": "+detail,targetRole:"coordinador_logistico",visibleRoles:["coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador","ventas"],excludeFromKpi:true}).then(function(){return persistEvidenceDocument(c,up,label+": "+detail);});
+      return persistCase(c,{type:"ORDER_CANCELLED_WITH_SUPPORT",detail:label+": "+detail,targetRole:"coordinador_logistico",visibleRoles:["coordinador_logistico","lider_logistico","lider_logistica","aux_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador","ventas","caja"],excludeFromKpi:true}).then(function(){return closeCancellationReportsBecauseCancelled(c,label,detail,stamp,c.cancellationEvidence);}).then(function(){return persistEvidenceDocument(c,up,label+": "+detail);});
     }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(statusEl)statusEl.textContent="No se pudo cancelar: "+((err&&err.message)||err);showError((err&&err.message)||err||"No se pudo cancelar el pedido con soporte.");});
   };
 }
@@ -7732,6 +7798,7 @@ function bindActions(){
     if(a==="assignAlistamiento")openAlistamientoAssignment(id);
     if(a==="close")openClose(id);
     if(a==="cancelOrder")openCancelOrder(id);
+    if(a==="requestCancelOrder")openRequestCancelOrder(id);
     if(a==="approve")approve(id);
     if(a==="reject")reject(id);
     if(a==="userModal")openUserModal();
