@@ -1,0 +1,66 @@
+/* LogisticaEI Hotfix V77 - botones móviles Encontrado / No encontrado */
+.mobile-found-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin: 12px 0 4px;
+}
+
+.mobile-found-actions button,
+button.btn-found,
+button.btn-not-found {
+  min-height: 48px;
+  border: 0;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: .01em;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
+  transition: transform .16s ease, opacity .16s ease, box-shadow .16s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mobile-found-actions button:active,
+button.btn-found:active,
+button.btn-not-found:active {
+  transform: scale(.985);
+}
+
+button.btn-found {
+  background: #0f766e;
+  color: #fff;
+}
+
+button.btn-not-found {
+  background: #991b1b;
+  color: #fff;
+}
+
+.mobile-found-actions button:disabled,
+button.btn-found:disabled,
+button.btn-not-found:disabled,
+.mobile-found-actions button.is-saving,
+button.btn-found.is-saving,
+button.btn-not-found.is-saving {
+  opacity: .64;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 560px) {
+  .mobile-found-actions {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .mobile-found-actions button,
+  button.btn-found,
+  button.btn-not-found {
+    min-height: 52px;
+    border-radius: 16px;
+    font-size: 16px;
+  }
+}
