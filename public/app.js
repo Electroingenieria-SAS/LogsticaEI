@@ -3,7 +3,7 @@
 
 var appEl = document.getElementById("app");
 var logoPath = (window.appSettings && window.appSettings.logoPath) || "./assets/logo-electroingenieria.jpeg";
-var storageKey = "ei_trazabilidad_v129_vsm_etiquetas_usuarios_nombres";
+var storageKey = "ei_trazabilidad_v130_reportes_asesor_responsable";
 var db = null;
 var auth = null;
 var firebaseReady = false;
@@ -805,7 +805,20 @@ function canAccessReceptionGoods(){return state.user && (normalizeRole(state.use
 function canDeleteReceptionGoods(){return state.user && currentUserIsSuperAdmin();}
 function canAccessReportsModule(){return !!state.user;}
 function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return currentUserIsAdminOrSuper()||isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
-function canCommentReports(){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion";}
+function reportHasSalesAssignee(r){return !!(r && (r.targetSalesUid||r.targetSalesEmail||r.targetSalesName||r.assignedSalesUid||r.assignedSalesEmail||r.assignedSalesName));}
+function reportAssignedToCurrentSalesUser(r){
+  if(!state.user || !r || normalizeRole(state.user.role)!=="ventas")return false;
+  var uid=String(state.user.uid||state.user.id||"").trim();
+  var email=normalizePersonComparableText(state.user.email||"");
+  var name=normalizePersonComparableText(state.user.name||state.user.displayName||"");
+  var targets=[r.targetSalesUid,r.assignedSalesUid,r.targetAdvisorUid,r.caseOwnerUid,r.targetSalesEmail,r.assignedSalesEmail,r.targetAdvisorEmail,r.targetSalesName,r.assignedSalesName,r.targetAdvisorName,r.salesAdvisor].map(function(x){return String(x||"").trim();}).filter(Boolean);
+  return targets.some(function(v){
+    if(uid && v===uid)return true;
+    var nv=normalizePersonComparableText(v);
+    return (email && nv===email) || (name && nv===name) || samePersonText(v,state.user.name) || samePersonText(v,state.user.email);
+  });
+}
+function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report);}
 function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
 
 function reportCaseIdentifiers(r){
@@ -827,7 +840,10 @@ function reportBelongsToCase(r,c){
 function reportRelevantToCurrentUser(r){
   if(!state.user || !r)return false;
   var role=normalizeRole(state.user.role);
-  if(canSeeAll() || role!=='ventas')return true;
+  if(canSeeAll() || role!=="ventas")return true;
+  if(reportHasSalesAssignee(r)){
+    return reportAssignedToCurrentSalesUser(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
+  }
   var ownCases=(state.cases||[]).filter(function(c){return sameSalesOwner ? sameSalesOwner(c) : (c.createdBy===state.user.uid);});
   if(ownCases.some(function(c){return reportBelongsToCase(r,c);})){return true;}
   if(reportLooksLinkedToCase(r)){
@@ -5796,9 +5812,48 @@ function deleteReceptionGoods(id){
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el ingreso.");});
 }
 
+function reportTargetName(r){return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin asesor asignado";}
+function reportSalesUserCandidates(c){
+  var map={};
+  function add(uid,name,email,role,source){
+    name=String(name||"").trim();email=String(email||"").trim();uid=String(uid||"").trim();
+    if(!name && !email && !uid)return;
+    var key=uid?"uid:"+uid:(email?"email:"+normalizePersonComparableText(email):"name:"+normalizePersonComparableText(name));
+    if(!key || key==="name:")return;
+    if(!map[key])map[key]={key:key,uid:uid,name:cleanVisiblePersonName(name||email||uid),email:email,role:role||"ventas",source:source||""};
+    else{
+      if(!map[key].uid&&uid)map[key].uid=uid;
+      if(!map[key].email&&email)map[key].email=email;
+      if(!map[key].name&&name)map[key].name=cleanVisiblePersonName(name);
+    }
+  }
+  (state.users||[]).forEach(function(u){if(u && u.isActive!==false && normalizeRole(u.role)==="ventas")add(u.uid||u.id||u.userId,u.name||u.displayName,u.email,u.role,"Perfil ventas");});
+  if(c){
+    add(c.createdBy,c.createdByName,c.createdByEmail,"ventas","Asesor creador del pedido");
+    add(c.salesAdvisorUid||c.advisorUid,c.salesAdvisor||c.salesAdvisorName||c.advisor||c.vendedor,c.salesAdvisorEmail||c.salesEmail,"ventas","Asesor registrado en pedido");
+  }
+  return Object.keys(map).map(function(k){return map[k];}).sort(function(a,b){return String(a.name||a.email||"").localeCompare(String(b.name||b.email||""));});
+}
+function reportSalesUserOptionsHtml(c){
+  var list=reportSalesUserCandidates(c);
+  var current=normalizePersonComparableText((c&&(c.createdByName||c.salesAdvisor||c.advisor||c.vendedor))||"");
+  var opts='<option value="">Seleccione el asesor que debe responder</option>';
+  list.forEach(function(u){
+    var selected=current && (normalizePersonComparableText(u.name)===current || samePersonText(u.name,current));
+    opts+='<option value="'+esc(u.key)+'" '+(selected?'selected':'')+'>'+esc(u.name||u.email||u.uid)+' '+(u.source?'· '+esc(u.source):'')+'</option>';
+  });
+  return opts;
+}
+function resolveReportSalesUser(key,c){
+  key=String(key||"").trim();
+  var list=reportSalesUserCandidates(c);
+  var found=list.filter(function(u){return u.key===key;})[0];
+  if(found)return found;
+  return null;
+}
 function reportStatusChip(st){
   var x=String(st||"ABIERTO").toUpperCase();
-  var cls=x.indexOf("CERRADO")>=0?"success":(x.indexOf("REVISION")>=0?"warning":"danger");
+  var cls=(x.indexOf("CERRADO")>=0||x.indexOf("RESPONDIDO")>=0||x.indexOf("GESTIONADO")>=0)?"success":(x.indexOf("REVISION")>=0||x.indexOf("PENDIENTE")>=0?"warning":"danger");
   return '<span class="chip '+cls+'">'+esc(st||"ABIERTO")+'</span>';
 }
 function renderReports(){
@@ -5806,18 +5861,22 @@ function renderReports(){
   var list=visibleReports();
   var open=list.filter(function(r){return String(r.status||"").indexOf("CERRADO")<0;}).length;
   var retained=list.filter(function(r){return r.sourceModule==="recepcion_mercancia" && String(r.status||"").indexOf("CERRADO")<0;}).length;
-  var rows=list.map(function(r){var manage=canCommentReports()?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';}).join('');
-  layout(header("Reportes y novedades","Bandeja filtrada por responsabilidad: Ventas solo ve novedades de sus propios pedidos; jefes gestionan.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  var rows=list.map(function(r){
+    var manage=canCommentReports(r)?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';
+    if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
+    return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>Debe responder este asesor</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
+  }).join('');
+  layout(header("Reportes y novedades","Cada reporte operativo debe quedar asignado a un asesor de Ventas. Ese asesor responde y la trazabilidad queda registrada en la bandeja.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Asesor responde</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  var comments=(r.managementComments||[]).map(function(c){return '<article class="notice"><strong>'+esc(c.userName||'Gestor')+':</strong> '+esc(c.comment||'')+'<br><small>'+fmtDate(c.createdAt)+'</small></article>';}).join('')||'<div class="empty">Sin comentarios de gestión.</div>';
+  var comments=(r.managementComments||[]).map(function(c){return '<article class="notice"><strong>'+esc(c.userName||'Gestor')+':</strong> '+esc(c.comment||'')+'<br><small>'+fmtDate(c.createdAt)+' · '+esc(c.status||'')+'</small></article>';}).join('')||'<div class="empty">Sin comentarios de gestión.</div>';
   var sourceBtn='';
   if(r.sourceModule==="recepcion_mercancia" && canAccessReceptionGoods())sourceBtn='<button class="btn btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.sourceId)+'">Abrir ingreso de recepción</button>';
   var actions='';
-  if(canCommentReports())actions+='<button class="btn btn-gold" data-action="manageReport" data-id="'+esc(r.id)+'">Agregar gestión</button>';
+  if(canCommentReports(r))actions+='<button class="btn btn-gold" data-action="manageReport" data-id="'+esc(r.id)+'">Responder / agregar gestión</button>';
   if(canDeleteReports())actions+='<button class="btn btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar reporte</button>';
-  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p>'+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
+  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p><p><strong>Asesor responsable de respuesta:</strong> '+esc(reportTargetName(r))+'</p>'+(r.salesResponseAt?'<p><strong>Última respuesta de asesor:</strong> '+esc(r.salesResponseByName||'')+' · '+fmtDate(r.salesResponseAt)+'</p>':'')+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
 }
 function deleteReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];
@@ -5832,32 +5891,40 @@ function deleteReport(id){
 
 function openManageReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  if(!canCommentReports()){alert("Solo jefes o responsables autorizados pueden gestionar reportes.");return;}
+  if(!canCommentReports(r)){alert("Solo el asesor asignado al reporte o los responsables autorizados pueden responder esta novedad.");return;}
   var receptionLocked=r.sourceModule==="recepcion_mercancia" && r.closeOnlyFromReception===true && !canCloseReceptionNovelty();
-  var statusOptions=receptionLocked?'<option value="EN_REVISION">En revisión</option><option value="PENDIENTE_RECEPCION">Pendiente decisión de recepción</option>':'<option value="EN_REVISION">En revisión</option><option value="GESTIONADO">Gestionado</option><option value="CERRADO">Cerrado</option>';
-  drawer(modal("Gestionar reporte",'<form class="form" id="manageReportForm"><div class="notice '+(receptionLocked?'warning':'')+'"><strong>'+esc(r.title||id)+'</strong><br>'+(receptionLocked?'Este reporte corresponde a recepción retenida. Gerencia/Jefe Logístico pueden comentar o dejarlo en revisión, pero el cierre definitivo se hace desde el ingreso de mercancía con evidencia.':'Actualice el estado o deje comentario de gestión.')+'</div><label class="field"><span>Estado</span><select class="select" name="status">'+statusOptions+'</select></label><label class="field"><span>Comentario de gestión *</span><textarea class="textarea" name="comment" required placeholder="Indique revisión, decisión, responsable o siguiente acción."></textarea></label><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
+  var isTargetSales=reportAssignedToCurrentSalesUser(r);
+  var statusOptions=receptionLocked?'<option value="EN_REVISION">En revisión</option><option value="PENDIENTE_RECEPCION">Pendiente decisión de recepción</option>':(isTargetSales?'<option value="RESPONDIDO_ASESOR">Respondido por asesor</option><option value="EN_REVISION">En revisión</option><option value="CERRADO">Cerrado</option>':'<option value="EN_REVISION">En revisión</option><option value="GESTIONADO">Gestionado</option><option value="CERRADO">Cerrado</option>');
+  drawer(modal("Gestionar reporte",'<form class="form" id="manageReportForm"><div class="notice '+(receptionLocked?'warning':'')+'"><strong>'+esc(r.title||id)+'</strong><br>'+(receptionLocked?'Este reporte corresponde a recepción retenida. Gerencia/Jefe Logístico pueden comentar o dejarlo en revisión, pero el cierre definitivo se hace desde el ingreso de mercancía con evidencia.':(isTargetSales?'Usted es el asesor asignado para responder esta novedad. La respuesta quedará trazada a su nombre.':'Actualice el estado o deje comentario de gestión.'))+'<br><strong>Asesor responsable:</strong> '+esc(reportTargetName(r))+'</div><label class="field"><span>Estado</span><select class="select" name="status">'+statusOptions+'</select></label><label class="field"><span>Comentario de gestión *</span><textarea class="textarea" name="comment" required placeholder="Indique revisión, respuesta del asesor, decisión, responsable o siguiente acción."></textarea></label><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
   qs("#manageReportForm").onsubmit=function(e){e.preventDefault();submitManageReport(id,new FormData(e.target));};
 }
 function submitManageReport(id,fd){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
+  if(!canCommentReports(r)){alert("Solo el asesor asignado al reporte o los responsables autorizados pueden responder esta novedad.");return;}
   var comment=String(fd.get("comment")||"").trim();if(!comment){alert("Debe escribir comentario de gestión.");return;}
   var status=fd.get("status")||"EN_REVISION";
   if(r.sourceModule==="recepcion_mercancia" && r.closeOnlyFromReception===true && !canCloseReceptionNovelty() && status==="CERRADO")status="PENDIENTE_RECEPCION";
-  var comments=(r.managementComments||[]).concat([{id:uid("COM"),comment:comment,status:status,createdAt:now(),userId:state.user.uid,userName:state.user.name,userRole:state.user.role}]);
-  db.collection("reportes_novedad").doc(id).update({status:status,managementComments:comments,updatedAt:now(),managedBy:state.user.uid,managedByName:state.user.name}).then(function(){
-    return createEvent({type:"REPORT_MANAGED",detail:"Reporte gestionado: "+(r.title||id)+" · "+status,targetRole:r.createdByRole||"",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion",r.createdByRole]}).catch(function(){return null;});
+  var isTargetSales=reportAssignedToCurrentSalesUser(r);
+  var entry={id:uid("COM"),comment:comment,status:status,createdAt:now(),userId:state.user.uid,userName:state.user.name,userRole:state.user.role,isSalesAdvisorResponse:!!isTargetSales,targetSalesName:reportTargetName(r)};
+  var comments=(r.managementComments||[]).concat([entry]);
+  var payload={status:status,managementComments:comments,updatedAt:now(),managedBy:state.user.uid,managedByName:state.user.name};
+  if(isTargetSales){payload.salesResponseAt=entry.createdAt;payload.salesResponseBy=state.user.uid;payload.salesResponseByName=state.user.name;payload.salesResponseComment=comment;payload.salesResponseStatus=status;}
+  db.collection("reportes_novedad").doc(id).update(payload).then(function(){
+    return createEvent({type:isTargetSales?"REPORT_SALES_ADVISOR_RESPONDED":"REPORT_MANAGED",detail:(isTargetSales?"Asesor respondió reporte: ":"Reporte gestionado: ")+(r.title||id)+" · "+status,targetRole:r.createdByRole||"",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion","ventas",r.createdByRole]}).catch(function(){return null;});
   }).then(loadData).then(function(){closeDrawer();renderReports();}).catch(function(e){showError((e&&e.message)||e||"No se pudo gestionar el reporte.");});
 }
 function openGeneralReportModal(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal("Reportar novedad interna",'<form class="form" id="generalReportForm"><div class="notice"><strong>Reporte transversal:</strong> quedará en la bandeja Reportes. Todos podrán ver el estado y los jefes podrán gestionar.</div><label class="field"><span>Tipo de novedad</span><select class="select" name="category"><option>Novedad operativa</option><option>Diferencia documental</option><option>Diferencia física</option><option>Retraso o bloqueo</option><option>Riesgo de despacho</option><option>Otro</option></select></label><label class="field"><span>Criticidad</span><select class="select" name="severity"><option>Media</option><option>Alta</option><option>Baja</option></select></label><label class="field"><span>Descripción de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Explique exactamente qué pasó, dónde se detectó y qué se requiere."></textarea></label><button class="btn btn-primary" type="submit">Crear reporte</button></form>'));
+  var advisorOptions=reportSalesUserOptionsHtml(c);
+  drawer(modal("Reportar novedad interna",'<form class="form" id="generalReportForm"><div class="notice"><strong>Reporte a Ventas:</strong> seleccione el asesor que debe responder esta novedad. El reporte quedará trazado al asesor elegido y su respuesta será la gestión válida de Ventas.</div><label class="field"><span>Asesor de Ventas que debe responder *</span><select class="select" name="targetSales" required>'+advisorOptions+'</select><small>La bandeja de Reportes mostrará esta novedad al asesor seleccionado y a los responsables autorizados.</small></label><label class="field"><span>Tipo de novedad</span><select class="select" name="category"><option>Novedad operativa</option><option>Diferencia documental</option><option>Diferencia física</option><option>Retraso o bloqueo</option><option>Riesgo de despacho</option><option>Otro</option></select></label><label class="field"><span>Criticidad</span><select class="select" name="severity"><option>Media</option><option>Alta</option><option>Baja</option></select></label><label class="field"><span>Descripción de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Explique exactamente qué pasó, dónde se detectó y qué debe responder el asesor."></textarea></label><button class="btn btn-primary" type="submit">Crear reporte para asesor</button></form>'));
   qs("#generalReportForm").onsubmit=function(e){e.preventDefault();submitGeneralReport(id,new FormData(e.target));};
 }
 function submitGeneralReport(id,fd){
   var c=caseById(id);if(!c)return;
   var detail=String(fd.get("detail")||"").trim();if(!detail){alert("Debe escribir la novedad.");return;}
-  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:c.salesAdvisor||'',caseOwnerUid:c.createdBy||''};
-  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada: "+report.category,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
+  var target=resolveReportSalesUser(fd.get("targetSales"),c);if(!target){alert("Debe seleccionar el asesor de Ventas que responderá el reporte.");return;}
+  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:target.name||'',caseOwnerUid:c.createdBy||'',targetSalesKey:target.key||'',targetSalesUid:target.uid||'',targetSalesName:target.name||'',targetSalesEmail:target.email||'',assignedSalesUid:target.uid||'',assignedSalesName:target.name||'',assignedSalesEmail:target.email||'',assignedSalesAt:now(),assignedSalesBy:state.user.uid,assignedSalesByName:state.user.name,reportTo:["ventas",target.name||target.email||"Asesor"],visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion","ventas",c.assignedRole]};
+  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada para respuesta de asesor: "+report.category+" · Asesor: "+(target.name||target.email||""),targetRole:"ventas",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion","ventas",c.assignedRole]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
 }
 
 function kpiFilteredCases(){
