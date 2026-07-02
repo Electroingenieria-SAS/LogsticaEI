@@ -1,0 +1,79 @@
+/* Hotfix V80 - Registro de Ventas forzado */
+.registro-ventas-v80-loading {
+  opacity: .72;
+  pointer-events: none;
+}
+
+.registro-ventas-force-v80 {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.registro-ventas-force-v80 .rv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, .04);
+  border: 1px solid rgba(15, 23, 42, .08);
+}
+
+.registro-ventas-force-v80 .rv-header strong {
+  font-size: 18px;
+}
+
+.registro-ventas-force-v80 .rv-header button,
+[data-refresh-sales-registry],
+[data-refresh-daily-sales],
+#btnActualizarVentasDiarias,
+#btnActualizarRegistroVentas {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.registro-ventas-force-v80 .rv-list {
+  display: grid;
+  gap: 10px;
+}
+
+.registro-venta-card-v80 {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, .08);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, .06);
+}
+
+.registro-venta-card-v80 .rv-top,
+.registro-venta-card-v80 .rv-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.registro-venta-card-v80 .rv-soft {
+  opacity: .75;
+  font-size: 13px;
+}
+
+.rv-empty,
+.rv-error {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, .08);
+}
+
+.rv-error {
+  border-color: rgba(185, 28, 28, .25);
+}
