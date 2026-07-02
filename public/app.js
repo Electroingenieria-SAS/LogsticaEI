@@ -4091,9 +4091,18 @@ function canEditGenericChecklist(c){
 function checklistPanelHtml(c,def){
   if(!canEditGenericChecklist(c))return "";
   def=def||processes[c.currentProcess]||processes.recepcion_pedidos;
-  var checks=(def.checklist||[]).map(function(item){var v=c.checklist[item]||"pending";return'<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'" data-current="'+esc(v)+'" data-original="'+esc(v)+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return'<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';}).join("");
-  var checklistActions='<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Modo fluido:</strong> marque únicamente los puntos de este macroproceso y luego pulse <strong>Cerrar checklist</strong>. Ventas y Caja no ven esta lista para evitar confusiones.</div><div class="checklist-actions"><button class="btn btn-success" data-action="closeChecklist" data-id="'+c.id+'">Cerrar checklist</button><button class="btn" data-action="discardChecklist" data-id="'+c.id+'">Descartar cambios</button></div>';
-  return '<article class="card"><h3>Checklist operativo</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article>';
+  var isAlist=(c && c.currentProcess==="alistamiento");
+  var checks=(def.checklist||[]).map(function(item){
+    var v=c.checklist[item]||"pending";
+    return '<div class="check-row"><div class="check-title">'+esc(item)+'</div><div class="segment" data-check="'+esc(item)+'" data-id="'+c.id+'" data-current="'+esc(v)+'" data-original="'+esc(v)+'">'+["ok|Conforme|ok","bad|No conforme|bad","na|N/A|na","pending|Pendiente|pending"].map(function(x){var a=x.split("|");return '<button class="'+(v===a[0]?'active '+a[2]:'')+'" data-action="check" data-value="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div></div>';
+  }).join("");
+  var note=isAlist
+    ? '<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Checklist unificado:</strong> este checklist y la lista marcable trabajan sobre el mismo estado. Si marca <strong>Pedido listo para facturación</strong> como Conforme, la app marca todas las líneas del PDF como <strong>Encontrado</strong>, valida cortes y habilita el envío seguro a Facturación. Si marca desde la lista por líneas, este checklist también se actualiza automáticamente.</div>'
+    : '<div class="notice checklist-batch-note" style="margin-bottom:12px"><strong>Modo fluido:</strong> marque únicamente los puntos de este macroproceso y luego pulse <strong>Cerrar checklist</strong>. Ventas y Caja no ven esta lista para evitar confusiones.</div>';
+  var title=isAlist?'Checklist operativo unificado de alistamiento':'Checklist operativo';
+  var extra=isAlist?'<div class="top-actions" style="margin-bottom:12px"><button class="btn btn-primary" data-action="alistChecklist" data-id="'+esc(c.id)+'">Ver lista marcable por líneas</button></div>':'';
+  var checklistActions=note+extra+'<div class="checklist-actions"><button class="btn btn-success" data-action="closeChecklist" data-id="'+c.id+'">Guardar checklist</button><button class="btn" data-action="discardChecklist" data-id="'+c.id+'">Descartar cambios</button></div>';
+  return '<article class="card"><h3>'+title+'</h3>'+checklistActions+'<div class="checklist">'+checks+'</div></article>';
 }
 function renderDetail(id){
   state.detailId=id;
@@ -4169,7 +4178,7 @@ function compactDetailActions(actions){
   if(!actions)return back;
   var btns=(String(actions).match(/<button[\s\S]*?<\/button>/g)||[]);
   if(!btns.length)return back+actions;
-  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,planCuts:5,releaseSeparationPayment:6,cashInvoice:7,delivery:8,answer:9,manageNoDelivery:10,requestCancelOrder:11,cancelOrder:12,close:13,transfer:13};
+  var priority={accept:1,receptionPdf:2,assignAlistamiento:3,alistChecklist:4,alistToBilling:5,planCuts:6,releaseSeparationPayment:7,cashInvoice:8,delivery:9,answer:10,manageNoDelivery:11,requestCancelOrder:12,cancelOrder:13,close:14,transfer:14};
   var primary=[],secondary=[];
   btns.forEach(function(html){
     var m=html.match(/data-action="([^"]+)"/),a=m?m[1]:"";
@@ -4190,7 +4199,7 @@ function nextActionButtons(c){
     var action="transfer";
     if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento"){action="assignAlistamiento";label="Enviar a alistamiento y asignar";}
     if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento" && !receptionPdfIsComplete(c)){cls="btn btn-gold";label="Validar recepción pendiente";}
-    if(c.currentProcess==="alistamiento" && n==="facturacion")label="Enviar a facturación";
+    if(c.currentProcess==="alistamiento" && n==="facturacion"){action="alistToBilling";label="Finalizar alistamiento y enviar a facturación";}
     return '<button class="'+cls+'" data-action="'+action+'" data-next="'+n+'" data-id="'+c.id+'">'+esc(label)+'</button>';
   }).join("");
 }
@@ -4241,42 +4250,171 @@ function alistamientoLineChecklistPanel(c, compact){
   var rows=items.map(function(it,i){
     var st=it.alistamientoStatus||'PENDIENTE';
     var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
-    var actions=canMark?('<div class="row-actions"><button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+i+'">Encontrado</button><button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+i+'">No encontrado</button><button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+i+'">Novedad</button><button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+i+'">Pendiente</button></div>'):'—';
+    var lineId=it.id||it.lineId||it.sourceLineId||'';
+    var actions=canMark?('<div class="row-actions"><button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+i+'" data-line-id="'+esc(lineId)+'">Encontrado</button><button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+i+'" data-line-id="'+esc(lineId)+'">No encontrado</button><button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+i+'" data-line-id="'+esc(lineId)+'">Novedad</button><button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+i+'" data-line-id="'+esc(lineId)+'">Pendiente</button></div>'):'—';
     return '<tr><td>'+alistamientoStatusChip(st)+'</td><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(it.requiereCorte?'Corte':'Alistamiento')+'</td><td>'+esc(note)+'</td><td>'+actions+'</td></tr>';
   }).join('');
   var total=items.length, found=items.filter(function(x){return x.alistamientoStatus==='ENCONTRADO';}).length, novelty=items.filter(function(x){return x.alistamientoStatus==='NOVEDAD'||x.alistamientoStatus==='NO_ENCONTRADO';}).length, pending=items.filter(function(x){return !x.alistamientoStatus||x.alistamientoStatus==='PENDIENTE';}).length;
-  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada referencia validada desde el PDF. Si una línea tiene novedad o no se encuentra, se envía solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla:</strong> el pedido solo debe avanzar a facturación cuando las líneas estén validadas y no existan novedades pendientes. Si solo hay disponibilidad parcial, use <strong>Crear envío parcial</strong> para facturar y despachar lo encontrado sin cerrar el pedido original.</div>'+(canMark?'<div style="margin-top:12px"><button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
+  var cd=cutDoneCount(c);
+  var cutsOk=cd.total===0 || cd.done>=cd.total;
+  var readyBilling=canMark && total>0 && found===total && pending===0 && novelty===0 && cutsOk;
+  var finishAction=readyBilling?'<button class="btn btn-success" data-action="alistToBilling" data-id="'+esc(c.id)+'">Finalizar alistamiento y enviar a facturación</button>':'';
+  var pendingCutNotice=(!cutsOk)?'<div class="notice warning" style="margin-top:12px"><strong>Cortes pendientes:</strong> el pedido tiene '+esc(cd.done)+'/'+esc(cd.total)+' cortes finalizados. Facturación se habilita cuando Corte quede completo.</div>':'';
+  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada referencia validada desde el PDF. Si una línea tiene novedad o no se encuentra, se envía solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla reforzada:</strong> el pedido solo avanza a facturación cuando las líneas quedan guardadas como encontradas, sin novedades pendientes y con cortes finalizados si aplica. El envío a facturación revalida Firebase antes de cambiar la etapa.</div>'+pendingCutNotice+(canMark?'<div class="top-actions" style="margin-top:12px">'+finishAction+'<button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
 }
 function refreshAlistamientoChecklist(c){
   applyAlistamientoAutoChecklist(c);
 }
-function markAlistamientoItem(id,idx,status,detail,reason){
-  var c=caseById(id);if(!c)return;
-  if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return Promise.resolve(false);}
-  var items=c.orderItems||[];idx=Number(idx);
-  if(idx<0||idx>=items.length)return;
-  var it=items[idx];
-  it.alistamientoStatus=status;
-  it.alistamientoNote=detail||'';
-  it.alistamientoUpdatedAt=now();
-  it.alistamientoUpdatedBy=state.user?state.user.name:'';
-  if(status==='ENCONTRADO'){
-    it.estado=it.requiereCorte?'PENDIENTE_CORTE':'ALISTADO';
-    it.alistamientoNoveltyReason='';
-    it.alistamientoNoveltyDetail='';
-  }else if(status==='PENDIENTE'){
-    it.estado=it.requiereCorte?'PENDIENTE_CORTE':'PENDIENTE_ALISTAMIENTO';
-    it.alistamientoNoveltyReason='';
-    it.alistamientoNoveltyDetail='';
-  }else{
-    it.estado='NOVEDAD_ALISTAMIENTO';
-    it.alistamientoNoveltyReason=reason||status;
-    it.alistamientoNoveltyDetail=detail||'';
-  }
-  refreshAlistamientoChecklist(c);
-  var eventType=(status==='ENCONTRADO')?'ALISTAMIENTO_ITEM_FOUND':(status==='PENDIENTE'?'ALISTAMIENTO_ITEM_PENDING':'ALISTAMIENTO_ITEM_NOVELTY');
-  return persistCase(c,{type:eventType,detail:(it.referencia||'')+' · '+(it.descripcion||'')+' · '+(detail||status),targetRole:(status==='ENCONTRADO'||status==='PENDIENTE')?'aux_logistica':'coordinador_logistico'}).then(function(){renderDetail(id);});
+function replaceCaseInState(c){
+  if(!c || !c.id)return c;
+  state.cases=state.cases||[];
+  var i=-1;
+  for(var x=0;x<state.cases.length;x++){if(state.cases[x]&&state.cases[x].id===c.id){i=x;break;}}
+  if(i>=0)state.cases[i]=c;else state.cases.unshift(c);
+  return c;
 }
+function loadFreshCaseForUpdate(id,fallback){
+  if(!db)return Promise.resolve(fallback||caseById(id));
+  return db.collection("cases").doc(id).get().then(function(snap){
+    if(!snap || !snap.exists)return fallback||caseById(id);
+    var fresh=Object.assign({id:snap.id},snap.data()||{});
+    replaceCaseInState(fresh);
+    return fresh;
+  }).catch(function(){return fallback||caseById(id);});
+}
+function locateAlistamientoLine(items,idx,lineKey){
+  items=items||[];
+  var key=String(lineKey||"").trim();
+  if(key){
+    for(var i=0;i<items.length;i++){
+      var it=items[i]||{};
+      if(String(it.id||it.lineId||it.sourceLineId||"").trim()===key)return i;
+    }
+  }
+  idx=Number(idx);
+  return (idx>=0 && idx<items.length)?idx:-1;
+}
+function alistamientoReadiness(c){
+  var items=(c&&c.orderItems)||[];
+  var pending=items.filter(function(it){return !it.alistamientoStatus||it.alistamientoStatus==='PENDIENTE';});
+  var novelty=items.filter(function(it){return it.alistamientoStatus==='NOVEDAD'||it.alistamientoStatus==='NO_ENCONTRADO';});
+  var found=items.filter(function(it){return it.alistamientoStatus==='ENCONTRADO';});
+  var cd=cutDoneCount(c||{});
+  var cutsOk=cd.total===0 || cd.done>=cd.total;
+  return {items:items,total:items.length,found:found.length,pending:pending,novelty:novelty,cuts:cd,cutsOk:cutsOk,ready:(items.length>0 && found.length===items.length && pending.length===0 && novelty.length===0 && cutsOk)};
+}
+function alistamientoReadinessMessage(r){
+  r=r||{};
+  var parts=[];
+  if(!r.total)parts.push("no hay líneas del pedido para validar");
+  if(r.pending&&r.pending.length)parts.push(r.pending.length+" línea(s) pendiente(s) por marcar");
+  if(r.novelty&&r.novelty.length)parts.push(r.novelty.length+" línea(s) con novedad/no encontrada(s)");
+  if(!r.cutsOk && r.cuts)parts.push("cortes pendientes "+r.cuts.done+"/"+r.cuts.total);
+  return parts.join(", ")||"alistamiento no está listo";
+}
+function ensureAlistamientoClosureBeforeBilling(c){
+  refreshAlistamientoChecklist(c);
+  var r=alistamientoReadiness(c);
+  c.documentFlow=c.documentFlow||{};
+  c.documentFlow.alistamientoReadyAt=now();
+  c.documentFlow.alistamientoReadyBy=(state.user&&state.user.name)||"";
+  c.documentFlow.alistamientoReadyStatus="LISTO_FACTURACION";
+  c.documentFlow.alistamientoReadyItems=r.found+"/"+r.total;
+  c.alistamientoClosure={
+    status:"LISTO_FACTURACION",
+    completedAt:c.documentFlow.alistamientoReadyAt,
+    completedByName:c.documentFlow.alistamientoReadyBy,
+    itemCount:r.total,
+    foundCount:r.found,
+    pendingCount:r.pending.length,
+    noveltyCount:r.novelty.length,
+    cutsDone:r.cuts.done,
+    cutsTotal:r.cuts.total,
+    checklistSnapshot:Object.assign({},c.checklist||{})
+  };
+  addStateHistory(c,"alistamiento_listo","Alistamiento validado: "+r.found+"/"+r.total+" líneas encontradas. Pedido listo para facturación.",{tipo_estado:"valor",toProcess:"facturacion",foundCount:r.found,totalItems:r.total,cutsDone:r.cuts.done,cutsTotal:r.cuts.total});
+  return c;
+}
+function finalizeAlistamientoToBilling(id){
+  var fallback=caseById(id);
+  if(!fallback)return Promise.resolve(false);
+  state.alistamientoSavingLocks=state.alistamientoSavingLocks||{};
+  var key="billing_"+id;
+  if(state.alistamientoSavingLocks[key])return Promise.resolve(false);
+  state.alistamientoSavingLocks[key]=true;
+  return loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)return false;
+    if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return false;}
+    if(c.currentProcess!=="alistamiento"){alert("Este pedido ya no está en Alistamiento. Actualice la bandeja para ver su etapa actual.");return false;}
+    if(c.status!=="en_proceso"){alert("El pedido debe estar aceptado/en proceso antes de enviarlo a Facturación.");return false;}
+    refreshAlistamientoChecklist(c);
+    var ready=alistamientoReadiness(c);
+    if(!ready.ready){alert("No puede enviar a facturación: "+alistamientoReadinessMessage(ready)+".");return false;}
+    ensureAlistamientoClosureBeforeBilling(c);
+    return assignToProcess(c,"facturacion","Alistamiento completo y verificado; pedido enviado a Facturación con lista marcable guardada.").then(function(){
+      renderDetail(id);
+      return true;
+    });
+  }).catch(function(e){showError((e&&e.message)||e||"No fue posible finalizar alistamiento.");return false;}).then(function(ok){
+    state.alistamientoSavingLocks[key]=false;
+    return ok;
+  });
+}
+function markAlistamientoItem(id,idx,status,detail,reason,lineKey){
+  var fallback=caseById(id);if(!fallback)return Promise.resolve(false);
+  if(!canOperateCurrentProcess(fallback)){alert("Este pedido no está asignado a su usuario para alistamiento.");return Promise.resolve(false);}
+  state.alistamientoSavingLocks=state.alistamientoSavingLocks||{};
+  var lockKey=["line",id,lineKey||idx,status].join("_");
+  if(state.alistamientoSavingLocks[lockKey])return Promise.resolve(false);
+  state.alistamientoSavingLocks[lockKey]=true;
+  return loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)return false;
+    if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return false;}
+    if(c.currentProcess!=="alistamiento"){alert("Este pedido ya no está en Alistamiento. Actualice la bandeja para ver su etapa actual.");return false;}
+    var items=c.orderItems||[];
+    var pos=locateAlistamientoLine(items,idx,lineKey);
+    if(pos<0){alert("No se encontró la línea del pedido. Actualice la vista y vuelva a intentar.");return false;}
+    var it=items[pos];
+    it.alistamientoStatus=status;
+    it.alistamientoNote=detail||'';
+    it.alistamientoUpdatedAt=now();
+    it.alistamientoUpdatedBy=state.user?state.user.name:'';
+    if(status==='ENCONTRADO'){
+      it.estado=it.requiereCorte?'PENDIENTE_CORTE':'ALISTADO';
+      it.encontrado=true;
+      it.encontradoAt=it.alistamientoUpdatedAt;
+      it.encontradoPor=it.alistamientoUpdatedBy;
+      it.alistamientoNoveltyReason='';
+      it.alistamientoNoveltyDetail='';
+    }else if(status==='PENDIENTE'){
+      it.estado=it.requiereCorte?'PENDIENTE_CORTE':'PENDIENTE_ALISTAMIENTO';
+      it.encontrado=false;
+      it.alistamientoNoveltyReason='';
+      it.alistamientoNoveltyDetail='';
+    }else{
+      it.estado='NOVEDAD_ALISTAMIENTO';
+      it.encontrado=false;
+      it.alistamientoNoveltyReason=reason||status;
+      it.alistamientoNoveltyDetail=detail||'';
+    }
+    refreshAlistamientoChecklist(c);
+    var eventType=(status==='ENCONTRADO')?'ALISTAMIENTO_ITEM_FOUND':(status==='PENDIENTE'?'ALISTAMIENTO_ITEM_PENDING':'ALISTAMIENTO_ITEM_NOVELTY');
+    return persistCase(c,{type:eventType,detail:(it.referencia||'')+' · '+(it.descripcion||'')+' · '+(detail||status),targetRole:(status==='ENCONTRADO'||status==='PENDIENTE')?'aux_logistica':'coordinador_logistico'}).then(function(){
+      return loadFreshCaseForUpdate(id,c).then(function(fresh){
+        var freshItems=(fresh&&fresh.orderItems)||[];
+        var freshPos=locateAlistamientoLine(freshItems,pos,lineKey);
+        var saved=freshPos>=0 && freshItems[freshPos] && freshItems[freshPos].alistamientoStatus===status;
+        if(!saved)throw new Error("La marca no quedó confirmada en Firebase. Reintente antes de enviar a Facturación.");
+        renderDetail(id);
+        return true;
+      });
+    });
+  }).catch(function(e){showError((e&&e.message)||e||"No fue posible guardar la marca de alistamiento.");return false;}).then(function(ok){
+    state.alistamientoSavingLocks[lockKey]=false;
+    return ok;
+  });
+}
+
 function openAlistamientoNovelty(id,idx,missing){
   var c=caseById(id);if(!c)return;var items=c.orderItems||[];idx=Number(idx);var it=items[idx];if(!it)return;
   var title=missing?'Marcar línea no encontrada':'Reportar novedad de alistamiento';
@@ -7345,6 +7483,7 @@ function accept(id){var c=caseById(id);if(!canOperateCurrentProcess(c)){alert("E
 function transfer(id,next){
   var c=caseById(id);
   normalizeReceptionDocumentFlow(c);
+  if(c && c.currentProcess==="alistamiento" && next==="facturacion")return finalizeAlistamientoToBilling(id);
   if(!canOperateCurrentProcess(c)){alert("Este pedido tiene asignación individual o no pertenece a su macroproceso.");return;}
   if(separationActive(c) && c.currentProcess==="recepcion_pedidos" && next==="alistamiento"){
     addStateHistory(c,"pago_pendiente","Recepción envía a alistamiento con anotación de pago pendiente. El proceso continúa y la liberación de pago quedará trazada por Logística/Caja.",{tipo_estado:"pago_pendiente",toProcess:"alistamiento"});
@@ -7371,7 +7510,7 @@ function transfer(id,next){
 }
 function checklistManualBlockReason(c,item){
   if(!c)return "Caso no encontrado.";
-  if(c.currentProcess==="alistamiento" && /pedido recibido|referencia|descripci|cantidad|unidad|corte/i.test(item))return "Ese checklist se calcula desde las líneas detectadas del PDF y los cortes. Use el PDF/cortes para actualizarlo.";
+  if(c.currentProcess==="alistamiento")return "";
   if(isDeliveryProcess(c.currentProcess) && /foto antes|mercancía subida|mercancia subida|carro cerrado|entrega final/i.test(item))return "Este punto se actualiza automáticamente al subir la foto obligatoria de entrega a Drive.";
   return "";
 }
@@ -7390,20 +7529,85 @@ function updateCheck(el){
     else row.classList.remove("check-dirty");
   }
 }
-function closeChecklist(id){
-  var c=caseById(id);if(!c)return;
-  if(!canEditGenericChecklist(c)){alert("Este checklist no aplica para este rol o macroproceso.");return;}
-  var changed=[], blocked=[];
+function alistamientoChecklistReadyByGeneral(c){
+  c=c||{};
+  var list=(processes.alistamiento&&processes.alistamiento.checklist)||[];
+  var checks=c.checklist||{};
+  var finalReady=checks["Pedido listo para facturación"]==="ok" || checks["Pedido listo para facturación"]==="na";
+  var blockingBad=list.some(function(k){return checks[k]==="bad";});
+  var operational=list.filter(function(k){return k!=="Pedido listo para facturación";});
+  var allOperationalOk=operational.length>0 && operational.every(function(k){return checks[k]==="ok" || checks[k]==="na";});
+  return !!((finalReady || allOperationalOk) && !blockingBad);
+}
+function syncAlistamientoLinesFromChecklist(c,changed){
+  if(!c || c.currentProcess!=="alistamiento")return {changedLines:0,autoFound:false,message:""};
   c.checklist=c.checklist||{};
+  c.orderItems=c.orderItems||[];
+  var readyByChecklist=alistamientoChecklistReadyByGeneral(c);
+  var cd=cutDoneCount(c);
+  var cutsOk=cd.total===0 || cd.done>=cd.total;
+  var changedLines=0;
+  if(readyByChecklist && c.orderItems.length && cutsOk){
+    c.orderItems.forEach(function(it){
+      if(it.alistamientoStatus!=="ENCONTRADO" || it.encontrado!==true){
+        it.alistamientoStatus="ENCONTRADO";
+        it.alistamientoNote=it.alistamientoNote||"Marcado desde checklist operativo unificado.";
+        it.alistamientoUpdatedAt=now();
+        it.alistamientoUpdatedBy=state.user?state.user.name:"";
+        it.estado=it.requiereCorte?"PENDIENTE_CORTE":"ALISTADO";
+        it.encontrado=true;
+        it.encontradoAt=it.alistamientoUpdatedAt;
+        it.encontradoPor=it.alistamientoUpdatedBy;
+        it.alistamientoNoveltyReason="";
+        it.alistamientoNoveltyDetail="";
+        changedLines++;
+      }
+    });
+    c.alistamientoUnifiedSync=c.alistamientoUnifiedSync||[];
+    c.alistamientoUnifiedSync.push({at:now(),byName:(state.user&&state.user.name)||"",source:"checklist_general",action:"marcar_todas_las_lineas_encontradas",lines:c.orderItems.length,changedLines:changedLines});
+    refreshAlistamientoChecklist(c);
+    return {changedLines:changedLines,autoFound:true,message:"Checklist general sincronizó "+c.orderItems.length+" línea(s) como Encontrado."};
+  }
+  refreshAlistamientoChecklist(c);
+  if(readyByChecklist && !cutsOk){
+    return {changedLines:0,autoFound:false,message:"Checklist guardado, pero no se marcaron todas las líneas porque hay cortes pendientes "+cd.done+"/"+cd.total+"."};
+  }
+  return {changedLines:0,autoFound:false,message:"Checklist guardado y sincronizado con el estado actual de las líneas."};
+}
+function closeChecklist(id){
+  var fallback=caseById(id);if(!fallback)return;
+  if(!canEditGenericChecklist(fallback)){alert("Este checklist no aplica para este rol o macroproceso.");return;}
+  var changed=[], blocked=[], domValues={};
   qsa('.segment[data-id="'+id+'"]').forEach(function(seg){
-    var item=seg.getAttribute("data-check"),val=seg.getAttribute("data-current")||"pending",original=seg.getAttribute("data-original")||"pending",reason=checklistManualBlockReason(c,item);
+    var item=seg.getAttribute("data-check"),val=seg.getAttribute("data-current")||"pending",original=seg.getAttribute("data-original")||"pending",reason=checklistManualBlockReason(fallback,item);
     if(val!==original){
       if(reason)blocked.push(item);
-      else{c.checklist[item]=val;changed.push(item+": "+val);}
+      else{domValues[item]=val;changed.push(item+": "+val);}
     }
   });
   if(blocked.length){alert("Algunos puntos no se guardaron porque son automáticos: "+blocked.join(", "));}
   if(!changed.length){alert("No hay cambios nuevos para guardar.");return;}
+  if(fallback.currentProcess==="alistamiento"){
+    loadFreshCaseForUpdate(id,fallback).then(function(c){
+      if(!canEditGenericChecklist(c)){alert("Este checklist no aplica para este rol o macroproceso.");return false;}
+      c.checklist=c.checklist||{};
+      Object.keys(domValues).forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]=domValues[k];});
+      var sync=syncAlistamientoLinesFromChecklist(c,changed);
+      var ready=alistamientoReadiness(c);
+      var detail="Checklist unificado de alistamiento guardado con "+changed.length+" cambio(s). "+changed.join(" · ")+". "+(sync.message||"");
+      if(sync.autoFound && ready.ready){detail+=" Pedido listo para enviar a Facturación.";}
+      return persistCase(c,{type:"CHECKLIST_CLOSED",detail:detail,visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","jefe_logistica","facturacion","admin","super_admin","super_administrador"]}).then(function(){
+        playNotificationSound("checklistClosed");
+        renderDetail(id);
+        if(sync.autoFound && ready.ready)alert("Checklist guardado: las líneas quedaron como Encontrado. Ahora puede pulsar Finalizar alistamiento y enviar a facturación.");
+        return true;
+      });
+    }).catch(function(e){showError((e&&e.message)||e||"No fue posible guardar el checklist unificado de alistamiento.");});
+    return;
+  }
+  var c=fallback;
+  c.checklist=c.checklist||{};
+  Object.keys(domValues).forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]=domValues[k];});
   persistCase(c,{type:"CHECKLIST_CLOSED",detail:"Checklist cerrado con "+changed.length+" cambio(s). "+changed.join(" · ")}).then(function(){playNotificationSound("checklistClosed");renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function discardChecklistChanges(id){
@@ -7921,8 +8125,9 @@ function bindActions(){
     if(a==="receptionPdf")openReceptionPdf(id);
     if(a==="alistChecklist")openAlistamientoChecklist(id);
     if(a==="alistPartial")openPartialShipment(id);
-    if(a==="alistFound")markAlistamientoItem(id,b.getAttribute("data-line"),"ENCONTRADO","Mercancía encontrada y validada físicamente.","").catch(function(e){showError(e.message||e);});
-    if(a==="alistPending")markAlistamientoItem(id,b.getAttribute("data-line"),"PENDIENTE","Pendiente por validar físicamente.","").catch(function(e){showError(e.message||e);});
+    if(a==="alistToBilling")finalizeAlistamientoToBilling(id).catch(function(e){showError(e.message||e);});
+    if(a==="alistFound")markAlistamientoItem(id,b.getAttribute("data-line"),"ENCONTRADO","Mercancía encontrada y validada físicamente.","",b.getAttribute("data-line-id")).catch(function(e){showError(e.message||e);});
+    if(a==="alistPending")markAlistamientoItem(id,b.getAttribute("data-line"),"PENDIENTE","Pendiente por validar físicamente.","",b.getAttribute("data-line-id")).catch(function(e){showError(e.message||e);});
     if(a==="alistMissing")openAlistamientoNovelty(id,b.getAttribute("data-line"),true);
     if(a==="alistNovelty")openAlistamientoNovelty(id,b.getAttribute("data-line"),false);
     if(a==="planCuts")openCutsPlanner(id);
