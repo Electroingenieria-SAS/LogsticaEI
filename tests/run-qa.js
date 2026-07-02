@@ -1,6 +1,9 @@
-const { spawnSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 
-const testFile = path.join(__dirname, 'found-flow.test.js');
-const result = spawnSync(process.execPath, [testFile], { stdio: 'inherit' });
-process.exit(result.status || 0);
+const root = path.resolve(__dirname, '..');
+
+execFileSync(process.execPath, [path.join(root, 'tests', 'found-flow.test.js')], { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(root, 'tests', 'sales-registry-panel.test.js')], { stdio: 'inherit' });
+
+console.log('QA GENERAL OK - Hotfix V79: Encontrado/Facturación y Registro de Ventas aprobados.');

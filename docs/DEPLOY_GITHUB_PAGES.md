@@ -42,3 +42,28 @@ git push origin main
 4. Marcar todos como Encontrado: debe cambiar a Facturación.
 5. Reabrir la app: el estado debe persistir.
 6. Marcar un pedido de prueba como No encontrado: no debe ir a Facturación.
+
+
+## Archivos adicionales V79 — Registro de Ventas
+
+Copiar también dentro de `public/`:
+
+```txt
+logistica-sales-registry-panel-fix.js
+logistica-sales-registry-panel-fix.css
+```
+
+En `index.html`:
+
+```html
+<link rel="stylesheet" href="./logistica-sales-registry-panel-fix.css?v=v79-registro-ventas-full">
+<script src="./logistica-sales-registry-panel-fix.js?v=v79-registro-ventas-full"></script>
+```
+
+Prueba posterior:
+
+1. Abrir el módulo antes llamado Ventas Diarias.
+2. Confirmar que ahora se lea Registro de Ventas.
+3. Presionar Actualizar.
+4. Validar que cargue todos los registros, incluyendo fechas anteriores.
+5. Validar que no quede limitado a dos registros.

@@ -1,0 +1,109 @@
+/* Logistica EI — Hotfix V79 Registro de Ventas */
+.registro-ventas-loading,
+.ventas-diarias-loading {
+  opacity: 0.74;
+  pointer-events: none;
+}
+
+.registro-ventas-header,
+.ventas-diarias-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.registro-ventas-header strong,
+.ventas-diarias-header strong {
+  font-size: 16px;
+}
+
+.registro-ventas-header span,
+.ventas-diarias-header span {
+  font-size: 12px;
+  opacity: 0.76;
+}
+
+.registro-ventas-lista,
+.ventas-diarias-lista {
+  display: grid;
+  gap: 10px;
+}
+
+.registro-venta-card,
+.venta-diaria-card {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  padding: 12px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.registro-venta-card-top,
+.registro-venta-meta,
+.venta-diaria-card-top,
+.venta-diaria-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.registro-venta-card-top strong,
+.venta-diaria-card-top strong {
+  font-size: 14px;
+}
+
+.registro-venta-card-top span,
+.venta-diaria-card-top span {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.10);
+  color: #0f766e;
+}
+
+.registro-venta-cliente,
+.venta-diaria-cliente {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #334155;
+}
+
+.registro-venta-meta,
+.venta-diaria-meta {
+  font-size: 12px;
+  color: #475569;
+}
+
+.registro-venta-meta.secundaria,
+.venta-diaria-meta.secundaria {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.registro-ventas-empty,
+.registro-ventas-error,
+.registro-ventas-empty-row td,
+.registro-ventas-error-row td,
+.ventas-diarias-empty,
+.ventas-diarias-error,
+.ventas-diarias-empty-row td,
+.ventas-diarias-error-row td {
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #475569;
+  text-align: center;
+}
+
+.registro-ventas-error,
+.registro-ventas-error-row td,
+.ventas-diarias-error,
+.ventas-diarias-error-row td {
+  background: #fef2f2;
+  color: #991b1b;
+}

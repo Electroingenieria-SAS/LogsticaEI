@@ -1,9 +1,10 @@
 {
-  "name": "logisticaei-hotfix-encontrado-facturacion-v77",
-  "version": "77.0.0",
+  "name": "logistica-ei-hotfix-v79",
+  "version": "79.0.0",
   "private": true,
   "scripts": {
-    "qa": "node tests/run-qa.js",
-    "test": "node tests/run-qa.js"
+    "test": "node tests/run-qa.js",
+    "test:found": "node tests/found-flow.test.js",
+    "test:registry": "node tests/sales-registry-panel.test.js"
   }
 }
