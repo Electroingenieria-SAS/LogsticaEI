@@ -25,7 +25,7 @@
 <body>
   <main class="shell">
     <section class="top">
-      <div><h1>VSM operativo · Normal / PVE</h1><p>Indicadores separados para pedidos normales y PVE. El LT se calcula únicamente en jornada laboral.</p></div>
+      <div><h1>VSM operativo · Normal / PVE</h1><p>Indicadores separados para pedidos normales y PVE. El LT se calcula desde creación del pedido hasta última actualización/cierre, únicamente en jornada laboral.</p></div>
       <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
     </section>
     <div id="status" class="notice ok">Inicializando VSM...</div>
@@ -54,8 +54,8 @@
     <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Función de indicadores</h2><table class="def-list"><tr><td>LT</td><td>Duración total del pedido.</td><td>h / min</td></tr><tr><td>LT/día</td><td>LT dividido por días calendario del pedido.</td><td>h/día</td></tr><tr><td>Ocupación</td><td>Tiempo tramitando el pedido.</td><td>VA</td></tr><tr><td>Espera/bloqueo</td><td>Retenciones, requerimientos o pausas.</td><td>Espera</td></tr><tr><td>NVA</td><td>Tiempo muerto o no clasificado.</td><td>NVA</td></tr><tr><td>% Ocupación</td><td>Ocupación frente al LT.</td><td>Productividad</td></tr></table></article></section>
     <div class="section-title"><h2 id="tableTitle">Resultados VSM</h2><span class="muted" id="rowCount"></span></div>
     <section class="table-wrap"><table id="mainTable"></table></section>
-    <p class="footer">V149 · VSM con LT calculado solo dentro de jornada laboral: 7:00–12:00 y 13:40–17:30.</p>
+    <p class="footer">V150 · VSM con LT calculado solo dentro de jornada laboral: 7:00–12:00 y 13:40–17:30.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=149"></script>
+  <script src="./vsm-dashboard.js?v=150"></script>
 </body>
 </html>

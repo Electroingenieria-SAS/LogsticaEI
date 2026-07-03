@@ -6984,20 +6984,27 @@ function caseAllDateValues(c){
 }
 function caseCreatedAtFixed(c){
   var vals=[];
-  if(c){[c.createdAt,c.created_at,c.date,c.fecha].forEach(function(v){if(v)vals.push(v);});}
-  var traceMin=excelMinDate(caseAllDateValues(c));
-  var declared=excelMinDate(vals);
+  if(c){
+    [
+      c.createdAt,
+      c.created_at,
+      c.requestedAt,
+      c.timestamp,
+      c.caseCreatedAt,
+      c.orderCreatedAt,
+      (c.documentFlow||{}).salesRegisteredAt,
+      (c.documentFlow||{}).createdAt
+    ].forEach(function(v){if(v)vals.push(v);});
+  }
+  var chosen=excelMinDate(vals);
   var updated=excelTimeValue(c&&c.updatedAt);
-  var chosen=Number.isFinite(declared)?declared:traceMin;
-  if(Number.isFinite(traceMin))chosen=Number.isFinite(chosen)?Math.min(chosen,traceMin):traceMin;
-  if(Number.isFinite(updated) && Number.isFinite(chosen) && updated<chosen)chosen=updated;
+  if(!Number.isFinite(chosen)&&Number.isFinite(updated))chosen=updated;
   if(!Number.isFinite(chosen))chosen=Date.now();
   return excelIsoFromMs(chosen);
 }
 function caseUpdatedAtFixed(c){
   var start=excelTimeValue(caseCreatedAtFixed(c));
-  var max=excelMaxDate(caseAllDateValues(c));
-  if(c&&c.closedAt)max=Math.max(max,excelTimeValue(c.closedAt));
+  var max=excelMaxDate([c&&c.updatedAt,c&&c.lastUpdatedAt,c&&c.modifiedAt,c&&c.closedAt,c&&c.completedAt,c&&c.finishedAt]);
   if(!Number.isFinite(max))max=start;
   if(Number.isFinite(start)&&max<start)max=start;
   return excelIsoFromMs(max);
@@ -7005,7 +7012,8 @@ function caseUpdatedAtFixed(c){
 function caseEndAtFixed(c){
   var start=excelTimeValue(caseCreatedAtFixed(c));
   var closed=excelMaxDate([c&&c.closedAt,c&&c.completedAt,c&&c.finishedAt]);
-  var end=Number.isFinite(closed)?closed:Date.now();
+  var updated=excelMaxDate([c&&c.updatedAt,c&&c.lastUpdatedAt,c&&c.modifiedAt]);
+  var end=Number.isFinite(closed)?closed:(Number.isFinite(updated)?updated:Date.now());
   if(Number.isFinite(start)&&end<start)end=start;
   return excelIsoFromMs(end);
 }
