@@ -396,6 +396,7 @@ function uid(p){return (p||"id")+"_"+Date.now()+"_"+Math.random().toString(16).s
 function now(){return new Date().toISOString();}
 function msSince(iso){return iso?Date.now()-new Date(iso).getTime():0;}
 function fmt(ms){ms=Math.max(0,Math.floor((ms||0)/1000));var h=String(Math.floor(ms/3600));if(h.length<2)h="0"+h;var m=("0"+Math.floor((ms%3600)/60)).slice(-2);var s=("0"+(ms%60)).slice(-2);return h+":"+m+":"+s;}
+function fmtHours(ms){ms=Math.max(0,Number(ms)||0);var h=ms/3600000;if(h<0.01&&ms>0)h=0.01;return h.toFixed(2)+" h";}
 function fmtDate(iso){try{return iso?new Intl.DateTimeFormat("es-CO",{dateStyle:"medium",timeStyle:"short"}).format(new Date(iso)):"—";}catch(e){return iso||"—";}}
 function clamp(n,min,max){n=Number(n);if(!Number.isFinite(n))n=0;return Math.max(min,Math.min(max,n));}
 function pct(num,den,dec){if(!den||den<=0)return 0;var v=(Number(num||0)/Number(den||0))*100;v=clamp(v,0,100);return Number(v.toFixed(dec==null?1:dec));}
@@ -2919,7 +2920,7 @@ function caseList(list){
     var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
     var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
     var assignedLabel=assignedPeopleText(c);
-    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+(canDeleteReceptionPedidosCase(c)?'<button class="btn btn-danger btn-small" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar</button>':"")+'</div></article>';
+    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmtHours(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+(canDeleteReceptionPedidosCase(c)?'<button class="btn btn-danger btn-small" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar</button>':"")+'</div></article>';
   }).join("")+'</div>';
 }
 
@@ -4383,7 +4384,7 @@ function renderDetail(id){
   var detailPanels=checklistPanel?'<section class="grid grid-2 detail-panels" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section class="mobile-desktop-extra" style="margin-top:16px">'+caseDataPanel+'</section>';
   var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
   var headerActions=compactDetailActions(actions);
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+cancellationNoticePanel(c)+salesNotesPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.45rem">'+fmt(totalMs(c))+'</strong><small>Total del pedido</small></article><article class="card kpi time-va"><span>Ocupación</span><strong style="font-size:1.45rem">'+fmt(activeMs(c))+'</strong><small>Tiempo tramitando</small></article><article class="card kpi time-wait"><span>Espera / bloqueo</span><strong style="font-size:1.45rem">'+fmt(waitMs(c))+'</strong><small>Retenciones y pausas</small></article><article class="card kpi time-dead"><span>NVA</span><strong style="font-size:1.45rem">'+fmt(deadMs(c))+'</strong><small>Tiempo muerto</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+cancellationNoticePanel(c)+salesNotesPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.45rem">'+fmtHours(totalMs(c))+'</strong><small>Total del pedido</small></article><article class="card kpi time-va"><span>Ocupación</span><strong style="font-size:1.45rem">'+fmtHours(activeMs(c))+'</strong><small>Tiempo tramitando</small></article><article class="card kpi time-wait"><span>Espera / bloqueo</span><strong style="font-size:1.45rem">'+fmtHours(waitMs(c))+'</strong><small>Retenciones y pausas</small></article><article class="card kpi time-dead"><span>NVA</span><strong style="font-size:1.45rem">'+fmtHours(deadMs(c))+'</strong><small>Tiempo muerto</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
 }
 
 
@@ -4419,7 +4420,7 @@ function nextActionButtons(c){
   }).join("");
 }
 function canCloseHere(c){var next=(processes[c.currentProcess]||{}).next||[];return next.indexOf("cierre_caso")>=0;}
-function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Cancelación / anulación",c.cancelledAt?((c.cancellationTypeLabel||c.cancelStatusLabel||"Pedido cancelado")+" · "+fmtDate(c.cancelledAt)):""],["Motivo cancelación",c.cancellationReason||c.cancellationDetail||""],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Separación / pago",c.separationRequest?((c.separationRequest.status||"")+(c.separationRequest.active?" · pago pendiente":" · liberado")):""],["Inicio espera pago",c.separationRequest?fmtDate(c.separationRequest.waitingPaymentStartedAt||c.separationRequest.createdAt):""],["Pago confirmado",c.separationRequest&&c.separationRequest.paymentConfirmedAt?fmtDate(c.separationRequest.paymentConfirmedAt):""],["Tiempo retenido por pago",c.separationRequest?fmt(separationRetentionMs(c)):""],["Detalle pago/separación",c.separationRequest?((c.separationRequest.paymentConfirmationDetail||c.separationRequest.detail)||""):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
+function caseInfo(c){var cuts=(c.cutRequests||[]), done=cuts.filter(function(x){return cutIsOperationallyDone(x);}).length;var df=c.documentFlow||{};var rows=[["Estado",c.status],["Cancelación / anulación",c.cancelledAt?((c.cancellationTypeLabel||c.cancelStatusLabel||"Pedido cancelado")+" · "+fmtDate(c.cancelledAt)):""],["Motivo cancelación",c.cancellationReason||c.cancellationDetail||""],["Estado no entrega",c.noDeliveryStatus||""],["Tipo flujo",c.isPartialShipment?"Envío parcial de pedido":"Pedido principal"],["Pedido padre",c.parentCaseId||""],["Envíos parciales",(c.partialShipments||[]).length?((c.partialShipments||[]).length+" generado(s)"):""],["Responsable",c.assignedName],["Asignados alistamiento",assignedPeopleText(c)],["Creado",fmtDate(c.createdAt)],["Tipo pedido",c.orderKind],["Pedido fecha PDF",c.orderDate||""],["Cliente",c.client],["NIT/CC",c.nit||""],["Dirección",c.address||""],["Ciudad",c.city||""],["Teléfono",c.phone||""],["Asesor",c.salesAdvisor||""],["PDF recepción",df.receptionPdfLoadedAt?fmtDate(df.receptionPdfLoadedAt):"Pendiente"],["Mercancía comprometida",df.initialCommitmentStatus==="SI"?"Sí, desde recepción":(df.initialCommitmentStatus||"Pendiente")],["Detalle compromiso",df.initialCommitmentDetail||""],["PDF Drive",receptionPdfEvidenceInfo(c).drive?"Guardado":"Sin URL"],["Páginas PDF",df.pdfPages||""],["Líneas detectadas",(c.orderItems||[]).length],["Cortes detectados",df.extractedCuts!==undefined?df.extractedCuts:cuts.length],["Cortes",cuts.length?(done+"/"+cuts.length):"Sin cortes"],["Cortes pendientes SIESA",countPendingSiesaCutsInCase(c)],["Entrega solicitada",processTitle(c.requestedDelivery)],["Entrega definida",processTitle(c.deliveryType)],["Forma pago",c.paymentCondition],["Orden de compra",c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||""],["Retenido ventas",c.salesHold?((c.salesHold.status||"")+" · "+(c.salesHold.reason||"")):""],["Separación / pago",c.separationRequest?((c.separationRequest.status||"")+(c.separationRequest.active?" · pago pendiente":" · liberado")):""],["Inicio espera pago",c.separationRequest?fmtDate(c.separationRequest.waitingPaymentStartedAt||c.separationRequest.createdAt):""],["Pago confirmado",c.separationRequest&&c.separationRequest.paymentConfirmedAt?fmtDate(c.separationRequest.paymentConfirmedAt):""],["Tiempo retenido por pago",c.separationRequest?fmtHours(separationRetentionMs(c)):""],["Detalle pago/separación",c.separationRequest?((c.separationRequest.paymentConfirmationDetail||c.separationRequest.detail)||""):""],["Prioridad",c.priority],["Requerimientos",c.totalRequirements]];return rows.map(function(r){return r[1]!==undefined&&r[1]!==""?'<div class="case-meta" style="justify-content:space-between;border-bottom:1px solid #eef2f7;padding:8px 0"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>':"";}).join("");}
 function timeline(c){
   return '<div class="timeline">'+FLOW.filter(function(p){return c.processStats&&c.processStats[p];}).map(function(p){var s=c.processStats[p];return'<div class="timeline-row"><b>'+esc(processes[p].icon+' · '+processTitle(p))+'</b><span>VA '+fmt(s.activeMs||0)+' · Espera '+fmt(s.waitMs||0)+' · Muerto '+fmt(s.deadMs||0)+'</span><strong>'+esc(s.completedAt?"Cerrado":"Activo")+'</strong></div>';}).join("")+'</div>';
 }
@@ -5532,6 +5533,7 @@ function cutFinalOk(cut){return !!(cut && cut.finishedAt);}
 function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
+  ensureCutCaseFlagsV148(c);
   var cut=findCut(c,cutId);if(!cut)return;
   var canOperate=state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role));
   if(!canOperate){alert("No tiene permiso para operar este corte.");return;}
@@ -5644,6 +5646,41 @@ function syncCutSourceLineToAlistamiento(c,cut,mode){
     });
   }catch(e){}
 }
+function ensureCutCaseFlagsV148(c){
+  try{
+    if(!c)return;
+    c.hasCuts=true;
+    c.cutModuleTouchedAt=c.cutModuleTouchedAt||now();
+    if(!Array.isArray(c.visibleRoles))c.visibleRoles=[];
+    ["auxiliar_corte","jefe_logistica","admin","super_admin"].forEach(function(r){
+      if(c.visibleRoles.indexOf(r)<0)c.visibleRoles.push(r);
+    });
+  }catch(e){}
+}
+function releaseCaseFromCutOwner(c){
+  try{
+    if(!c)return;
+    var cutRoles=["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte","Auxiliar corte","Auxiliar de corte","Operario corte","Operario de corte"];
+    var cutRoleMap={};cutRoles.forEach(function(x){cutRoleMap[normalizeRole(x)]=1;});
+    var keepRole=function(x){return !cutRoleMap[normalizeRole(x)];};
+    if(Array.isArray(c.visibleRoles))c.visibleRoles=c.visibleRoles.filter(keepRole);
+    if(Array.isArray(c.targetRoles))c.targetRoles=c.targetRoles.filter(keepRole);
+    if(Array.isArray(c.assignedUsers))c.assignedUsers=c.assignedUsers.filter(function(u){return u&&keepRole(u.role||u.assignedRole||"");});
+    if(Array.isArray(c.assignedUserIds)){
+      var cutUids={};
+      (c.cutRequests||[]).forEach(function(x){
+        if(x.takenByUid)cutUids[x.takenByUid]=1;
+        if(x.startedBy)cutUids[x.startedBy]=1;
+        if(x.registeredBy)cutUids[x.registeredBy]=1;
+      });
+      c.assignedUserIds=c.assignedUserIds.filter(function(uid){return !cutUids[uid];});
+    }
+    c.assignedUid="";
+    c.assignedTo="";
+    c.assignedUserId="";
+    c.assignedEmail="";
+  }catch(e){}
+}
 function finishCutWithoutPhysicalProcess(c,cut,mode){
   var isNoCut=mode==="NO_NECESITA_CORTE";
   var doneAt=now();
@@ -5716,6 +5753,7 @@ function finishCutWithoutPhysicalProcess(c,cut,mode){
   c.status="en_proceso";
   c.assignedRole=primaryOwnerRole("alistamiento");
   c.assignedName=processOwnerTitle("alistamiento");
+  releaseCaseFromCutOwner(c);
   c.assignedTo="";
   c.deadStartedAt=doneAt;
   c.activeStartedAt=doneAt;
@@ -5730,6 +5768,7 @@ function finishCutWithoutPhysicalProcess(c,cut,mode){
 }
 function handleCutAction(c,cut,action){
   applyCutFormValues(cut);
+  ensureCutCaseFlagsV148(c);
   var calc=cutCalc(cut), rule=calc.rule;
   if(action==="saveCutDraft"){
     cut.status=cut.status||"PENDIENTE_CORTE";
@@ -5859,6 +5898,7 @@ function handleCutAction(c,cut,action){
     c.status="en_proceso";
     c.assignedRole=primaryOwnerRole("alistamiento");
     c.assignedName=processOwnerTitle("alistamiento");
+    releaseCaseFromCutOwner(c);
     c.assignedTo="";
     c.deadStartedAt=now();
     c.activeStartedAt=now();
