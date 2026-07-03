@@ -2910,7 +2910,7 @@ function caseList(list){
     var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
     var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
     var assignedLabel=assignedPeopleText(c);
-    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+'</div></article>';
+    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+'<span class="chip info">'+fmt(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+(canDeleteReceptionPedidosCase(c)?'<button class="btn btn-danger btn-small" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar</button>':"")+'</div></article>';
   }).join("")+'</div>';
 }
 
@@ -4336,6 +4336,7 @@ function renderDetail(id){
     if(canReleaseSeparationPayment(c) && c.currentProcess!=="facturacion")actions+='<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar separación</button>';
     if(c.status==="asignado"&&canOperate)actions+='<button class="btn btn-primary" data-action="accept" data-id="'+c.id+'">Aceptar</button>';
     if(canUploadEvidenceForCase(c))actions+='<button class="btn" data-action="evidence" data-id="'+c.id+'">Subir evidencia a Drive</button>';
+    if(canDeleteReceptionPedidosCase(c))actions+='<button class="btn btn-danger" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar de recepción</button>';
     if(canCancelOrderWithSupport(c))actions+='<button class="btn btn-danger" data-action="cancelOrder" data-id="'+c.id+'">Cancelar pedido</button>';
     if(canRequestOrderCancellation(c))actions+='<button class="btn btn-danger" data-action="requestCancelOrder" data-id="'+c.id+'">Enviar pedido a cancelar</button>';
     if(c.status==="en_proceso"&&canOperate)actions+='<button class="btn btn-gold" data-action="wait" data-id="'+c.id+'">Requerimiento / espera</button>';
@@ -8190,6 +8191,7 @@ function closeMobileMenu(){
 
 function canUseAdminPanel(){return state.user && (currentUserIsAdminOrSuper() || canSeeAll() || canManageUsers());}
 function canDeleteAdminData(){return state.user && currentUserIsAdminOrSuper();}
+function canDeleteReceptionPedidosCase(c){return !!(state.user && currentUserIsSuperAdmin() && c && c.currentProcess==="recepcion_pedidos");}
 function renderAdmin(){
   if(!canUseAdminPanel()){layout(header("Admin","Acceso restringido.")+'<div class="empty">Solo jefe logístico, gerencia, admin o super admin pueden abrir este módulo.</div>');return;}
   var total=state.cases.length, excl=state.cases.filter(function(c){return c.excludeFromKpi===true;}).length;
@@ -8223,6 +8225,19 @@ function deleteCaseHard(id){
     .catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar. Revise reglas de Firestore para admin/super admin.");});
 }
 
+
+function deleteReceptionPedidoCase(id){
+  var c=caseById(id);if(!c)return;
+  if(!canDeleteReceptionPedidosCase(c)){alert("Solo Super Admin puede eliminar pedidos que estén en Recepción de pedidos.");return;}
+  var ref=c.reference||c.id;
+  var msg="¿Eliminar definitivamente de Recepción de pedidos?\n\nPedido: "+ref+"\nCliente: "+(c.client||"—")+"\nOC: "+(purchaseOrderValue(c)||"—")+"\n\nEsta acción borra el caso y sus registros asociados de eventos, evidencias y requerimientos. No se puede deshacer.";
+  if(!confirm(msg))return;
+  Promise.all([deleteQueryBatch("case_events","caseId",id),deleteQueryBatch("evidences","caseId",id),deleteQueryBatch("requirements","caseId",id)])
+    .then(function(){return db.collection("cases").doc(id).delete();})
+    .then(function(){return createEvent({type:"RECEPTION_PEDIDO_DELETED_SUPERADMIN",detail:"Super Admin eliminó de Recepción de pedidos: "+ref,targetRole:"super_admin",visibleRoles:["super_admin","super_administrador","admin","gerencia","jefe_logistica"]}).catch(function(){return null;});})
+    .then(function(){state.cases=state.cases.filter(function(x){return x.id!==id;});state.events=state.events.filter(function(x){return x.caseId!==id;});state.detailId=null;showLiveToast("Pedido eliminado","Se eliminó de Recepción de pedidos: "+ref,false);if(state.route==="cases")renderCases();else if(state.route==="dashboard")renderDashboard();else renderCases();})
+    .catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el pedido de recepción. Revise permisos de Super Admin en Firestore.");});
+}
 
 function fileDownloadLink(url,label){return url?'<a class="btn btn-small btn-primary" href="'+esc(url)+'" target="_blank" rel="noopener" download>'+esc(label||'Descargar')+'</a>':'<span class="chip warning">Sin archivo</span>';}
 function caseAllAttachments(c){
@@ -8639,6 +8654,7 @@ function bindActions(){
     if(a==="exportSiesaCuts")exportSiesaPendingCuts();
     if(a==="toggleKpiCase")toggleCaseKpi(id);
     if(a==="deleteCase")deleteCaseHard(id);
+    if(a==="deleteReceptionPedidoCase")deleteReceptionPedidoCase(id);
   };});
 }
 
