@@ -41,6 +41,8 @@ var state = {
   events: [],
   users: [],
   receptions: [],
+  receptionStickers: [],
+  receptionStickerDraftRows: [],
   projectOrders: [],
   reports: [],
   dataLoading: false,
@@ -1622,6 +1624,11 @@ function loadReceptionGoodsForRole(){
   return db.collection("recepciones_mercancia").orderBy("updatedAt","desc").limit(200).get().then(docsToList).catch(function(){return [];});
 }
 
+function loadReceptionStickersForRole(){
+  if(!canAccessReceptionGoods())return Promise.resolve([]);
+  return db.collection("recepcion_stickers").orderBy("updatedAt","desc").limit(1000).get().then(docsToList).catch(function(){return [];});
+}
+
 function loadProjectOrdersForRole(){
   if(!canAccessProjectsModule() && !canSeeAll())return Promise.resolve([]);
   return db.collection("proyectos_pedidos").orderBy("updatedAt","desc").limit(200).get().then(docsToList).catch(function(){return [];});
@@ -1650,6 +1657,7 @@ function loadData(){
     safeLoadBlock("Eventos", loadEventsForRole),
     safeLoadBlock("Usuarios", loadUsersForRole),
     safeLoadBlock("Recepción de mercancía", loadReceptionGoodsForRole),
+    safeLoadBlock("Stickers de separación", loadReceptionStickersForRole),
     safeLoadBlock("Proyectos", loadProjectOrdersForRole),
     safeLoadBlock("Reportes/Novedades", loadReportsForRole)
   ]).then(function(res){
@@ -1657,8 +1665,9 @@ function loadData(){
     state.events=res[1]||[];
     state.users=res[2]||[];
     state.receptions=res[3]||[];
-    state.projectOrders=res[4]||[];
-    state.reports=filterReportsForCurrentUser(res[5]||[]);
+    state.receptionStickers=res[4]||[];
+    state.projectOrders=res[5]||[];
+    state.reports=filterReportsForCurrentUser(res[6]||[]);
     state.dataLoading=false;
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
@@ -6115,14 +6124,158 @@ function receptionIsOpen(r){return r && r.status!=="CERRADO" && !r.closedAt;}
 function renderReceptionGoods(){
   if(!canAccessReceptionGoods()){layout(header("Recepción de mercancía","Acceso restringido.")+'<div class="empty">Este módulo solo puede verlo Super Admin y el rol Líder de recepción.</div>');return;}
   var list=state.receptions||[];
+  var stickers=state.receptionStickers||[];
   var open=list.filter(function(x){return x.status!=="CERRADO";}).length;
   var retained=list.filter(function(x){return receptionConformityIsNovelty(x.conformity)&&x.status!=="CERRADO";}).length;
   var findings=list.reduce(function(n,x){return n+(x.findings&&x.findings.length?x.findings.length:0);},0);
-  var rows=list.map(function(r){var non=(r.findings||[]).length;var del=canDeleteReceptionGoods()?'<button class="btn btn-small btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar</button>':'';return '<tr><td><strong>'+esc(r.documentNumber||r.id)+'</strong><br><small>'+esc(r.supplier||'')+'</small></td><td>'+esc(r.receiptType||'Ingreso')+'</td><td>'+esc(r.status||'ABIERTO')+'</td><td>'+esc(r.conformity||'Pendiente')+'</td><td>'+non+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.id)+'">Abrir</button>'+del+'</div></td></tr>';}).join('');
-  layout(header("Recepción de mercancía","Control de ingresos, chequeos normativos, soportes, retenciones y cierre con evidencia.",'<button class="btn btn-primary" data-action="receptionGoodsModal">Nuevo ingreso</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Ingresos</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>Pendientes de cierre</small></article><article class="card kpi"><span>Retenidos</span><strong>'+retained+'</strong><small>Requieren decisión</small></article></section><section class="card" style="margin-top:16px"><div class="notice"><strong>Estados permitidos:</strong> Conforme, Conforme con observación y Retenido. Cuando queda retenido, se genera reporte interno y se redirige a Auditoría para registrar la novedad externa.</div><h3>Ingresos de mercancía</h3><div class="table-wrap"><table><thead><tr><th>Documento / proveedor</th><th>Tipo</th><th>Estado</th><th>Conformidad</th><th>Hallazgos</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7">Sin ingresos registrados.</td></tr>')+'</tbody></table></div></section>');
+  var conformes=list.filter(function(x){return receptionConformityIsFullConforme(x.conformity);}).length;
+  var byLocation=receptionStickerCountBy(stickers,function(x){return x.location||x.ubicacion||"Sin ubicación";}).slice(0,5);
+  var byMaterial=receptionStickerCountBy(stickers,function(x){return x.materialName||x.material||x.descripcion||"Sin material";}).slice(0,5);
+  var stickerRows=stickers.slice(0,50).map(function(st){return '<tr><td><strong>'+esc(st.materialName||st.material||'Material')+'</strong><br><small>'+esc(st.reference||st.referencia||'')+'</small></td><td>'+esc(st.quantity||st.cantidad||'')+' '+esc(st.unit||st.unidad||'')+'</td><td>'+esc(st.location||st.ubicacion||'')+'</td><td>'+esc(st.measures||st.medidas||'')+'</td><td>'+esc(st.entryDate||'')+'</td><td>'+esc(st.responsibleName||st.responsableIngreso||'')+'</td><td><span class="chip success">'+esc(st.status||'Conforme')+'</span></td><td>'+esc(st.documentNumber||'')+'</td></tr>';}).join('');
+  var rows=list.map(function(r){var non=(r.findings||[]).length;var del=canDeleteReceptionGoods()?'<button class="btn btn-small btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar</button>':'';var stickerBtn=receptionConformityIsFullConforme(r.conformity)?'<button class="btn btn-small btn-gold" data-action="openReceptionStickerWizard" data-id="'+esc(r.id)+'">Stickers</button>':'';var stCount=stickers.filter(function(st){return st.receptionId===r.id;}).length;return '<tr><td><strong>'+esc(r.documentNumber||r.id)+'</strong><br><small>'+esc(r.supplier||'')+'</small></td><td>'+esc(r.receiptType||'Ingreso')+'</td><td>'+esc(r.status||'ABIERTO')+'</td><td>'+esc(r.conformity||'Pendiente')+'</td><td>'+non+'</td><td>'+stCount+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.id)+'">Abrir</button>'+stickerBtn+del+'</div></td></tr>';}).join('');
+  layout(header("Recepción de mercancía","Control de ingresos, chequeos, stickers de separación y base descargable para cruce con SIESA.",'<button class="btn btn-primary" data-action="receptionGoodsModal">Nuevo ingreso</button> <button class="btn btn-gold" data-action="exportReceptionStickers">Exportar base stickers</button> <button class="btn" data-action="refreshReceptionGoods">Actualizar</button>')+
+    '<section class="grid grid-4"><article class="card kpi"><span>Ingresos</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Conformes</span><strong>'+conformes+'</strong><small>Generan stickers</small></article><article class="card kpi"><span>Stickers</span><strong>'+stickers.length+'</strong><small>Base de separación</small></article><article class="card kpi"><span>Retenidos</span><strong>'+retained+'</strong><small>Requieren decisión</small></article></section>'+ 
+    '<section class="card" style="margin-top:16px"><div class="notice"><strong>Nuevo flujo:</strong> cuando el ingreso queda <strong>Conforme</strong>, se abre un pop-up para crear stickers de separación. El lector puede tomar líneas desde PDF, TXT o CSV y llenar material, cantidad, unidad y ubicación cuando el documento lo permita.</div><h3>Ingresos de mercancía</h3><div class="table-wrap"><table><thead><tr><th>Documento / proveedor</th><th>Tipo</th><th>Estado</th><th>Conformidad</th><th>Hallazgos</th><th>Stickers</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin ingresos registrados.</td></tr>')+'</tbody></table></div></section>'+ 
+    '<section class="grid grid-2" style="margin-top:16px"><article class="card"><h3>Materiales con más stickers</h3>'+miniBarsHtml(byMaterial)+'</article><article class="card"><h3>Ubicaciones principales</h3>'+miniBarsHtml(byLocation)+'</article></section>'+ 
+    '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Base de stickers de separación</h3><p>Últimos 50 registros. La exportación descarga la base completa cargada en la app.</p></div><button class="btn btn-small btn-gold" data-action="exportReceptionStickers">Descargar Excel</button></div><div class="table-wrap"><table><thead><tr><th>Material</th><th>Cantidad</th><th>Ubicación</th><th>Medidas</th><th>Fecha ingreso</th><th>Responsable</th><th>Estado</th><th>Documento</th></tr></thead><tbody>'+(stickerRows||'<tr><td colspan="8">Sin stickers creados.</td></tr>')+'</tbody></table></div></section>');
 }
 function receptionChecklist(){
   return ["Documento soporte cargado y legible","Orden/factura/remisión coincide con la mercancía","Proveedor identificado","Cantidades recibidas validadas","Referencias y descripciones coinciden","Estado físico del empaque conforme","Mercancía sin averías visibles","Lote/serial/fecha aplica y fue verificado","Unidad de medida correcta","Registro fotográfico o soporte anexo disponible","Novedades reportadas oportunamente","Mercancía apta para ingreso a inventario/almacén"];
+}
+
+function receptionConformityIsFullConforme(value){
+  var v=stripAccents(String(value||"").toLowerCase()).trim();
+  return v==="conforme";
+}
+function receptionStickerCountBy(list,fn){
+  var m={};(list||[]).forEach(function(x){var k=cleanPdfValue(fn(x)||"Sin dato");m[k]=(m[k]||0)+1;});
+  return Object.keys(m).map(function(k){return {label:k,value:m[k]};}).sort(function(a,b){return b.value-a.value;});
+}
+function defaultReceptionStickerDate(r){
+  var d=(r&&(r.createdAt||r.updatedAt))||now();
+  try{return new Date(d).toISOString().slice(0,10);}catch(e){return new Date().toISOString().slice(0,10);}
+}
+function receptionStickerStatus(){return "Conforme";}
+function receptionStickerCandidateFromItem(it,r){
+  it=it||{};r=r||{};
+  return {
+    id:uid("STK"),
+    reference:it.referencia||it.reference||it.codigo||"",
+    materialName:it.descripcion||it.materialName||it.material||it.referencia||"",
+    quantity:it.cantidad||it.quantity||"",
+    unit:it.unidad||it.unit||"UND",
+    location:it.ubicacion||it.location||"",
+    measures:it.medidas||it.measures||"",
+    entryDate:defaultReceptionStickerDate(r),
+    responsibleName:(r.createdByName||((state.user&&state.user.name)||"")),
+    status:receptionStickerStatus(),
+    source:"LECTOR_RECEPCION",
+    documentNumber:r.documentNumber||"",
+    supplier:r.supplier||""
+  };
+}
+function parseReceptionStickerLooseLines(text,r){
+  var rows=[], seen={};
+  String(text||"").replace(/\r/g,"\n").split(/\n+/).forEach(function(line){
+    var raw=cleanPdfValue(line);if(!raw || lineLooksHeader(raw))return;
+    var cells=raw.indexOf(";")>=0?raw.split(";"):(raw.indexOf("|")>=0?raw.split("|"):raw.split(/\t+/));
+    cells=cells.map(cleanPdfValue).filter(Boolean);
+    var ref="", desc="", qty="", unit="", loc="", measures="";
+    if(cells.length>=3){ref=cells[0];desc=cells[1]||cells[0];qty=cells[2]||"";unit=cells[3]||"UND";loc=cells[4]||"";measures=cells[5]||"";}
+    else{
+      var m=raw.match(/^([A-Z0-9._\-/]{2,})\s+(.+?)\s+([0-9]{1,7}(?:[.,][0-9]{1,4})?)\s+([A-ZÁÉÍÓÚÑ\.\/]{1,8})(?:\s+([A-Z0-9._\-/]{2,}))?$/i);
+      if(m){ref=m[1];desc=m[2];qty=m[3];unit=m[4];loc=m[5]||"";}
+    }
+    if(!desc || !qty)return;
+    var key=normalizeRefText(ref+"|"+desc+"|"+qty+"|"+unit+"|"+loc);if(seen[key])return;seen[key]=1;
+    rows.push(receptionStickerCandidateFromItem({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:loc,medidas:measures},r));
+  });
+  return rows;
+}
+function buildReceptionStickerCandidatesFromText(text,r){
+  var items=[];
+  try{items=extractPedidoItems(text)||[];}catch(e){items=[];}
+  var rows=(items||[]).map(function(it){return receptionStickerCandidateFromItem(it,r);});
+  if(!rows.length)rows=parseReceptionStickerLooseLines(text,r);
+  return rows;
+}
+function readReceptionStickerFile(file){
+  if(!file)return Promise.reject(new Error("Seleccione un archivo para leer."));
+  if(/pdf/i.test(file.type||"") || /\.pdf$/i.test(file.name||""))return readPdfFile(file);
+  if(/text|csv|plain/i.test(file.type||"") || /\.(txt|csv)$/i.test(file.name||""))return new Promise(function(resolve,reject){var reader=new FileReader();reader.onload=function(){resolve(String(reader.result||""));};reader.onerror=function(){reject(new Error("No se pudo leer el archivo."));};reader.readAsText(file);});
+  return Promise.reject(new Error("Por ahora el lector automático acepta PDF, TXT o CSV. Para Excel de SIESA, exporte a CSV o copie y pegue las líneas en el cuadro de texto."));
+}
+function receptionStickerDraftRowHtml(row,idx){
+  row=row||{};
+  return '<tr data-sticker-row="'+idx+'">'+
+    '<td><input class="input" data-field="materialName" value="'+esc(row.materialName||'')+'" placeholder="Nombre de material"></td>'+ 
+    '<td><input class="input" data-field="reference" value="'+esc(row.reference||'')+'" placeholder="Referencia"></td>'+ 
+    '<td><input class="input" data-field="quantity" value="'+esc(row.quantity||'')+'" placeholder="Cant."></td>'+ 
+    '<td><input class="input" data-field="unit" value="'+esc(row.unit||'UND')+'" placeholder="UM"></td>'+ 
+    '<td><input class="input" data-field="location" value="'+esc(row.location||'')+'" placeholder="Ubicación"></td>'+ 
+    '<td><input class="input" data-field="measures" value="'+esc(row.measures||'')+'" placeholder="Medidas"></td>'+ 
+    '<td><input class="input" type="date" data-field="entryDate" value="'+esc(row.entryDate||'')+'"></td>'+ 
+    '<td><input class="input" data-field="responsibleName" value="'+esc(row.responsibleName||'')+'"></td>'+ 
+    '<td><span class="chip success">Conforme</span></td>'+ 
+    '<td><button class="btn btn-small btn-danger" type="button" data-sticker-remove="'+idx+'">Quitar</button></td>'+ 
+  '</tr>';
+}
+function renderReceptionStickerDraftRows(rows){
+  state.receptionStickerDraftRows=rows||[];
+  var body=qs('#stickerDraftBody');if(!body)return;
+  body.innerHTML=(state.receptionStickerDraftRows||[]).map(receptionStickerDraftRowHtml).join('') || '<tr><td colspan="10">Sin líneas. Use el lector, pegue líneas o agregue manualmente.</td></tr>';
+  var counter=qs('#stickerDraftCount');if(counter)counter.textContent=String((state.receptionStickerDraftRows||[]).length);
+  qsa('[data-sticker-remove]').forEach(function(btn){btn.onclick=function(){var i=Number(btn.getAttribute('data-sticker-remove'));var arr=(state.receptionStickerDraftRows||[]).slice();arr.splice(i,1);renderReceptionStickerDraftRows(arr);};});
+}
+function collectReceptionStickerDraftRows(r){
+  var rows=[];
+  qsa('#stickerDraftBody tr[data-sticker-row]').forEach(function(tr){
+    var obj={};qsa('[data-field]',tr).forEach(function(inp){obj[inp.getAttribute('data-field')]=cleanPdfValue(inp.value);});
+    if(!obj.materialName && !obj.reference)return;
+    obj.status=receptionStickerStatus();obj.receptionId=r.id;obj.documentNumber=r.documentNumber||"";obj.supplier=r.supplier||"";obj.receiptType=r.receiptType||"";obj.createdAt=now();obj.updatedAt=obj.createdAt;obj.createdBy=state.user.uid;obj.createdByName=state.user.name;obj.source="RECEPCION_MERCANCIA";
+    rows.push(obj);
+  });
+  return rows;
+}
+function openReceptionStickerWizard(id){
+  if(!canAccessReceptionGoods()){alert("No tiene permiso para stickers de recepción.");return;}
+  var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];
+  if(!r){alert("Ingreso de mercancía no encontrado.");return;}
+  if(!receptionConformityIsFullConforme(r.conformity)){alert("Los stickers automáticos solo se generan cuando la conformidad queda Conforme al 100%.");return;}
+  var existing=(state.receptionStickers||[]).filter(function(x){return x.receptionId===id;}).length;
+  var initial=[receptionStickerCandidateFromItem({descripcion:"",referencia:"",cantidad:"",unidad:"UND",ubicacion:""},r)];
+  state.receptionStickerDraftRows=initial;
+  drawer(modal("Stickers de separación",'<form class="form" id="receptionStickerForm"><div class="notice success"><strong>Ingreso conforme:</strong> cree la base de stickers de separación. El estado queda automático como <strong>Conforme</strong>. Si el soporte trae líneas, use el lector para llenar material, cantidad, unidad y ubicación.</div><section class="grid grid-2"><article class="card"><h3>'+esc(r.documentNumber||r.id)+'</h3><p>'+esc(r.supplier||'')+'</p><p>'+esc(r.receiptType||'')+' · '+esc(r.conformity||'')+'</p><small>Stickers ya guardados para este ingreso: '+existing+'</small></article><article class="card"><h3>Lector de materiales</h3><label class="field"><span>PDF, TXT o CSV de la orden/remisión/SIESA</span><input class="input" type="file" id="stickerReaderFile" accept="application/pdf,text/plain,.txt,.csv"></label><label class="field"><span>O pegue líneas / base SIESA</span><textarea class="textarea" id="stickerReaderText" placeholder="Referencia | Material | Cantidad | Unidad | Ubicación | Medidas"></textarea></label><div class="top-actions"><button class="btn btn-primary" type="button" id="readStickerFileBtn">Leer archivo</button><button class="btn" type="button" id="readStickerTextBtn">Leer texto pegado</button></div><div class="notice" id="stickerReaderStatus">El lector arma una base inicial; usted puede corregir antes de guardar.</div></article></section><section class="card"><div class="section-title"><div><h3>Base previa de stickers</h3><p><strong id="stickerDraftCount">1</strong> línea(s) listas para guardar.</p></div><button class="btn btn-small" type="button" id="addStickerRowBtn">Agregar línea</button></div><div class="table-wrap"><table><thead><tr><th>Material</th><th>Referencia</th><th>Cantidad</th><th>UM</th><th>Ubicación</th><th>Medidas</th><th>Fecha ingreso</th><th>Responsable ingreso</th><th>Estado</th><th></th></tr></thead><tbody id="stickerDraftBody"></tbody></table></div></section><div class="top-actions"><button class="btn btn-success" type="submit">Guardar stickers</button><button class="btn" type="button" data-action="closeDrawer">Cerrar</button></div></form>'));
+  renderReceptionStickerDraftRows(initial);
+  var st=qs('#stickerReaderStatus');
+  var addBtn=qs('#addStickerRowBtn');if(addBtn)addBtn.onclick=function(){var arr=(state.receptionStickerDraftRows||[]).slice();arr.push(receptionStickerCandidateFromItem({},r));renderReceptionStickerDraftRows(arr);};
+  var readFileBtn=qs('#readStickerFileBtn');if(readFileBtn)readFileBtn.onclick=function(){var file=qs('#stickerReaderFile')&&qs('#stickerReaderFile').files&&qs('#stickerReaderFile').files[0];if(st)st.textContent="Leyendo archivo...";readReceptionStickerFile(file).then(function(text){var rows=buildReceptionStickerCandidatesFromText(text,r);if(!rows.length)throw new Error("No se detectaron líneas de material. Pegue la base en texto o agregue líneas manuales.");renderReceptionStickerDraftRows(rows);if(st)st.textContent="Lector finalizado: "+rows.length+" línea(s) detectadas.";}).catch(function(e){if(st)st.textContent=(e&&e.message)||String(e);showError((e&&e.message)||e);});};
+  var readTextBtn=qs('#readStickerTextBtn');if(readTextBtn)readTextBtn.onclick=function(){var text=qs('#stickerReaderText')?qs('#stickerReaderText').value:"";var rows=buildReceptionStickerCandidatesFromText(text,r);if(!rows.length){alert("No se detectaron líneas. Use formato: Referencia | Material | Cantidad | Unidad | Ubicación | Medidas");return;}renderReceptionStickerDraftRows(rows);if(st)st.textContent="Texto leído: "+rows.length+" línea(s) detectadas.";};
+  var form=qs('#receptionStickerForm');if(form)form.onsubmit=function(e){e.preventDefault();saveReceptionStickers(id);};
+}
+function saveReceptionStickers(id){
+  var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
+  var rows=collectReceptionStickerDraftRows(r);
+  if(!rows.length){alert("Debe guardar al menos un sticker de separación.");return;}
+  var batch=db.batch();
+  rows.forEach(function(row){var sid=row.id||uid("STK");row.id=sid;batch.set(db.collection("recepcion_stickers").doc(sid),row,{merge:true});});
+  batch.update(db.collection("recepciones_mercancia").doc(id),{hasSeparationStickers:true,separationStickerCount:(r.separationStickerCount||0)+rows.length,separationStickerLastAt:now(),separationStickerLastBy:state.user.uid,separationStickerLastByName:state.user.name,updatedAt:now()});
+  batch.commit().then(function(){return createEvent({type:"RECEPTION_STICKERS_CREATED",detail:"Stickers de separación creados: "+rows.length+" · "+(r.documentNumber||id),targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderReceptionGoods();showLiveToast("Stickers guardados",rows.length+" registro(s) agregados a la base de separación.",false);}).catch(function(e){showError((e&&e.message)||e||"No se pudieron guardar los stickers.");});
+}
+function exportReceptionStickers(){
+  var list=state.receptionStickers||[];
+  var byMaterial=receptionStickerCountBy(list,function(x){return x.materialName||x.material||x.descripcion||"Sin material";});
+  var byLocation=receptionStickerCountBy(list,function(x){return x.location||x.ubicacion||"Sin ubicación";});
+  var bySupplier=receptionStickerCountBy(list,function(x){return x.supplier||"Sin proveedor";});
+  var parts=[];
+  parts.push('<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1,h2{color:#173b77}table{border-collapse:collapse;margin-bottom:18px}th{background:#173b77;color:#fff}td,th{font-size:12px;border:1px solid #cbd5e1;padding:4px;vertical-align:top}.ok{background:#dcfce7}.bar{background:#dbeafe;width:180px;height:14px;border:1px solid #bfdbfe}.bar b{display:block;background:#1d4ed8;height:14px}</style></head><body><h1>Base de stickers de separación · Recepción de mercancía</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>Base descargable para cruce con SIESA. Estado automático de los stickers: Conforme.</p>');
+  parts.push(excelSectionTable('Dashboard · Stickers por material',byMaterial));
+  parts.push(excelSectionTable('Dashboard · Stickers por ubicación',byLocation));
+  parts.push(excelSectionTable('Dashboard · Stickers por proveedor',bySupplier));
+  parts.push('<h2>Base detallada</h2><table border="1" cellspacing="0" cellpadding="4"><thead><tr><th>ID sticker</th><th>Documento ingreso</th><th>Proveedor</th><th>Material</th><th>Referencia</th><th>Cantidad</th><th>Unidad</th><th>Ubicación</th><th>Medidas</th><th>Fecha ingreso</th><th>Responsable ingreso</th><th>Estado</th><th>Creado</th></tr></thead><tbody>');
+  list.forEach(function(st){parts.push('<tr><td>'+escapeExcel(st.id||'')+'</td><td>'+escapeExcel(st.documentNumber||'')+'</td><td>'+escapeExcel(st.supplier||'')+'</td><td>'+escapeExcel(st.materialName||st.material||'')+'</td><td>'+escapeExcel(st.reference||'')+'</td><td>'+escapeExcel(st.quantity||'')+'</td><td>'+escapeExcel(st.unit||'')+'</td><td>'+escapeExcel(st.location||'')+'</td><td>'+escapeExcel(st.measures||'')+'</td><td>'+escapeExcel(st.entryDate||'')+'</td><td>'+escapeExcel(st.responsibleName||'')+'</td><td>'+escapeExcel(st.status||'Conforme')+'</td><td>'+escapeExcel(fmtDate(st.createdAt))+'</td></tr>');});
+  parts.push('</tbody></table></body></html>');
+  downloadHtmlExcelParts('base_stickers_recepcion_mercancia_'+new Date().toISOString().slice(0,10)+'.xls',parts);
 }
 function openReceptionGoodsModal(){
   if(!canAccessReceptionGoods()){alert("No tiene permiso para recepción de mercancía.");return;}
@@ -6232,6 +6385,9 @@ function saveReceptionGoods(fd,file){
     return loadData();
   }).then(function(){
     closeDrawer();renderReceptionGoods();
+    if(savedReceptionResult && receptionConformityIsFullConforme(savedReceptionResult.doc&&savedReceptionResult.doc.conformity)){
+      setTimeout(function(){openReceptionStickerWizard(savedReceptionResult.doc.id);},260);
+    }
     if(savedReceptionResult && savedReceptionResult.redirect){
       setTimeout(function(){
         var ok=confirm("Será redirigido a diligenciar la novedad de recepción en Auditoría. El texto del reporte fue copiado para pegarlo en la otra plataforma. ¿Desea continuar?");
@@ -6246,6 +6402,7 @@ function openReceptionGoods(id){
   var findings=(r.findings||[]).map(function(f){return '<article class="notice danger"><strong>Hallazgo:</strong> '+esc(f.detail||'')+'<br><strong>Acción:</strong> '+esc(f.action||'')+'<br><small>'+fmtDate(f.createdAt)+' · reporta '+esc(f.createdByName||'')+'</small></article>';}).join('')||'<div class="notice">Sin hallazgos registrados.</div>';
   var closure=r.closedAt?'<article class="notice success"><strong>Cierre:</strong> '+esc(r.finalDecisionStatus||r.conformity||'Cerrado')+'<br><strong>Decisión:</strong> '+esc(r.finalDecisionComment||'')+'<br><small>'+fmtDate(r.closedAt)+'</small>'+(r.closureEvidence&&r.closureEvidence.url?'<br><a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.closureEvidence.url)+'">Abrir evidencia de cierre</a>':'')+'</article>':'';
   var actions='';
+  if(receptionConformityIsFullConforme(r.conformity))actions+='<button class="btn btn-gold" data-action="openReceptionStickerWizard" data-id="'+esc(r.id)+'">Crear stickers de separación</button>';
   if(receptionIsOpen(r) && canCloseReceptionNovelty())actions+='<button class="btn btn-success" data-action="closeReceptionGoods" data-id="'+esc(r.id)+'">Cerrar retenido con evidencia</button>';
   if(receptionConformityIsNovelty(r.conformity) && receptionIsOpen(r))actions+='<button class="btn btn-gold" data-action="reportReceptionGoods" data-id="'+esc(r.id)+'">Diligenciar novedad en Auditoría</button>';
   if(canDeleteReceptionGoods())actions+='<button class="btn btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar ingreso</button>';
@@ -8341,6 +8498,9 @@ function bindActions(){
     if(a==="projectToCase")projectOrderToCase(id);
     if(a==="receptionGoodsModal")openReceptionGoodsModal();
     if(a==="openReceptionGoods")openReceptionGoods(id);
+    if(a==="openReceptionStickerWizard")openReceptionStickerWizard(id);
+    if(a==="exportReceptionStickers")safeExportExcel("Base stickers recepción",exportReceptionStickers);
+    if(a==="refreshReceptionGoods")loadData().then(renderReceptionGoods).catch(function(e){showError(e.message||e);});
     if(a==="reportReceptionGoods")reportReceptionGoods(id);
     if(a==="reportNonConformity")openNonConformityModal(id);
     if(a==="generalReport")openGeneralReportModal(id);
