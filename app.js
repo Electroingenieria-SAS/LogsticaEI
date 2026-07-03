@@ -92,6 +92,7 @@ var roles = {
   super_administrador:"Super administrador",
   gerencia:"Gerencia",
   ventas:"Ventas",
+  compras:"Compras",
   proyectos:"Proyectos",
   jefe_logistica:"Jefe de logística",
   lider_logistico:"Logística / despacho (unificado)",
@@ -105,6 +106,7 @@ var roles = {
 };
 
 var FLOW = [
+  "compras",
   "recepcion_pedidos",
   "alistamiento",
   "corte_cable",
@@ -118,6 +120,12 @@ var FLOW = [
 ];
 
 var processes = {
+  compras:{
+    code:"S-PR-COM", title:"Compras", ownerRoles:["compras"], icon:"CO",
+    checklist:["Orden PVE recibida desde ventas","Orden gestionada por Compras","Orden liberada a recepción de pedidos"],
+    waits:["Falta confirmación de proveedor","Falta autorización de compra","Falta OC o soporte comercial","Falta aclaración de Ventas","Producto pendiente por gestionar","Novedad de compra"],
+    next:["recepcion_pedidos"]
+  },
   recepcion_pedidos:{
     code:"S-PR-2", title:"Recepción de pedidos", ownerRoles:["coordinador_logistico"], icon:"RP",
     checklist:["Pedido registrado por ventas","PDF del pedido cargado en recepción","Documento legible y completo","Número de pedido identificado","Cliente identificado","Referencias del pedido identificadas","Cantidades y unidades de medida identificadas","Cortes automáticos detectados si aplica","Tipo PVC/PVN validado","Tipo de entrega definido","Forma de pago definida","Mercancía comprometida en SIESA/ERP","Observaciones revisadas","Pedido listo para alistamiento"],
@@ -367,7 +375,7 @@ function ensureDeliveryChecklistDefinitions(){
 ensureDeliveryChecklistDefinitions();
 
 var routeInfo = {
-  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], sales_reports:["Registro de ventas","RV"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"],
+  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], compras:["Compras","CO"], sales_reports:["Registro de ventas","RV"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"],
   approvals:["Aprobaciones","AU"], corte_cable:["Cortes","CT"], indicators:["VSM","VS"], users:["Usuarios","US"], admin:["Admin","AD"]
 };
 
@@ -389,6 +397,7 @@ function normalizeRole(r){
   var x=raw.replace(/[^a-z0-9_]+/g,"_").replace(/^_+|_+$/g,"").replace(/_+/g,"_");
   if(x==="sa"||x==="superadmin"||x==="super_admin"||x==="super_administrador"||x==="superadministrador"||x==="super_administracion"||(x.indexOf("super")>=0&&(x.indexOf("admin")>=0||x.indexOf("administrador")>=0||x.indexOf("administracion")>=0)))return "super_admin";
   if(x==="admin"||x==="administrador"||x==="administracion"||x==="administrador_desarrollador"||x==="admin_desarrollador"||x==="desarrollador"||x==="developer"||x==="administrator")return "admin";
+  if(x==="compras"||x==="compra"||x==="area_compras"||x==="comprador"||x==="pve_compras"||x==="gestion_compras")return "compras";
   if(x==="asesor"||x==="asesor_ventas"||x==="asesor_de_ventas"||x==="vendedor"||x==="comercial")return "ventas";
   if(x==="cartera")return "caja";
   if(x==="jefe_logistico")return "jefe_logistica";
@@ -566,7 +575,7 @@ function technicalAssignedLabel(value){
   var blockedRoles=[
     "admin","super_admin","gerencia","ventas","proyectos","jefe_logistica",
     "coordinador_logistico","aux_logistica","auxiliar_corte","caja",
-    "inventarios","lider_recepcion","auditoria"
+    "inventarios","lider_recepcion","auditoria","compras"
   ];
   if(blockedRoles.indexOf(n)>=0)return true;
   var labelNorm=normalizePersonText(v);
@@ -851,6 +860,25 @@ function alistamientoAssignableUsers(){
 }
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
+function normalizeOrderKindValue(v){return String(v||"").trim().toUpperCase().replace(/\s+/g,"");}
+function isPveOrder(c){
+  if(!c)return false;
+  var kind=normalizeOrderKindValue(c.orderKind||c.tipoPedido||c.orderType||"");
+  var ref=normalizeOrderKindValue(c.reference||c.pedido||c.orderNumber||"");
+  return kind==="PVE" || /^PVE[\-_.\dA-Z]*/.test(ref);
+}
+function firstProcessForSalesOrder(orderKind,reference){
+  var kind=normalizeOrderKindValue(orderKind||"");
+  var ref=normalizeOrderKindValue(reference||"");
+  return (kind==="PVE" || /^PVE[\-_.\dA-Z]*/.test(ref)) ? "compras" : "recepcion_pedidos";
+}
+function nextProcessAfterCommercialGate(c){return isPveOrder(c)?"compras":"recepcion_pedidos";}
+function purchasesVisibleRoles(){return ["compras","ventas","coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador"];}
+function resetChecklistForProcess(c,p){
+  c.checklist={};
+  ((processes[p]||{}).checklist||[]).forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"||item==="Orden PVE recibida desde ventas"?"ok":"pending";});
+  return c.checklist;
+}
 function isLeader(){return state.user && (isAdminRoleValue(state.user.role) || normalizeRole(state.user.role)==="coordinador_logistico");}
 function isCutOperator(){return state.user && normalizeRole(state.user.role)==="auxiliar_corte";}
 function isJefeLogistica(){return state.user && normalizeRole(state.user.role)==="jefe_logistica";}
@@ -878,7 +906,13 @@ function reportAssignedToCurrentSalesUser(r){
     return (email && nv===email) || (name && nv===name) || samePersonText(v,state.user.name) || samePersonText(v,state.user.email);
   });
 }
-function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report)||canManageCancellationReport(report);}
+function reportAssignedToCurrentRole(report){
+  if(!state.user || !report)return false;
+  var r=normalizeRole(state.user.role);
+  var targets=[report.targetRole,report.assignedRole,report.responsibleRole].concat(report.visibleRoles||[]).concat(report.reportTo||[]).map(normalizeRole).filter(Boolean);
+  return targets.indexOf(r)>=0;
+}
+function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report)||reportAssignedToCurrentRole(report)||canManageCancellationReport(report);}
 function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
 
 function reportCaseIdentifiers(r){
@@ -900,7 +934,9 @@ function reportBelongsToCase(r,c){
 function reportRelevantToCurrentUser(r){
   if(!state.user || !r)return false;
   var role=normalizeRole(state.user.role);
-  if(canSeeAll() || role!=="ventas")return true;
+  if(canSeeAll())return true;
+  if(role==="compras")return reportAssignedToCurrentRole(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
+  if(role!=="ventas")return true;
   if(reportHasSalesAssignee(r)){
     return reportAssignedToCurrentSalesUser(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
   }
@@ -957,7 +993,7 @@ function evidenceTypeOptions(){
   return opts.map(function(o){return '<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>';}).join("");
 }
 function defaultEvidenceTypeForProcess(p){
-  var map={recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
+  var map={compras:"SOPORTE_COMPRAS",recepcion_pedidos:"PDF_PEDIDO",alistamiento:"FOTO_ALISTAMIENTO",corte_cable:"FOTO_CORTE",despacho_local:"FOTO_DESPACHO",despacho_nacional:"FOTO_DESPACHO",cierre_despacho_nacional:"SOPORTE_ENTREGA",cliente_punto:"SOPORTE_ENTREGA",cliente_recoge:"SOPORTE_ENTREGA",caja:"SOPORTE_CAJA",facturacion:"SOPORTE_FACTURACION",auditoria:"AUDITORIA"};
   return map[p]||"EVIDENCIA_PROCESO";
 }
 function persistEvidenceDocument(c,up,detail){
@@ -971,7 +1007,7 @@ function persistEvidenceDocument(c,up,detail){
   };
   return db.collection("evidences").doc(ev.id).set(ev).catch(function(){return null;});
 }
-function defaultRoute(role){var r=normalizeRole(role);if(r==="gerencia")return"indicators";if(isAdminRoleValue(r))return"dashboard";if(r==="ventas")return"create";if(r==="proyectos")return"projects";if(r==="lider_recepcion")return"reception_goods";if(r==="jefe_logistica")return"dashboard";if(r==="auxiliar_corte")return"corte_cable";if(r==="lider_logistico"||r==="coordinador_logistico")return"recepcion_pedidos";if(r==="aux_logistica")return"alistamiento";if(r==="caja")return"caja";return"dashboard";}
+function defaultRoute(role){var r=normalizeRole(role);if(r==="gerencia")return"indicators";if(isAdminRoleValue(r))return"dashboard";if(r==="ventas")return"create";if(r==="compras")return"compras";if(r==="proyectos")return"projects";if(r==="lider_recepcion")return"reception_goods";if(r==="jefe_logistica")return"dashboard";if(r==="auxiliar_corte")return"corte_cable";if(r==="lider_logistico"||r==="coordinador_logistico")return"recepcion_pedidos";if(r==="aux_logistica")return"alistamiento";if(r==="caja")return"caja";return"dashboard";}
 function currentProc(c){return c.currentProcess;}
 function procStats(c,p){c.processStats=c.processStats||{};c.processStats[p]=c.processStats[p]||{activeMs:0,waitMs:0,deadMs:0,startedAt:null,completedAt:null,handoffs:0};return c.processStats[p];}
 function registerProcessResponsible(c,p,user,action){
@@ -1164,6 +1200,9 @@ function roleQueryAliases(roleValue){
   }
   if(normalized==="auxiliar_corte"){
     aliases=aliases.concat(["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte"]);
+  }
+  if(normalized==="compras"){
+    aliases=aliases.concat(["compras","compra","area_compras","comprador","pve_compras","gestion_compras","Compras"]);
   }
   return uniqueArray(aliases.map(function(x){return String(x||"").trim();}).filter(Boolean));
 }
@@ -2424,6 +2463,7 @@ function routes(){
   if(r==="auxiliar_corte")return{main:["corte_cable","reports"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","reports"],processes:[]};
+  if(r==="compras")return{main:["compras","requirements","reports"],processes:[]};
   if(r==="gerencia")return{main:["indicators","approvals","reports","users","admin","dashboard"],processes:[]};
   if(isAdminRoleValue(r))return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="jefe_logistica"){
@@ -2447,6 +2487,7 @@ function mobileItems(){
   if(r==="auxiliar_corte")return [["corte_cable","Cortes","CT"],["dashboard","Inicio","⌂"]];
   if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["dashboard","Inicio","⌂"]];
   if(r==="proyectos")return [["projects","Proyectos","PR"],["dashboard","Inicio","⌂"]];
+  if(r==="compras")return [["compras","Compras","CO"],["requirements","Req.","↗"],["reports","Nov.","RP"]];
   if(r==="gerencia")return [["dashboard","Inicio","⌂"],["approvals","Aprob.","✓"],["requirements","Req.","↗"]];
   if(r==="ventas")return [["create","Crear","+"],["sales_reports","Registro","RV"],["requirements","Req.","↗"],["dashboard","Inicio","⌂"]];
   if(r==="jefe_logistica")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["requirements","Req.","↗"],["approvals","Aprob.","✓"]];
@@ -2459,6 +2500,8 @@ function mobileRouteAllowed(route){
   if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return true;
   var always=["dashboard","cases","requirements","approvals"];
   if(always.indexOf(route)>=0)return true;
+  if(route==="compras")return r==="compras"||isAdminRoleValue(r);
+  if(route==="reports")return r==="compras"||r==="ventas"||isAdminRoleValue(r)||r==="jefe_logistica"||r==="lider_recepcion";
   if(route==="create"||route==="sales_reports")return r==="ventas"||isAdminRoleValue(r);
   if(processes[route])return true;
   // Módulos de configuración, reportes extensos, usuarios, VSM, proyectos y recepción de mercancía
@@ -2726,7 +2769,7 @@ function renderCases(){
 
 function renderCreate(){
   if(!canCreate()){layout(header("Crear pedido","Acceso restringido.")+'<div class="empty">Solo ventas inicia pedidos. Los demás roles reciben por secuencia.</div>');return;}
-  layout(header("Crear pedido","Ventas registra el pedido, orden de compra y define si entra normal, retenido a caja o prioritario.")+createOrderGuidePanel()+'<section class="card"><form class="form" id="caseForm"><div class="notice"><strong>Flujo documental:</strong> ventas registra el pedido PVC/PVN. Si está retenido, entra primero a Caja; cuando Caja lo cierre, vuelve a Recepción de pedidos.</div><div class="grid grid-2"><label class="field"><span>Número / nombre del pedido</span><input class="input" name="reference" id="reference" required placeholder="PVC-0000 / PVN-0000"></label><label class="field"><span>Orden de compra / OC</span><input class="input" name="purchaseOrder" id="purchaseOrder" placeholder="OC, orden de compra o referencia comercial"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de pedido</span><select class="select" name="orderKind" id="orderKind"><option value="PVC">PVC</option><option value="PVN">PVN</option><option value="VENTAS">Otro ventas</option><option value="ALUMBRADO">Alumbrado</option></select></label><label class="field"><span>Cliente</span><input class="input" name="client" id="client" placeholder="Nombre del cliente"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de gestión</span><select class="select" name="priorityMode"><option value="normal">Pedido normal a logística</option><option value="retenido_caja">Pedido retenido: enviar a Caja</option><option value="gerencia">Pedido prioritario / salida especial a gerencia</option></select></label><label class="field"><span>Motivo / soporte de gestión</span><input class="input" name="priorityReason" placeholder="Retención, pago, autorización, cliente crítico"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de entrega esperado</span><select class="select" name="requestedDelivery" id="requestedDelivery"><option value="">Sin definir</option><option value="cliente_punto">Cliente en punto</option><option value="cliente_recoge">Cliente recoge</option><option value="despacho_local">Despacho local</option><option value="despacho_nacional">Despacho nacional</option></select></label><label class="field"><span>Condición de pago</span><select class="select" name="paymentCondition" id="paymentCondition"><option value="">Sin definir</option><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option><option value="ANTICIPO">Anticipo / mixto</option></select></label></div><label class="field"><span>Observación comercial</span><textarea class="textarea" name="description" id="description" placeholder="Aclaraciones del asesor, condición especial o instrucción inicial."></textarea></label><button class="btn btn-primary" type="submit">Crear pedido</button></form></section>');
+  layout(header("Crear pedido","Ventas registra el pedido, orden de compra y define si entra normal, retenido a caja o prioritario.")+createOrderGuidePanel()+'<section class="card"><form class="form" id="caseForm"><div class="notice"><strong>Flujo documental:</strong> ventas registra el pedido PVC/PVN/PVE. Los pedidos PVE pasan primero a Compras; Compras los libera a Recepción de pedidos. Si está retenido, entra primero a Caja y al cerrar vuelve al proceso correspondiente.</div><div class="grid grid-2"><label class="field"><span>Número / nombre del pedido</span><input class="input" name="reference" id="reference" required placeholder="PVC-0000 / PVN-0000 / PVE-0000"></label><label class="field"><span>Orden de compra / OC</span><input class="input" name="purchaseOrder" id="purchaseOrder" placeholder="OC, orden de compra o referencia comercial"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de pedido</span><select class="select" name="orderKind" id="orderKind"><option value="PVC">PVC</option><option value="PVN">PVN</option><option value="PVE">PVE · Compras primero</option><option value="VENTAS">Otro ventas</option><option value="ALUMBRADO">Alumbrado</option></select></label><label class="field"><span>Cliente</span><input class="input" name="client" id="client" placeholder="Nombre del cliente"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de gestión</span><select class="select" name="priorityMode"><option value="normal">Pedido normal a logística / compras si es PVE</option><option value="retenido_caja">Pedido retenido: enviar a Caja</option><option value="gerencia">Pedido prioritario / salida especial a gerencia</option></select></label><label class="field"><span>Motivo / soporte de gestión</span><input class="input" name="priorityReason" placeholder="Retención, pago, autorización, cliente crítico"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de entrega esperado</span><select class="select" name="requestedDelivery" id="requestedDelivery"><option value="">Sin definir</option><option value="cliente_punto">Cliente en punto</option><option value="cliente_recoge">Cliente recoge</option><option value="despacho_local">Despacho local</option><option value="despacho_nacional">Despacho nacional</option></select></label><label class="field"><span>Condición de pago</span><select class="select" name="paymentCondition" id="paymentCondition"><option value="">Sin definir</option><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option><option value="ANTICIPO">Anticipo / mixto</option></select></label></div><label class="field"><span>Observación comercial</span><textarea class="textarea" name="description" id="description" placeholder="Aclaraciones del asesor, condición especial o instrucción inicial."></textarea></label><button class="btn btn-primary" type="submit">Crear pedido</button></form></section>');
   qs("#caseForm").onsubmit=function(e){e.preventDefault();createCase(new FormData(e.target));};
 }
 
@@ -4068,15 +4111,19 @@ extractPedidoItems = function(text){
 };
 
 function createCase(fd){
-  var created=now(), p="recepcion_pedidos", def=processes[p], priority=fd.get("priorityMode")==="gerencia";
+  var created=now(), orderKind=fd.get("orderKind")||"VENTAS", reference=fd.get("reference")||"", p=firstProcessForSalesOrder(orderKind,reference), def=processes[p], priority=fd.get("priorityMode")==="gerencia";
   var retained=fd.get("priorityMode")==="retenido_caja";
   if(retained){p="caja";def=processes[p];priority=false;}
-  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:retained?"asignado":(priority?"pendiente_gerencia":"asignado"),priority:priority?"Pendiente gerencia":(retained?"Retenido caja":"Normal"),reference:fd.get("reference"),purchaseOrder:fd.get("purchaseOrder")||"",orderKind:fd.get("orderKind")||"VENTAS",client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:fd.get("paymentCondition")||"",cashBilling:(isCashPaymentValue(fd.get("paymentCondition"))?{required:true,status:"pendiente",source:"ventas",createdAt:created,createdByName:state.user.name}:null),salesAdvisor:state.user.name,createdByEmail:(state.user&&state.user.email)||"",assignedRole:retained?"caja":(priority?"gerencia":"coordinador_logistico"),assignedName:retained?"Caja":(priority?"Gerencia":"Logística / despacho"),assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,salesNotes:(String(fd.get("description")||fd.get("priorityReason")||"").trim()?[{id:uid("SN"),type:"Nota inicial de Ventas",detail:String(fd.get("description")||fd.get("priorityReason")||"").trim(),createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||""}]:[]),updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,salesHold:retained?{status:"EN_CAJA",createdAt:created,createdByName:state.user.name,reason:fd.get("priorityReason")||fd.get("description")||"Pedido retenido desde ventas",purchaseOrder:fd.get("purchaseOrder")||"",history:[{at:created,by:state.user.name,action:"Ventas envía pedido retenido a Caja"}]}:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:"PENDIENTE_RECEPCION",initialCommitmentDetail:""},processStats:{}};
+  var assignedRole=retained?"caja":(priority?"gerencia":primaryOwnerRole(p));
+  var assignedName=retained?"Caja":(priority?"Gerencia":processOwnerTitle(p));
+  var routeDetail=p==="compras"?"Pedido PVE registrado por ventas y enviado a Compras":"Pedido registrado por ventas y enviado a recepción";
+  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:retained?"asignado":(priority?"pendiente_gerencia":"asignado"),priority:priority?"Pendiente gerencia":(retained?"Retenido caja":"Normal"),reference:reference,purchaseOrder:fd.get("purchaseOrder")||"",orderKind:orderKind,client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:fd.get("paymentCondition")||"",cashBilling:(isCashPaymentValue(fd.get("paymentCondition"))?{required:true,status:"pendiente",source:"ventas",createdAt:created,createdByName:state.user.name}:null),salesAdvisor:state.user.name,createdByEmail:(state.user&&state.user.email)||"",assignedRole:assignedRole,assignedName:assignedName,assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,salesNotes:(String(fd.get("description")||fd.get("priorityReason")||"").trim()?[{id:uid("SN"),type:"Nota inicial de Ventas",detail:String(fd.get("description")||fd.get("priorityReason")||"").trim(),createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||""}]:[]),updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,salesHold:retained?{status:"EN_CAJA",createdAt:created,createdByName:state.user.name,reason:fd.get("priorityReason")||fd.get("description")||"Pedido retenido desde ventas",purchaseOrder:fd.get("purchaseOrder")||"",history:[{at:created,by:state.user.name,action:"Ventas envía pedido retenido a Caja"}]}:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:p==="compras"?"PENDIENTE_COMPRAS":"PENDIENTE_RECEPCION",initialCommitmentDetail:p==="compras"?"PVE debe ser gestionado y liberado por Compras antes de Recepción":""},processStats:{}};
+  if(p==="compras"){c.visibleRoles=purchasesVisibleRoles();c.targetRoles=purchasesVisibleRoles();c.purchaseFlow={required:true,status:"PENDIENTE_COMPRAS",createdAt:created,createdByName:state.user.name,source:"ventas_pve"};}
   procStats(c,p).startedAt=created;
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
-  def.checklist.forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"?"ok":"pending";});
-  addStateHistory(c,"creacion",retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":"Pedido registrado por ventas y enviado a recepción"),{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
-  persistCase(c,{type:"CASE_CREATED",detail:retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":"Pedido registrado por ventas y enviado a recepción")}).then(function(){state.route="dashboard";render();}).catch(function(e){showError(e.message||e);});
+  resetChecklistForProcess(c,p);
+  addStateHistory(c,"creacion",retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
+  persistCase(c,{type:"CASE_CREATED",detail:retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();}).catch(function(e){showError(e.message||e);});
 }
 
 function initialCheckFromPdf(item,x){if(!x)return"pending";if(item==="Contenido del pedido completo")return x.orderNumber&&x.client?"ok":"pending";if(item==="Cliente identificado")return x.client?"ok":"pending";if(item==="Forma de pago definida")return x.paymentCondition?"ok":"pending";return"pending";}
@@ -4197,6 +4244,7 @@ function nextActionButtons(c){
   return next.filter(function(n){return n!=="cierre_caso";}).map(function(n){
     var disabled="", label="Enviar a "+processTitle(n), cls="btn btn-primary";
     var action="transfer";
+    if(c.currentProcess==="compras" && n==="recepcion_pedidos"){label="Liberar orden";}
     if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento"){action="assignAlistamiento";label="Enviar a alistamiento y asignar";}
     if(c.currentProcess==="recepcion_pedidos" && n==="alistamiento" && !receptionPdfIsComplete(c)){cls="btn btn-gold";label="Validar recepción pendiente";}
     if(c.currentProcess==="alistamiento" && n==="facturacion"){action="alistToBilling";label="Finalizar alistamiento y enviar a facturación";}
@@ -6098,7 +6146,7 @@ function deleteReceptionGoods(id){
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el ingreso.");});
 }
 
-function reportTargetName(r){if(reportIsCancellationRequest(r))return (r&&(r.targetLogisticsName||r.assignedLogisticsName))||"Logística / Super Admin";return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin asesor asignado";}
+function reportTargetName(r){if(reportIsCancellationRequest(r))return (r&&(r.targetLogisticsName||r.assignedLogisticsName))||"Logística / Super Admin";if(r&&(r.targetRole||r.assignedRole||r.targetAreaName||r.targetRoleName)){return r.targetAreaName||r.targetRoleName||roleTitle(r.targetRole||r.assignedRole);}return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin responsable asignado";}
 function reportSalesUserCandidates(c){
   var map={};
   function add(uid,name,email,role,source){
@@ -6208,15 +6256,25 @@ function submitManageReport(id,fd){
 function openGeneralReportModal(id){
   var c=caseById(id);if(!c)return;
   var advisorOptions=reportSalesUserOptionsHtml(c);
-  drawer(modal("Reportar novedad interna",'<form class="form" id="generalReportForm"><div class="notice"><strong>Reporte a Ventas:</strong> seleccione el asesor que debe responder esta novedad. El reporte quedará trazado al asesor elegido y su respuesta será la gestión válida de Ventas.</div><label class="field"><span>Asesor de Ventas que debe responder *</span><select class="select" name="targetSales" required>'+advisorOptions+'</select><small>La bandeja de Reportes mostrará esta novedad al asesor seleccionado y a los responsables autorizados.</small></label><label class="field"><span>Tipo de novedad</span><select class="select" name="category"><option>Novedad operativa</option><option>Diferencia documental</option><option>Diferencia física</option><option>Retraso o bloqueo</option><option>Riesgo de despacho</option><option>Otro</option></select></label><label class="field"><span>Criticidad</span><select class="select" name="severity"><option>Media</option><option>Alta</option><option>Baja</option></select></label><label class="field"><span>Descripción de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Explique exactamente qué pasó, dónde se detectó y qué debe responder el asesor."></textarea></label><button class="btn btn-primary" type="submit">Crear reporte para asesor</button></form>'));
+  drawer(modal("Reportar novedad interna",'<form class="form" id="generalReportForm"><div class="notice"><strong>Reporte interno:</strong> seleccione el área que debe responder esta novedad. Si elige Ventas, seleccione también el asesor responsable.</div><label class="field"><span>Área responsable *</span><select class="select" name="targetRole" id="reportTargetRole"><option value="ventas">Ventas / asesor</option><option value="compras">Compras</option><option value="coordinador_logistico">Logística / despacho</option><option value="jefe_logistica">Jefe de logística</option><option value="aux_logistica">Auxiliar logística</option><option value="caja">Caja</option><option value="gerencia">Gerencia</option></select></label><label class="field" id="targetSalesField"><span>Asesor de Ventas que debe responder</span><select class="select" name="targetSales">'+advisorOptions+'</select><small>Solo aplica cuando el reporte va dirigido a Ventas.</small></label><label class="field"><span>Tipo de novedad</span><select class="select" name="category"><option>Novedad operativa</option><option>Diferencia documental</option><option>Diferencia física</option><option>Retraso o bloqueo</option><option>Riesgo de despacho</option><option>Otro</option></select></label><label class="field"><span>Criticidad</span><select class="select" name="severity"><option>Media</option><option>Alta</option><option>Baja</option></select></label><label class="field"><span>Descripción de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Explique exactamente qué pasó, dónde se detectó y qué debe responder el área asignada."></textarea></label><button class="btn btn-primary" type="submit">Crear reporte</button></form>'));
+  var roleSel=qs("#reportTargetRole"), salesField=qs("#targetSalesField");
+  function sync(){if(salesField)salesField.style.display=roleSel&&roleSel.value==="ventas"?"block":"none";}
+  if(roleSel){roleSel.onchange=sync;sync();}
   qs("#generalReportForm").onsubmit=function(e){e.preventDefault();submitGeneralReport(id,new FormData(e.target));};
 }
 function submitGeneralReport(id,fd){
   var c=caseById(id);if(!c)return;
   var detail=String(fd.get("detail")||"").trim();if(!detail){alert("Debe escribir la novedad.");return;}
-  var target=resolveReportSalesUser(fd.get("targetSales"),c);if(!target){alert("Debe seleccionar el asesor de Ventas que responderá el reporte.");return;}
-  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:target.name||'',caseOwnerUid:c.createdBy||'',targetSalesKey:target.key||'',targetSalesUid:target.uid||'',targetSalesName:target.name||'',targetSalesEmail:target.email||'',assignedSalesUid:target.uid||'',assignedSalesName:target.name||'',assignedSalesEmail:target.email||'',assignedSalesAt:now(),assignedSalesBy:state.user.uid,assignedSalesByName:state.user.name,reportTo:["ventas",target.name||target.email||"Asesor"],visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion","ventas",c.assignedRole]};
-  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada para respuesta de asesor: "+report.category+" · Asesor: "+(target.name||target.email||""),targetRole:"ventas",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion","ventas",c.assignedRole]}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
+  var targetRole=normalizeRole(fd.get("targetRole")||"ventas"), target=null;
+  var targetName=roleTitle(targetRole);
+  var targetUid="", targetEmail="", targetSalesKey="";
+  if(targetRole==="ventas"){
+    target=resolveReportSalesUser(fd.get("targetSales"),c);if(!target){alert("Debe seleccionar el asesor de Ventas que responderá el reporte.");return;}
+    targetName=target.name||target.email||"Asesor de Ventas";targetUid=target.uid||"";targetEmail=target.email||"";targetSalesKey=target.key||"";
+  }
+  var visible=uniqueArray(["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion",targetRole,c.assignedRole,"ventas"].concat(targetRole==="compras"?["compras"]:[]));
+  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:targetRole==="ventas"?targetName:(c.salesAdvisor||''),caseOwnerUid:c.createdBy||'',targetRole:targetRole,assignedRole:targetRole,targetRoleName:roleTitle(targetRole),targetAreaName:roleTitle(targetRole),targetSalesKey:targetSalesKey,targetSalesUid:targetUid,targetSalesName:targetRole==="ventas"?targetName:"",targetSalesEmail:targetEmail,assignedSalesUid:targetUid,assignedSalesName:targetRole==="ventas"?targetName:"",assignedSalesEmail:targetEmail,assignedSalesAt:targetRole==="ventas"?now():"",assignedSalesBy:targetRole==="ventas"?state.user.uid:"",assignedSalesByName:targetRole==="ventas"?state.user.name:"",reportTo:[targetRole,targetName],visibleRoles:visible};
+  saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada para respuesta de "+roleTitle(targetRole)+": "+report.category+(targetRole==="ventas"?" · Asesor: "+targetName:""),targetRole:targetRole,visibleRoles:visible}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
 }
 
 function kpiFilteredCases(){
@@ -6979,7 +7037,7 @@ function openEvidence(id){
 
 function openWait(id){
   var c=caseById(id), def=processes[c.currentProcess];
-  drawer(modal("Requerimiento / espera",'<form class="form" id="waitForm"><label class="field"><span>Motivo</span><select class="select" name="reason">'+def.waits.map(function(w){return'<option>'+esc(w)+'</option>';}).join("")+'</select></label><label class="field"><span>Área responsable</span><select class="select" name="role"><option value="ventas">Ventas</option><option value="coordinador_logistico">Logística / despacho</option><option value="jefe_logistica">Jefe de logística</option><option value="aux_logistica">Auxiliar logística</option><option value="gerencia">Gerencia</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Enviar requerimiento</button></form>'));
+  drawer(modal("Requerimiento / espera",'<form class="form" id="waitForm"><label class="field"><span>Motivo</span><select class="select" name="reason">'+def.waits.map(function(w){return'<option>'+esc(w)+'</option>';}).join("")+'</select></label><label class="field"><span>Área responsable</span><select class="select" name="role"><option value="ventas">Ventas</option><option value="compras">Compras</option><option value="coordinador_logistico">Logística / despacho</option><option value="jefe_logistica">Jefe de logística</option><option value="aux_logistica">Auxiliar logística</option><option value="gerencia">Gerencia</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Enviar requerimiento</button></form>'));
   qs("#waitForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target);stopActive(c);c.status=fd.get("role")==="ventas"?"espera_ventas":"en_espera";c.waitStartedAt=now();addStateHistory(c,"espera",fd.get("reason")+" · "+(fd.get("detail")||""),{tipo_estado:"espera",motivo_novedad:fd.get("reason"),fecha_hora_inicio_estado:c.waitStartedAt});c.assignedRole=fd.get("role");c.assignedName=roleTitle(fd.get("role"));c.openRequirement={reason:fd.get("reason"),detail:fd.get("detail"),targetRole:fd.get("role"),sentAt:now(),sentBy:state.user.uid,returnProcess:c.currentProcess};c.totalRequirements=Number(c.totalRequirements||0)+1;persistCase(c,{type:"REQUIREMENT_SENT",reason:fd.get("reason"),detail:fd.get("detail"),targetRole:fd.get("role")}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});};
 }
 function openAnswer(id){
@@ -7474,7 +7532,13 @@ function createUser(fd){
   }).then(function(){return second.auth().signOut();}).then(function(){return second.delete();}).then(function(){return loadData();}).then(function(){closeDrawer();renderUsers();}).catch(function(e){showError(e.message||e);});
 }
 function approve(id){
-  var c=caseById(id);stopWait(c);c.status="asignado";c.assignedRole="coordinador_logistico";c.assignedName="Logística / despacho";c.deadStartedAt=now();c.priority="Alta";c.managerApproved=true;if(c.priorityApproval)c.priorityApproval.status="aprobado";persistCase(c,{type:"MANAGER_APPROVED",detail:"Gerencia aprobó prioridad. Pasa a logística primero."}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
+  var c=caseById(id), next=nextProcessAfterCommercialGate(c);
+  stopWait(c);
+  c.currentProcess=next;c.status="asignado";c.assignedRole=primaryOwnerRole(next);c.assignedName=processOwnerTitle(next);c.deadStartedAt=now();c.priority="Alta";c.managerApproved=true;
+  if(c.priorityApproval)c.priorityApproval.status="aprobado";
+  resetChecklistForProcess(c,next);
+  if(next==="compras"){c.visibleRoles=purchasesVisibleRoles();c.targetRoles=purchasesVisibleRoles();c.purchaseFlow=c.purchaseFlow||{required:true,status:"PENDIENTE_COMPRAS",source:"gerencia_pve"};}
+  persistCase(c,{type:"MANAGER_APPROVED",detail:"Gerencia aprobó prioridad. Pasa a "+processTitle(next)+".",targetRole:c.assignedRole,visibleRoles:c.visibleRoles||[c.assignedRole,"admin","super_admin","super_administrador","gerencia","jefe_logistica","ventas"]}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
 }
 function reject(id){
   var c=caseById(id);stopWait(c);c.status="cancelado";c.closedAt=now();if(c.priorityApproval)c.priorityApproval.status="rechazado";persistCase(c,{type:"MANAGER_REJECTED",detail:"Gerencia rechazó prioridad"}).then(function(){renderApprovals();}).catch(function(e){showError(e.message||e);});
@@ -7483,6 +7547,21 @@ function accept(id){var c=caseById(id);if(!canOperateCurrentProcess(c)){alert("E
 function transfer(id,next){
   var c=caseById(id);
   normalizeReceptionDocumentFlow(c);
+  if(c && c.currentProcess==="compras" && next==="recepcion_pedidos"){
+    if(!canOperateCurrentProcess(c)){alert("Este pedido no pertenece al módulo de Compras o no está asignado a su rol.");return;}
+    stopActive(c);stopWait(c);
+    c.purchaseFlow=c.purchaseFlow||{};
+    c.purchaseFlow.status="LIBERADO";
+    c.purchaseFlow.releasedAt=now();
+    c.purchaseFlow.releasedBy=state.user?state.user.uid:"";
+    c.purchaseFlow.releasedByName=state.user?state.user.name:"";
+    c.documentFlow=c.documentFlow||{};
+    c.documentFlow.purchaseReleasedAt=c.purchaseFlow.releasedAt;
+    c.documentFlow.purchaseReleasedBy=c.purchaseFlow.releasedByName;
+    c.documentFlow.initialCommitmentStatus="PENDIENTE_RECEPCION";
+    c.visibleRoles=uniqueArray((c.visibleRoles||[]).concat(["ventas","compras","coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","admin","super_admin","super_administrador"]));
+    return assignToProcess(c,"recepcion_pedidos","Compras liberó orden PVE y envía a Recepción de pedidos").then(function(){renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  }
   if(c && c.currentProcess==="alistamiento" && next==="facturacion")return finalizeAlistamientoToBilling(id);
   if(!canOperateCurrentProcess(c)){alert("Este pedido tiene asignación individual o no pertenece a su macroproceso.");return;}
   if(separationActive(c) && c.currentProcess==="recepcion_pedidos" && next==="alistamiento"){
@@ -7762,7 +7841,7 @@ function openBoxHold(id){
     return;
   }
   drawer(modal('Gestión de pedido retenido en Caja','<form class="form" id="boxHoldForm"><div class="notice"><strong>Pedido retenido:</strong> Caja decide si lo soluciona directamente o si requiere gestión del asesor de ventas. Al cerrar por Caja, el pedido vuelve a Recepción de pedidos. Si se envía a Ventas, al responder vuelve a Caja para verificar pago.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>OC: '+esc(c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||'—')+' · Cliente: '+esc(c.client||'—')+'</p><p>'+esc((c.salesHold||{}).reason||c.description||'')+'</p></section><label class="field"><span>Decisión</span><select class="select" name="decision"><option value="caja_resuelve">Caja lo gestiona y cierra</option><option value="ventas_gestiona">Requiere gestión del asesor de ventas</option></select></label><label class="field"><span>Detalle de gestión *</span><textarea class="textarea" name="detail" required placeholder="Indique validación de pago, cartera, autorización o novedad comercial."></textarea></label><button class="btn btn-primary" type="submit">Guardar decisión</button></form>'));
-  qs('#boxHoldForm').onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),d=String(fd.get('detail')||'');c.salesHold=c.salesHold||{history:[]};c.salesHold.history=c.salesHold.history||[];c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});if(fd.get('decision')==='ventas_gestiona'){stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:'caja'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS';persistCase(c,{type:'BOX_HOLD_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}else{c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;assignToProcess(c,'recepcion_pedidos','Caja cerró retenido y devuelve a Recepción de pedidos: '+d).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}};
+  qs('#boxHoldForm').onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),d=String(fd.get('detail')||'');c.salesHold=c.salesHold||{history:[]};c.salesHold.history=c.salesHold.history||[];c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});if(fd.get('decision')==='ventas_gestiona'){stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:'caja'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS';persistCase(c,{type:'BOX_HOLD_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}else{c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;assignToProcess(c,nextProcessAfterCommercialGate(c),'Caja cerró retenido y devuelve al proceso correspondiente: '+d).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}};
 }
 
 function openSalesSeparation(id){
@@ -7783,17 +7862,18 @@ function openSalesSeparation(id){
     c.salesHold.history.push({at:now(),by:state.user.name,action:'Anotación de separación por pago pendiente',detail:detail});
     c.salesNotes=c.salesNotes||[];
     c.salesNotes.push({id:uid('SN'),type:'Solicitud de separación de pedido',detail:detail,createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||''});
-    c.currentProcess='recepcion_pedidos';
+    var sepNext=nextProcessAfterCommercialGate(c);
+    c.currentProcess=sepNext;
     c.status='asignado';
-    c.assignedRole='coordinador_logistico';
-    c.assignedName='Recepción de pedidos · separación pago pendiente';
+    c.assignedRole=primaryOwnerRole(sepNext);
+    c.assignedName=processTitle(sepNext)+' · separación pago pendiente';
     c.assignedTo='';c.assignedUid='';c.assignedUsers=[];c.assignedUserIds=[];
     c.deadStartedAt=now();c.activeStartedAt=null;c.waitStartedAt=null;c.openRequirement=null;
     c.checklist=c.checklist||{};
-    (processes.recepcion_pedidos.checklist||[]).forEach(function(x){if(c.checklist[x]===undefined)c.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});
-    procStats(c,'recepcion_pedidos').startedAt=procStats(c,'recepcion_pedidos').startedAt||now();
-    addStateHistory(c,'pago_pendiente','Ventas registra anotación de separación por pago pendiente. Recepción y Alistamiento pueden avanzar; Logística/Caja liberará el bloqueo cuando se confirme pago.',{tipo_estado:'pago_pendiente',targetProcess:'recepcion_pedidos',fecha_hora_inicio_estado:c.separationRequest.waitingPaymentStartedAt});
-    persistCase(c,{type:'SALES_SEPARATION_PAYMENT_PENDING',detail:detail,targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','lider_logistico','lider_logistica','aux_logistica','jefe_logistica','caja','cartera','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    resetChecklistForProcess(c,sepNext);
+    procStats(c,sepNext).startedAt=procStats(c,sepNext).startedAt||now();
+    addStateHistory(c,'pago_pendiente','Ventas registra anotación de separación por pago pendiente. El pedido pasa a '+processTitle(sepNext)+'; Logística/Caja liberará el bloqueo cuando se confirme pago.',{tipo_estado:'pago_pendiente',targetProcess:sepNext,fecha_hora_inicio_estado:c.separationRequest.waitingPaymentStartedAt});
+    persistCase(c,{type:'SALES_SEPARATION_PAYMENT_PENDING',detail:detail,targetRole:c.assignedRole,visibleRoles:uniqueArray(['ventas','compras','coordinador_logistico','lider_logistico','lider_logistica','aux_logistica','jefe_logistica','caja','cartera','admin','super_admin','super_administrador'])}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
 
@@ -8168,6 +8248,7 @@ function render(){
   if(currentUserIsSuperAdmin() && state.user && normalizeRole(state.user.role)!=="super_admin"){state.user.role="super_admin";state.user.rawRole=state.user.rawRole||"super_admin";}
   startReminderLoop();
   if(normalizeRole(state.user.role)==="proyectos" && state.route!=="projects")state.route="projects";
+  if(normalizeRole(state.user.role)==="compras" && ["compras","requirements","reports"].indexOf(state.route)<0)state.route="compras";
   if(state.route==="corte_cable"){renderCutsQueue();return;}
   if(processes[state.route]){state.filters.process=state.route;renderCases();return;}
   if(state.route==="dashboard")renderDashboard();
