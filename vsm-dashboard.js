@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V150';
+var VERSION='V151';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',admin:'Admin',super_admin:'Super Admin'};
@@ -60,21 +60,36 @@ function num(v){if(v===null||v===undefined||v==='')return 0;if(typeof v==='strin
 function durMs(a,b){var x=tms(a),y=tms(b);if(!isFinite(x)||!isFinite(y)||y<x)return 0;return y-x;}
 function fmt(msv){msv=Math.max(0,num(msv));var s=Math.floor(msv/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0');}
 function workDate(v){try{if(!v)return null;if(v instanceof Date)return isNaN(v.getTime())?null:v;if(v.toDate&&typeof v.toDate==="function"){var d1=v.toDate();return d1&&isNaN(d1.getTime())?null:d1;}if(typeof v==="object"&&(v.seconds||v._seconds))return new Date(Number(v.seconds||v._seconds)*1000);var d=new Date(v);return isNaN(d.getTime())?null:d;}catch(e){return null;}}
-function workingMsBetween(start,end){var a=workDate(start),b=workDate(end);if(!a)return 0;if(!b)b=new Date();if(b<a)return 0;var total=0,day=new Date(a);day.setHours(0,0,0,0);var guard=0;while(day<=b&&guard<3700){var y=day.getFullYear(),m=day.getMonth(),d=day.getDate();[[new Date(y,m,d,7,0,0,0),new Date(y,m,d,12,0,0,0)],[new Date(y,m,d,13,40,0,0),new Date(y,m,d,17,30,0,0)]].forEach(function(w){var s=Math.max(a.getTime(),w[0].getTime()),e=Math.min(b.getTime(),w[1].getTime());if(e>s)total+=e-s;});day.setDate(day.getDate()+1);guard++;}return Math.max(0,total);}
-function workingMsSince(v){return workingMsBetween(v,new Date());}
-function hours(msv){return +(Math.max(0,num(msv))/3600000).toFixed(2);}
-function minutes(msv){return +(Math.max(0,num(msv))/60000).toFixed(1);}
-function days(msv){return +(Math.max(0,num(msv))/86400000).toFixed(2);}
-function pct(a,b){return b?+((Math.max(0,a)/Math.max(1,b))*100).toFixed(1):0;}
-function timeUnit(msv){msv=Math.max(0,num(msv));var h=msv/3600000;if(h<0.01&&msv>0)h=0.01;return +(h.toFixed(h<10?2:1))+' h hábiles';}
-
-function timeFull(msv){return timeUnit(msv)+' · '+fmt(msv);}
-function productivityState(m){
-  var eff=Number(m&&m.eff)||0, wait=Number(m&&m.waitPct)||0, dead=Number(m&&m.deadPct)||0, non=wait+dead;
-  if(!m||!m.cases)return {cls:'warn',label:'Sin base suficiente',text:'Cargue datos para evaluar el LT.',ratio:0,non:0};
-  if(eff>=45 && non<=55)return {cls:'ok',label:'LT productivo',text:'El tiempo de ocupación tiene buen peso frente a espera y NVA.',ratio:eff,non:non};
-  if(eff>=25)return {cls:'warn',label:'LT en alerta',text:'Hay valor, pero la espera o el NVA están pesando demasiado.',ratio:eff,non:non};
-  return {cls:'bad',label:'LT poco productivo',text:'La mayor parte del LT está en espera, bloqueo o NVA.',ratio:eff,non:non};
+var EI_NON_WORKING_DATES_2026={"2026-01-01":1,"2026-01-03":1,"2026-01-04":1,"2026-01-10":1,"2026-01-11":1,"2026-01-12":1,"2026-01-17":1,"2026-01-18":1,"2026-01-24":1,"2026-01-25":1,"2026-01-31":1,"2026-02-01":1,"2026-02-07":1,"2026-02-08":1,"2026-02-14":1,"2026-02-15":1,"2026-02-21":1,"2026-02-22":1,"2026-02-28":1,"2026-03-01":1,"2026-03-07":1,"2026-03-08":1,"2026-03-14":1,"2026-03-15":1,"2026-03-21":1,"2026-03-22":1,"2026-03-23":1,"2026-03-28":1,"2026-03-29":1,"2026-04-02":1,"2026-04-03":1,"2026-04-04":1,"2026-04-05":1,"2026-04-11":1,"2026-04-12":1,"2026-04-18":1,"2026-04-19":1,"2026-04-25":1,"2026-04-26":1,"2026-05-01":1,"2026-05-02":1,"2026-05-03":1,"2026-05-09":1,"2026-05-10":1,"2026-05-16":1,"2026-05-17":1,"2026-05-18":1,"2026-05-23":1,"2026-05-24":1,"2026-05-30":1,"2026-05-31":1,"2026-06-06":1,"2026-06-07":1,"2026-06-08":1,"2026-06-13":1,"2026-06-14":1,"2026-06-15":1,"2026-06-20":1,"2026-06-21":1,"2026-06-27":1,"2026-06-28":1,"2026-06-29":1,"2026-07-04":1,"2026-07-05":1,"2026-07-11":1,"2026-07-12":1,"2026-07-13":1,"2026-07-18":1,"2026-07-19":1,"2026-07-20":1,"2026-07-25":1,"2026-07-26":1,"2026-08-01":1,"2026-08-02":1,"2026-08-07":1,"2026-08-08":1,"2026-08-09":1,"2026-08-15":1,"2026-08-16":1,"2026-08-17":1,"2026-08-22":1,"2026-08-23":1,"2026-08-29":1,"2026-08-30":1,"2026-09-05":1,"2026-09-06":1,"2026-09-12":1,"2026-09-13":1,"2026-09-19":1,"2026-09-20":1,"2026-09-26":1,"2026-09-27":1,"2026-10-03":1,"2026-10-04":1,"2026-10-10":1,"2026-10-11":1,"2026-10-12":1,"2026-10-17":1,"2026-10-18":1,"2026-10-24":1,"2026-10-25":1,"2026-10-31":1,"2026-11-01":1,"2026-11-02":1,"2026-11-07":1,"2026-11-08":1,"2026-11-14":1,"2026-11-15":1,"2026-11-16":1,"2026-11-21":1,"2026-11-22":1,"2026-11-28":1,"2026-11-29":1,"2026-12-05":1,"2026-12-06":1,"2026-12-08":1,"2026-12-12":1,"2026-12-13":1,"2026-12-19":1,"2026-12-20":1,"2026-12-25":1,"2026-12-26":1,"2026-12-27":1};
+function isoLocalDay(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function isWorkingCalendarDay(d){
+  if(!d||isNaN(d.getTime()))return false;
+  var key=isoLocalDay(d);
+  if(EI_NON_WORKING_DATES_2026[key])return false;
+  var dow=d.getDay();
+  if(dow===0||dow===6)return false;
+  return true;
+}
+function workingMsBetween(start,end){
+  var a=workDate(start),b=workDate(end);
+  if(!a)return 0;
+  if(!b)b=new Date();
+  if(b<a)return 0;
+  var total=0,day=new Date(a);
+  day.setHours(0,0,0,0);
+  var guard=0;
+  while(day<=b&&guard<3700){
+    if(isWorkingCalendarDay(day)){
+      var y=day.getFullYear(),m=day.getMonth(),d=day.getDate();
+      [[new Date(y,m,d,7,0,0,0),new Date(y,m,d,12,0,0,0)],[new Date(y,m,d,13,40,0,0),new Date(y,m,d,17,30,0,0)]].forEach(function(w){
+        var s=Math.max(a.getTime(),w[0].getTime()),e=Math.min(b.getTime(),w[1].getTime());
+        if(e>s)total+=e-s;
+      });
+    }
+    day.setDate(day.getDate()+1);
+    guard++;
+  }
+  return Math.max(0,total);
 }
 function timeSplitHtml(va,wait,dead){
   var total=Math.max(1,num(va)+num(wait)+num(dead));
