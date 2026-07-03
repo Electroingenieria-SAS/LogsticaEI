@@ -395,8 +395,34 @@ function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){retur
 function uid(p){return (p||"id")+"_"+Date.now()+"_"+Math.random().toString(16).slice(2);}
 function now(){return new Date().toISOString();}
 function msSince(iso){return iso?Date.now()-new Date(iso).getTime():0;}
+function workDate(v){
+  try{
+    if(!v)return null;
+    if(v instanceof Date)return isNaN(v.getTime())?null:v;
+    if(v.toDate&&typeof v.toDate==="function"){var d1=v.toDate();return d1&&isNaN(d1.getTime())?null:d1;}
+    if(typeof v==="object"&&(v.seconds||v._seconds))return new Date(Number(v.seconds||v._seconds)*1000);
+    var d=new Date(v);return isNaN(d.getTime())?null:d;
+  }catch(e){return null;}
+}
+function workingMsBetween(start,end){
+  var a=workDate(start),b=workDate(end);
+  if(!a)return 0;if(!b)b=new Date();if(b<a)return 0;
+  var total=0,day=new Date(a);day.setHours(0,0,0,0);
+  var guard=0;
+  while(day<=b&&guard<3700){
+    var y=day.getFullYear(),m=day.getMonth(),d=day.getDate();
+    [[new Date(y,m,d,7,0,0,0),new Date(y,m,d,12,0,0,0)],[new Date(y,m,d,13,40,0,0),new Date(y,m,d,17,30,0,0)]].forEach(function(w){
+      var s=Math.max(a.getTime(),w[0].getTime()),e=Math.min(b.getTime(),w[1].getTime());
+      if(e>s)total+=e-s;
+    });
+    day.setDate(day.getDate()+1);guard++;
+  }
+  return Math.max(0,total);
+}
+function workingMsSince(v){return workingMsBetween(v,new Date());}
+function workingHoursLabel(ms){ms=Math.max(0,Number(ms)||0);var h=ms/3600000;if(h<0.01&&ms>0)h=0.01;return h.toFixed(2)+" h hábiles";}
 function fmt(ms){ms=Math.max(0,Math.floor((ms||0)/1000));var h=String(Math.floor(ms/3600));if(h.length<2)h="0"+h;var m=("0"+Math.floor((ms%3600)/60)).slice(-2);var s=("0"+(ms%60)).slice(-2);return h+":"+m+":"+s;}
-function fmtHours(ms){ms=Math.max(0,Number(ms)||0);var h=ms/3600000;if(h<0.01&&ms>0)h=0.01;return h.toFixed(2)+" h";}
+function fmtHours(ms){return workingHoursLabel(ms);}
 function fmtDate(iso){try{return iso?new Intl.DateTimeFormat("es-CO",{dateStyle:"medium",timeStyle:"short"}).format(new Date(iso)):"—";}catch(e){return iso||"—";}}
 function clamp(n,min,max){n=Number(n);if(!Number.isFinite(n))n=0;return Math.max(min,Math.min(max,n));}
 function pct(num,den,dec){if(!den||den<=0)return 0;var v=(Number(num||0)/Number(den||0))*100;v=clamp(v,0,100);return Number(v.toFixed(dec==null?1:dec));}
@@ -1156,7 +1182,7 @@ function addStateHistory(c, type, detail, extra){
   c.stateHistory.push(item);
   if(c.stateHistory.length>500)c.stateHistory=c.stateHistory.slice(-500);
 }
-function totalMs(c){return excelSafeDuration(caseCreatedAtFixed(c),caseEndAtFixed(c));}
+function totalMs(c){return workingMsBetween(caseCreatedAtFixed(c),caseEndAtFixed(c));}
 function caseClosedDate(c){
   if(!c)return null;
   var v=c.closedAt||c.closed_at||c.completedAt||c.finishedAt||"";
@@ -1173,9 +1199,21 @@ function caseVisibleOnHome(c){
   return !caseClosedOlderThanDays(c,2);
 }
 
-function activeMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].activeMs||0);});if(c.status==="en_proceso"&&c.activeStartedAt)total+=msSince(c.activeStartedAt);return total;}
-function waitMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].waitMs||0);});if((c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja")&&c.waitStartedAt)total+=msSince(c.waitStartedAt);return total;}
-function deadMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].deadMs||0);});if(c.status==="asignado"&&c.deadStartedAt)total+=msSince(c.deadStartedAt);return total;}
+function rawActiveMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].activeMs||0);});if(c.status==="en_proceso"&&c.activeStartedAt)total+=workingMsSince(c.activeStartedAt);return Math.max(0,total);}
+function rawWaitMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].waitMs||0);});if((c.status==="en_espera"||c.status==="espera_ventas"||c.status==="pendiente_gerencia"||c.status==="no_entregado"||c.status==="devolucion_caja")&&c.waitStartedAt)total+=workingMsSince(c.waitStartedAt);return Math.max(0,total);}
+function rawDeadMs(c){var total=0;Object.keys(c.processStats||{}).forEach(function(k){total+=Number(c.processStats[k].deadMs||0);});if(c.status==="asignado"&&c.deadStartedAt)total+=workingMsSince(c.deadStartedAt);return Math.max(0,total);}
+function normalizedTimeParts(c){
+  var lt=totalMs(c), va=rawActiveMs(c), wait=rawWaitMs(c), dead=rawDeadMs(c);
+  if(lt<=0)return {lead:0,va:0,wait:0,dead:0};
+  var sum=va+wait+dead;
+  if(sum<=0)return {lead:lt,va:0,wait:0,dead:lt};
+  if(sum>lt){var scale=lt/sum;va=va*scale;wait=wait*scale;dead=Math.max(0,lt-va-wait);}
+  else{dead+=Math.max(0,lt-sum);}
+  return {lead:lt,va:Math.max(0,va),wait:Math.max(0,wait),dead:Math.max(0,dead)};
+}
+function activeMs(c){return normalizedTimeParts(c).va;}
+function waitMs(c){return normalizedTimeParts(c).wait;}
+function deadMs(c){return normalizedTimeParts(c).dead;}
 function progress(c){var def=processes[c.currentProcess];var list=def?def.checklist:[];var total=list.length||1;var done=0;for(var k in c.checklist){if(c.checklist[k]==="ok"||c.checklist[k]==="na")done++;}return clamp(Math.round(done/total*100),0,100);}
 function showError(msg){appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo. Si el problema es caché o carga externa de Firebase, use limpiar caché y recargar.</p><pre>'+esc(msg)+'</pre><div class="top-actions"><button class="btn btn-primary" onclick="location.reload()">Recargar</button><button class="btn" onclick="clearPwaCachesAndReload()">Limpiar caché y recargar</button></div></section></main>';}
 
@@ -6971,12 +7009,7 @@ function caseEndAtFixed(c){
   if(Number.isFinite(start)&&end<start)end=start;
   return excelIsoFromMs(end);
 }
-function excelSafeDuration(start,end){
-  var a=excelTimeValue(start), b=excelTimeValue(end);
-  if(!Number.isFinite(a))return 0;
-  if(!Number.isFinite(b))b=Date.now();
-  return Math.max(0,b-a);
-}
+function excelSafeDuration(start,end){return workingMsBetween(start,end);}
 function excelHours(ms){return Number((Math.max(0,Number(ms||0))/3600000).toFixed(2));}
 function excelDateTime(v){
   if(!v)return "";
@@ -7030,7 +7063,7 @@ function processStageElapsedMs(c,p,st){
   var start=processStageStart(c,p,st), end=processStageEnd(c,p,st);
   if(start){
     var sdt=new Date(start).getTime(), edt=end?new Date(end).getTime():(c.currentProcess===p?Date.now():NaN);
-    if(Number.isFinite(sdt)&&Number.isFinite(edt)&&edt>=sdt)return Math.max(counted,edt-sdt);
+    if(Number.isFinite(sdt)&&Number.isFinite(edt)&&edt>=sdt)return Math.max(counted,workingMsBetween(start,end||new Date()));
   }
   return counted;
 }
@@ -7063,7 +7096,7 @@ function waitTimelineRows(data){
     var start=excelTimeValue(at), finish=until?excelTimeValue(until):Date.now();
     if(!Number.isFinite(start))return;
     if(!Number.isFinite(finish)||finish<start)finish=start;
-    var row={pedido:c.reference||c.id||"",oc:purchaseOrderValue(c),cliente:c.client||"",asesor:salesAdvisorName(c),proceso:processTitle(processKey||c.currentProcess),inicio:excelIsoFromMs(start),fin:until?excelIsoFromMs(finish):"",duracion:Math.max(0,finish-start),tipo:kind||"Espera",detalle:detail||"",usuario:user||""};
+    var row={pedido:c.reference||c.id||"",oc:purchaseOrderValue(c),cliente:c.client||"",asesor:salesAdvisorName(c),proceso:processTitle(processKey||c.currentProcess),inicio:excelIsoFromMs(start),fin:until?excelIsoFromMs(finish):"",duracion:workingMsBetween(start,finish),tipo:kind||"Espera",detalle:detail||"",usuario:user||""};
     var k=key(row);if(seen[k])return;seen[k]=true;out.push(row);
   }
   data.forEach(function(c){
@@ -7376,15 +7409,15 @@ function renderIndicators(){
 }
 
 function startActive(c){
-  if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);}
+  if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=workingMsSince(c.deadStartedAt);}
   c.deadStartedAt=null;c.activeStartedAt=now();c.status="en_proceso";c.assignedTo=state.user.uid;c.assignedName=state.user.name;registerProcessResponsible(c,c.currentProcess,state.user,"Inicio de trabajo");addStateHistory(c,"valor","Inicio de trabajo en "+processTitle(c.currentProcess),{tipo_estado:"valor",fecha_hora_inicio_estado:c.activeStartedAt});
 }
 function stopActive(c){
-  if(c.activeStartedAt){procStats(c,c.currentProcess).activeMs+=msSince(c.activeStartedAt);}
+  if(c.activeStartedAt){procStats(c,c.currentProcess).activeMs+=workingMsSince(c.activeStartedAt);}
   c.activeStartedAt=null;
 }
 function stopWait(c){
-  if(c.waitStartedAt){procStats(c,c.currentProcess).waitMs+=msSince(c.waitStartedAt);}
+  if(c.waitStartedAt){procStats(c,c.currentProcess).waitMs+=workingMsSince(c.waitStartedAt);}
   c.waitStartedAt=null;
 }
 function normalizeAssignmentUsers(users){
@@ -7649,7 +7682,7 @@ function openDeliveryEvidence(id,key){
       }
       if(def.key==="guiaTransportadora"){
         stopActive(c);stopWait(c);
-        if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}
+        if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=workingMsSince(c.deadStartedAt);c.deadStartedAt=null;}
         procStats(c,c.currentProcess).completedAt=now();
         c.status="cerrado_conforme";
         c.closedAt=now();
@@ -7798,7 +7831,7 @@ function openClose(id){
   if(isDeliveryProcess(c.currentProcess) && !isNoDelivery && !deliveryEvidenceComplete(c)){alert("No puede cerrar el despacho/entrega. Faltan evidencias obligatorias: "+deliveryEvidenceMissingText(c));return;}
   var notice=isNoDelivery?'<div class="notice warning"><strong>Cierre de no entrega:</strong> este cierre no exige la guía final normal del despacho. Deje el detalle de la solución, devolución o decisión tomada.</div>':'';
   drawer(modal("Cerrar caso",'<form class="form" id="closeForm">'+notice+'<label class="field"><span>Resultado</span><select class="select" name="status"><option value="cerrado_conforme">Cerrado conforme</option><option value="cerrado_con_novedad">Cerrado con novedad</option><option value="cancelado">Cancelado</option></select></label><label class="field"><span>Detalle</span><textarea class="textarea" name="detail" required placeholder="Explique el cierre, solución aplicada o decisión tomada."></textarea></label><button class="btn btn-success" type="submit">Cerrar</button></form>'));
-  qs("#closeForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),detail=String(fd.get("detail")||"");stopActive(c);stopWait(c);if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}procStats(c,c.currentProcess).completedAt=now();c.status=fd.get("status");c.closedAt=now();
+  qs("#closeForm").onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),detail=String(fd.get("detail")||"");stopActive(c);stopWait(c);if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=workingMsSince(c.deadStartedAt);c.deadStartedAt=null;}procStats(c,c.currentProcess).completedAt=now();c.status=fd.get("status");c.closedAt=now();
     if(isNoDelivery){
       c.noDelivery=true;
       c.noDeliveryStatus="CERRADO_SOLUCIONADO";
@@ -7856,7 +7889,7 @@ function openCancelOrder(id){
       var stamp=now();
       appendEvidence(c,up,label+": "+detail);
       stopActive(c);stopWait(c);
-      if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=msSince(c.deadStartedAt);c.deadStartedAt=null;}
+      if(c.deadStartedAt){procStats(c,c.currentProcess).deadMs+=workingMsSince(c.deadStartedAt);c.deadStartedAt=null;}
       procStats(c,c.currentProcess).completedAt=procStats(c,c.currentProcess).completedAt||stamp;
       closePendingRequirementsBecauseCancelled(c,detail);
       c.status="cancelado";
