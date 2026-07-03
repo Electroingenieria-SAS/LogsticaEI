@@ -6014,6 +6014,11 @@ function countBars(items){
   }).join('')+'</div>';
 }
 
+
+function miniBarsHtml(items){
+  return countBars(items||[]);
+}
+
 function modal(title,body){
   return '<section class="modal"><div class="modal-head"><div><h3>'+esc(title||'Detalle')+'</h3></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+(body||'')+'</section>';
 }
