@@ -874,6 +874,112 @@ function firstProcessForSalesOrder(orderKind,reference){
 }
 function nextProcessAfterCommercialGate(c){return isPveOrder(c)?"compras":"recepcion_pedidos";}
 function purchasesVisibleRoles(){return ["compras","ventas","coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador"];}
+function purchaseGateReleased(c){
+  if(!c)return false;
+  var pf=c.purchaseFlow||{}, df=c.documentFlow||{};
+  var status=String(pf.status||c.purchaseStatus||c.purchaseOrderStatus||"").toUpperCase();
+  return c.purchaseReleased===true
+    || c.purchaseOrderReleased===true
+    || c.pveReleasedByPurchases===true
+    || status==="LIBERADO"
+    || status==="RELEASED"
+    || !!pf.releasedAt
+    || !!df.purchaseReleasedAt
+    || !!c.purchaseReleasedAt;
+}
+function pveClosedOrCancelled(c){
+  if(!c)return true;
+  var st=String(c.status||c.estado||"").toLowerCase();
+  return !!c.closedAt || c.cancelledAt || c.cancelationAt || c.excludeFromFlow===true || /cancelad|cerrad|facturad.*cerrad|entregad/.test(st);
+}
+function pveHasBlockingCommercialGate(c){
+  if(!c)return false;
+  var st=String(c.status||"").toLowerCase();
+  if(c.currentProcess==="caja")return true;
+  if(st==="pendiente_gerencia")return true;
+  if(st==="espera_ventas")return true;
+  if(c.salesHold && c.salesHold.status && String(c.salesHold.status).toUpperCase()!=="CERRADO")return true;
+  if(c.priorityApproval && c.priorityApproval.status && String(c.priorityApproval.status).toLowerCase()==="pendiente")return true;
+  if(c.openRequirement && c.openRequirement.returnProcess==="caja")return true;
+  return false;
+}
+function ensurePvePurchasingMetadata(c,reason){
+  if(!isPveOrder(c))return false;
+  var changed=false, stamp=now();
+  c.purchaseFlow=c.purchaseFlow||{};
+  c.documentFlow=c.documentFlow||{};
+  if(c.isPve!==true){c.isPve=true;changed=true;}
+  if(c.pve!==true){c.pve=true;changed=true;}
+  if(c.requiresPurchasingBeforeReception!==true){c.requiresPurchasingBeforeReception=true;changed=true;}
+  if(c.purchaseFlow.required!==true){c.purchaseFlow.required=true;changed=true;}
+  if(!purchaseGateReleased(c)){
+    if(c.purchaseFlow.status!=="PENDIENTE_COMPRAS"){c.purchaseFlow.status="PENDIENTE_COMPRAS";changed=true;}
+    if(c.documentFlow.purchaseGateStatus!=="PENDIENTE_COMPRAS"){c.documentFlow.purchaseGateStatus="PENDIENTE_COMPRAS";changed=true;}
+  }
+  if(c.documentFlow.purchaseGateRequired!==true){c.documentFlow.purchaseGateRequired=true;changed=true;}
+  if(!c.purchaseFlow.gateCreatedAt){c.purchaseFlow.gateCreatedAt=stamp;changed=true;}
+  if(reason && !c.purchaseFlow.gateReason){c.purchaseFlow.gateReason=reason;changed=true;}
+  var before=JSON.stringify(c.visibleRoles||[]);
+  c.visibleRoles=uniqueArray((c.visibleRoles||[]).concat(purchasesVisibleRoles()).concat([c.assignedRole]).filter(Boolean));
+  if(JSON.stringify(c.visibleRoles||[])!==before)changed=true;
+  var tbefore=JSON.stringify(c.targetRoles||[]);
+  c.targetRoles=uniqueArray((c.targetRoles||[]).concat(["compras"]).filter(Boolean));
+  if(JSON.stringify(c.targetRoles||[])!==tbefore)changed=true;
+  return changed;
+}
+function pveShouldBeForcedToPurchases(c){
+  if(!isPveOrder(c))return false;
+  if(pveClosedOrCancelled(c))return false;
+  if(purchaseGateReleased(c))return false;
+  if(c.currentProcess==="compras")return false;
+  if(pveHasBlockingCommercialGate(c))return false;
+  return true;
+}
+function forcePveCaseToPurchasesInMemory(c,reason){
+  if(!c || !isPveOrder(c))return false;
+  var changed=ensurePvePurchasingMetadata(c,reason||"Regla PVE: debe pasar por Compras antes de Recepción");
+  if(!pveShouldBeForcedToPurchases(c))return changed;
+  var stamp=now(), oldProcess=c.currentProcess||"sin_proceso", oldStatus=c.status||"";
+  c.purchaseFlow=c.purchaseFlow||{};
+  c.documentFlow=c.documentFlow||{};
+  c.purchaseFlow.forcedToPurchasesAt=stamp;
+  c.purchaseFlow.forcedToPurchasesBy=state.user?state.user.uid:"system";
+  c.purchaseFlow.forcedToPurchasesByName=state.user?state.user.name:"Migración automática";
+  c.purchaseFlow.previousProcessBeforePurchases=oldProcess;
+  c.purchaseFlow.previousStatusBeforePurchases=oldStatus;
+  c.purchaseFlow.migrationReason=reason||"PVE creado antes del módulo de Compras; se envía a Compras para liberar orden antes de Recepción.";
+  c.documentFlow.initialCommitmentStatus="PENDIENTE_COMPRAS";
+  c.documentFlow.purchaseForcedAt=stamp;
+  c.documentFlow.purchaseForcedFrom=oldProcess;
+  c.currentProcess="compras";
+  c.status="asignado";
+  c.assignedRole="compras";
+  c.assignedName=processOwnerTitle("compras")||"Compras";
+  c.assignedTo="";
+  c.assignedUid="";
+  c.assignedUsers=[];
+  c.assignedUserIds=[];
+  c.assignedEmail="";
+  c.deadStartedAt=stamp;
+  c.activeStartedAt=null;
+  c.waitStartedAt=null;
+  c.openRequirement=null;
+  resetChecklistForProcess(c,"compras");
+  var st=procStats(c,"compras");
+  st.startedAt=st.startedAt||stamp;
+  st.handoffs=Number(st.handoffs||0)+1;
+  addStateHistory(c,"migracion_pve_compras","PVE redirigido a Compras antes de Recepción. Origen: "+processTitle(oldProcess),{fromProcess:oldProcess,toProcess:"compras",tipo_estado:"migracion_pve",fecha_hora_inicio_estado:stamp});
+  c.updatedAt=stamp;
+  return true;
+}
+function pveMigrationCandidateLabel(c){
+  if(!isPveOrder(c))return "no_pve";
+  if(pveClosedOrCancelled(c))return "cerrado_o_cancelado";
+  if(purchaseGateReleased(c))return "ya_liberado_compras";
+  if(c.currentProcess==="compras")return "ya_en_compras";
+  if(pveHasBlockingCommercialGate(c))return "bloqueado_por_caja_gerencia_o_ventas";
+  return "migrable_a_compras";
+}
 function resetChecklistForProcess(c,p){
   c.checklist={};
   ((processes[p]||{}).checklist||[]).forEach(function(item){c.checklist[item]=item==="Pedido registrado por ventas"||item==="Orden PVE recibida desde ventas"?"ok":"pending";});
@@ -2403,6 +2509,7 @@ function autoMigrateLegacyProcesses(){
   state.cases.forEach(function(c){
     var changed=false;
     if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))changed=true;
+    if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Migración automática V137: PVE existente debe pasar por Compras antes de Recepción"))changed=true;
     if(repairDeliveryTypeInMemory(c,"Corrección automática al cargar la app"))changed=true;
     if(repairDeliveryRouteAssignmentInMemory(c,"Corrección automática de asignación Duvan/Javier al cargar la app"))changed=true;
     if(changed)migrated.push(c);
@@ -2422,6 +2529,45 @@ function migrateLegacyProcessesNow(){
   Promise.all(migrated.map(function(c){return db.collection("cases").doc(c.id).set(c,{merge:true});}))
     .then(function(){alert("Procesos corregidos: "+migrated.length+". Los casos de compromiso pasaron al flujo actual.");renderAdmin();})
     .catch(function(e){showError((e&&e.message)||e||"No se pudieron corregir los procesos legacy.");});
+}
+function forceExistingPveToPurchasesNow(){
+  if(!(currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia")){
+    alert("Solo admin, super admin o gerencia pueden forzar PVE existentes a Compras.");
+    return;
+  }
+  if(!db){alert("No hay conexión con Firebase.");return;}
+  if(!confirm("Esto enviará a Compras todos los PVE activos que aún no tengan liberación de Compras. No toca pedidos cerrados/cancelados ni PVE ya liberados. ¿Continuar?"))return;
+  showLiveToast("Migrando PVE","Leyendo todos los pedidos para enviar PVE pendientes a Compras.",false);
+  db.collection("cases").get().then(function(snap){
+    var list=docsToList(snap), changedDocs=[], moved=0, metadataOnly=0, skipped={};
+    list.forEach(function(c){
+      var before=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
+      var label=pveMigrationCandidateLabel(c);
+      if(label!=="migrable_a_compras")skipped[label]=Number(skipped[label]||0)+1;
+      if(forcePveCaseToPurchasesInMemory(c,"Migración manual V137: PVE existente enviado a Compras antes de Recepción")){
+        var after=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
+        if(before!==after){
+          changedDocs.push(c);
+          if(label==="migrable_a_compras" && c.currentProcess==="compras")moved++; else metadataOnly++;
+        }
+      }
+    });
+    if(!changedDocs.length){
+      alert("No hay PVE activos pendientes por mover a Compras.\nResumen: "+JSON.stringify(skipped));
+      return [];
+    }
+    function writeChunks(items,idx){
+      idx=idx||0;
+      var part=items.slice(idx,idx+25);
+      if(!part.length)return Promise.resolve();
+      return Promise.all(part.map(function(c){return db.collection("cases").doc(c.id).set(c,{merge:true});})).then(function(){return writeChunks(items,idx+25);});
+    }
+    return writeChunks(changedDocs,0).then(function(){
+      state.cases=sortByUpdated(uniqueById(list));
+      alert("Migración PVE terminada.\nMovidos a Compras: "+moved+"\nMarcados solo con metadata/espera segura: "+metadataOnly+"\nNo tocados: "+JSON.stringify(skipped));
+      renderAdmin();
+    });
+  }).catch(function(e){showError("No fue possible migrar PVE existentes a Compras: "+((e&&e.message)||e));});
 }
 
 function persistCase(c,event){
@@ -4123,6 +4269,7 @@ function createCase(fd){
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   resetChecklistForProcess(c,p);
   addStateHistory(c,"creacion",retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
+  ensurePvePurchasingMetadata(c,"Creación V137: pedido PVE debe pasar por Compras antes de Recepción");
   persistCase(c,{type:"CASE_CREATED",detail:retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();}).catch(function(e){showError(e.message||e);});
 }
 
@@ -4164,6 +4311,7 @@ function renderDetail(id){
   cacheDetailCase(c);
   var correctedOnOpen=false;
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
+  if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Corrección automática V137 al abrir detalle: PVE debe pasar por Compras"))correctedOnOpen=true;
   if(repairDeliveryTypeInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
   var beforeReceptionFlow=JSON.stringify(c.documentFlow||{});
   normalizeReceptionDocumentFlow(c);
@@ -6965,6 +7113,12 @@ function applyPersonalAssignment(c,next,assignmentUsers){
   }
 }
 function assignToProcess(c,next,detail,assignmentUsers){
+  if(c && next==="recepcion_pedidos" && pveShouldBeForcedToPurchases(c)){
+    ensurePvePurchasingMetadata(c,"Bloqueo V137: ningún PVE sin liberar por Compras puede entrar directo a Recepción");
+    next="compras";
+    detail="PVE sin liberación de Compras. Se redirige primero a Compras antes de Recepción.";
+    assignmentUsers=null;
+  }
   closeSeparationIfCajaReleases(c,next);
   var current=c.currentProcess;
   stopActive(c);stopWait(c);
@@ -7782,7 +7936,7 @@ function renderAdmin(){
   var rows=state.cases.slice().sort(function(a,b){return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0);}).slice(0,150).map(function(c){
     return '<tr><td>'+esc(c.reference||c.id)+'</td><td>'+esc(c.client||'')+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(c.excludeFromKpi?'Excluido':'Incluido')+'</td><td><button class="btn btn-small" data-action="toggleKpiCase" data-id="'+esc(c.id)+'">'+(c.excludeFromKpi?'Incluir VSM':'Excluir VSM')+'</button> '+(canDeleteAdminData()?'<button class="btn btn-small btn-danger" data-action="deleteCase" data-id="'+esc(c.id)+'">Eliminar</button>':'')+'</td></tr>';
   }).join('');
-  layout(header("Admin","Limpieza de pruebas, control de VSM y mantenimiento operativo.",'<button class="btn btn-gold" data-action="migrateLegacy">Corregir procesos legacy</button><button class="btn btn-gold" data-action="clearPwa">Limpiar caché PWA</button>')+
+  layout(header("Admin","Limpieza de pruebas, control de VSM y mantenimiento operativo.",'<button class="btn btn-gold" data-action="forcePvePurchases">Forzar PVE a Compras</button><button class="btn btn-gold" data-action="migrateLegacy">Corregir procesos legacy</button><button class="btn btn-gold" data-action="clearPwa">Limpiar caché PWA</button>')+
     '<section class="grid grid-4"><article class="card kpi"><span>Casos</span><strong>'+total+'</strong><small>Total en base</small></article><article class="card kpi"><span>Excluidos VSM</span><strong>'+excl+'</strong><small>No afectan indicadores</small></article><article class="card kpi"><span>Usuarios</span><strong>'+state.users.length+'</strong><small>Perfiles cargados</small></article><article class="card kpi"><span>Rol</span><strong>'+esc(roleTitle(state.user.role))+'</strong><small>Permisos activos</small></article></section>'+ 
     '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Casos y pruebas</h3><p>Use excluir para limpiar indicadores sin borrar evidencia. Eliminar borra caso, eventos y evidencias asociadas; úselo solo para pruebas.</p></div></div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Proceso</th><th>Estado</th><th>VSM</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">No hay casos.</td></tr>')+'</tbody></table></div></section>');
 }
@@ -8142,12 +8296,13 @@ function exportSalesReport(){
     .then(function(){appendSummary();return appendDetail();})
     .then(function(){parts.push('</tbody></table></body></html>');downloadHtmlExcelParts('registro_ventas_demora_v133_'+new Date().toISOString().slice(0,10)+'.xls',parts);});
 }
-function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess='recepcion_pedidos';child.status='asignado';child.assignedRole=primaryOwnerRole('recepcion_pedidos');child.assignedName=processOwnerTitle('recepcion_pedidos');child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};processes.recepcion_pedidos.checklist.forEach(function(x){child.checklist[x]=x==='Pedido registrado por ventas'?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
+function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess=isPveOrder(child)?'compras':'recepcion_pedidos';child.status='asignado';ensurePvePurchasingMetadata(child,'Reenvío de faltante V137: PVE pasa primero a Compras');child.assignedRole=primaryOwnerRole(child.currentProcess);child.assignedName=processOwnerTitle(child.currentProcess);child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};(processes[child.currentProcess]||processes.recepcion_pedidos).checklist.forEach(function(x){child.checklist[x]=(x==='Pedido registrado por ventas'||x==='Orden PVE recibida desde ventas')?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
     if(a==="logout"){stopRealtimeSync();sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
     if(a==="migrateLegacy")migrateLegacyProcessesNow();
+    if(a==="forcePvePurchases")forceExistingPveToPurchasesNow();
     if(a==="open")renderDetail(id);
     if(a==="accept")accept(id);
     if(a==="wait")openWait(id);
