@@ -999,6 +999,7 @@ function canCreate(){return state.user && (normalizeRole(state.user.role)==="ven
 function canAccessProjectsModule(){return state.user && (isProjectsRole() || currentUserIsAdminOrSuper());}
 function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || currentUserIsAdminOrSuper());}
 function canDeleteReceptionGoods(){return state.user && currentUserIsSuperAdmin();}
+function canDeleteReceptionStickers(){return state.user && currentUserIsSuperAdmin();}
 function canAccessReportsModule(){return !!state.user;}
 function canManageReports(){var r=state.user?normalizeRole(state.user.role):"";return currentUserIsAdminOrSuper()||isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica";}
 function reportHasSalesAssignee(r){return !!(r && (r.targetSalesUid||r.targetSalesEmail||r.targetSalesName||r.assignedSalesUid||r.assignedSalesEmail||r.assignedSalesName));}
@@ -6138,7 +6139,7 @@ function renderReceptionGoods(){
   var byLocation=receptionStickerCountBy(stickers,function(x){return x.location||x.ubicacion||"Sin ubicación";}).slice(0,5);
   var byMaterial=receptionStickerCountBy(stickers,function(x){return x.materialName||x.material||x.descripcion||"Sin material";}).slice(0,5);
   var byPurchase=receptionStickerCountBy(stickers,function(x){return receptionStickerPurchaseOrder(x)||"Sin OC";}).slice(0,5);
-  var stickerRows=stickers.slice(0,50).map(function(st){var po=receptionStickerPurchaseOrder(st);return '<tr><td><strong>'+esc(po||'Sin OC')+'</strong><br><small>'+esc(st.documentNumber||'')+'</small></td><td><strong>'+esc(st.materialName||st.material||'Material')+'</strong><br><small>'+esc(st.reference||st.referencia||'')+'</small></td><td>'+esc(st.quantity||st.cantidad||'')+' '+esc(st.unit||st.unidad||'')+'</td><td>'+esc(st.location||st.ubicacion||'')+'</td><td>'+esc(st.measures||st.medidas||'')+'</td><td>'+esc(st.entryDate||'')+'</td><td>'+esc(st.responsibleName||st.responsableIngreso||'')+'</td><td><span class="chip success">'+esc(st.status||'Conforme')+'</span><br><small>'+esc(st.printStatus||'Pendiente impresión')+'</small></td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="printReceptionSticker" data-id="'+esc(st.id||'')+'">Imprimir</button>'+(po?'<button class="btn btn-small btn-gold" data-action="printReceptionStickerPO" data-po="'+esc(po)+'">Imprimir OC</button>':'')+'</div></td></tr>';}).join('');
+  var stickerRows=stickers.slice(0,50).map(function(st){var po=receptionStickerPurchaseOrder(st);var delSticker=canDeleteReceptionStickers()?'<button class="btn btn-small btn-danger" data-action="deleteReceptionSticker" data-id="'+esc(st.id||'')+'">Eliminar</button>':'';return '<tr><td><strong>'+esc(po||'Sin OC')+'</strong><br><small>'+esc(st.documentNumber||'')+'</small></td><td><strong>'+esc(st.materialName||st.material||'Material')+'</strong><br><small>'+esc(st.reference||st.referencia||'')+'</small></td><td>'+esc(st.quantity||st.cantidad||'')+' '+esc(st.unit||st.unidad||'')+'</td><td>'+esc(st.location||st.ubicacion||'')+'</td><td>'+esc(st.measures||st.medidas||'')+'</td><td>'+esc(st.entryDate||'')+'</td><td>'+esc(st.responsibleName||st.responsableIngreso||'')+'</td><td><span class="chip success">'+esc(st.status||'Conforme')+'</span><br><small>'+esc(st.printStatus||'Pendiente impresión')+'</small></td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="printReceptionSticker" data-id="'+esc(st.id||'')+'">Imprimir</button>'+(po?'<button class="btn btn-small btn-gold" data-action="printReceptionStickerPO" data-po="'+esc(po)+'">Imprimir OC</button>':'')+delSticker+'</div></td></tr>';}).join('');
   var rows=list.map(function(r){var non=(r.findings||[]).length;var del=canDeleteReceptionGoods()?'<button class="btn btn-small btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar</button>':'';var stickerBtn=receptionConformityIsFullConforme(r.conformity)?'<button class="btn btn-small btn-gold" data-action="openReceptionStickerWizard" data-id="'+esc(r.id)+'">Stickers</button>':'';var stForReception=stickers.filter(function(st){return st.receptionId===r.id;});var stCount=stForReception.length;var printBtn=stCount?'<button class="btn btn-small btn-primary" data-action="printReceptionStickersReception" data-id="'+esc(r.id)+'">Imprimir OC</button>':'';return '<tr><td><strong>'+esc(r.documentNumber||r.id)+'</strong><br><small>'+esc(r.supplier||'')+'</small><br><small>OC: '+esc(receptionPurchaseOrder(r)||'Sin OC')+'</small></td><td>'+esc(r.receiptType||'Ingreso')+'</td><td>'+esc(r.status||'ABIERTO')+'</td><td>'+esc(r.conformity||'Pendiente')+'</td><td>'+non+'</td><td>'+stCount+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.id)+'">Abrir</button>'+stickerBtn+printBtn+del+'</div></td></tr>';}).join('');
   layout(header("Recepción de mercancía","Control de ingresos, chequeos, stickers imprimibles por orden de compra y base descargable para cruce con SIESA.",'<button class="btn btn-primary" data-action="receptionGoodsModal">Nuevo ingreso</button> <button class="btn btn-gold" data-action="exportReceptionStickers">Exportar base stickers</button> <button class="btn" data-action="refreshReceptionGoods">Actualizar</button>')+
     '<section class="grid grid-4"><article class="card kpi"><span>Ingresos</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Conformes</span><strong>'+conformes+'</strong><small>Generan stickers</small></article><article class="card kpi"><span>Stickers</span><strong>'+stickers.length+'</strong><small>Etiquetas imprimibles</small></article><article class="card kpi"><span>Retenidos</span><strong>'+retained+'</strong><small>Requieren decisión</small></article></section>'+ 
@@ -6553,6 +6554,23 @@ function deleteReceptionGoods(id){
   db.collection("recepciones_mercancia").doc(id).delete().then(function(){
     return createEvent({type:"GOODS_RECEPTION_DELETED",detail:"Super Admin eliminó ingreso de mercancía: "+((r&&r.documentNumber)||id),targetRole:"admin",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion"]}).catch(function(){return null;});
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el ingreso.");});
+}
+
+function deleteReceptionSticker(id){
+  if(!canDeleteReceptionStickers()){alert("Solo Super Admin puede eliminar stickers de separación.");return;}
+  var st=(state.receptionStickers||[]).filter(function(x){return x.id===id;})[0];
+  if(!st){alert("No se encontró el sticker en la base cargada.");return;}
+  var po=receptionStickerPurchaseOrder(st)||"Sin OC";
+  var mat=st.materialName||st.material||"Material";
+  var msg="¿Eliminar definitivamente este sticker de separación?\n\nOC/PVE: "+po+"\nMaterial: "+mat+"\nReferencia: "+(st.reference||st.referencia||"—")+"\nUbicación: "+(st.location||st.ubicacion||"—")+"\n\nEsta acción solo elimina el registro de la base de stickers. No elimina el ingreso de mercancía ni archivos de Drive.";
+  if(!confirm(msg))return;
+  db.collection("recepcion_stickers").doc(id).delete().then(function(){
+    return createEvent({type:"RECEPTION_STICKER_DELETED_SUPERADMIN",detail:"Super Admin eliminó sticker de separación: "+po+" · "+mat,targetRole:"lider_recepcion",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;});
+  }).then(function(){
+    state.receptionStickers=(state.receptionStickers||[]).filter(function(x){return x.id!==id;});
+    showLiveToast("Sticker eliminado","Se eliminó el sticker de separación de la base.",false);
+    if(state.route==="reception_goods")renderReceptionGoods();
+  }).catch(function(e){showError((e&&e.message)||e||"No se pudo eliminar el sticker de separación.");});
 }
 
 function reportTargetName(r){if(reportIsCancellationRequest(r))return (r&&(r.targetLogisticsName||r.assignedLogisticsName))||"Logística / Super Admin";if(r&&(r.targetRole||r.assignedRole||r.targetAreaName||r.targetRoleName)){return r.targetAreaName||r.targetRoleName||roleTitle(r.targetRole||r.assignedRole);}return (r&&(r.targetSalesName||r.assignedSalesName||r.targetAdvisorName||r.salesAdvisor||r.caseCreatedByName))||"Sin responsable asignado";}
@@ -8620,6 +8638,7 @@ function bindActions(){
     if(a==="printReceptionSticker")printReceptionStickerById(id);
     if(a==="printReceptionStickerPO")printReceptionStickersByPurchaseOrder(b.getAttribute("data-po")||"");
     if(a==="printReceptionStickersReception")printReceptionStickersByReception(id);
+    if(a==="deleteReceptionSticker")deleteReceptionSticker(id);
     if(a==="exportReceptionStickers")safeExportExcel("Base stickers recepción",exportReceptionStickers);
     if(a==="refreshReceptionGoods")loadData().then(renderReceptionGoods).catch(function(e){showError(e.message||e);});
     if(a==="reportReceptionGoods")reportReceptionGoods(id);
