@@ -3021,7 +3021,7 @@ function renderDashboard(){
   var loadingHtml=state.dataLoading?loadingPedidosPanel('Cargando pedidos y bandeja del usuario...'):'';
   var refreshCard='';
   var hiddenNote=hiddenClosed?'<div class="notice" style="margin-top:12px"><strong>Limpieza automática:</strong> '+hiddenClosed+' pedido(s) cerrado(s) con más de 2 días se ocultaron del inicio para evitar congestión. Siguen disponibles en consultas/reportes.</div>':'';
-  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
+  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Corregir trazabilidad cruzada</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
 }
 
 function caseList(list){
@@ -6959,6 +6959,132 @@ function reportThreadWithMerged(base,items){
   return out.filter(function(x){return threadEntryBelongsToBaseReport(base,x);}).sort(function(a,b){return new Date(a.createdAt||0)-new Date(b.createdAt||0);});
 }
 
+
+function cleanReportThreadsForStrictCase(r){
+  var rawThread=normalizeNoveltyThread(r);
+  var keepThread=[],removedThread=[];
+  rawThread.forEach(function(x){
+    if(threadEntryBelongsToBaseReport(r,x))keepThread.push(x);
+    else removedThread.push(x);
+  });
+  var rawComments=(r.managementComments||[]);
+  var keepComments=[],removedComments=[];
+  rawComments.forEach(function(x){
+    if(threadEntryBelongsToBaseReport(r,x))keepComments.push(x);
+    else removedComments.push(x);
+  });
+  var changed=removedThread.length>0 || removedComments.length>0;
+  return {changed:changed,keepThread:keepThread,removedThread:removedThread,keepComments:keepComments,removedComments:removedComments};
+}
+function caseTraceEntryText(e){
+  return normalizePersonComparableText([e&&e.detail,e&&e.title,e&&e.comment,e&&e.description,e&&e.reason,e&&e.type,e&&e.eventType,e&&e.sourceReference,e&&e.caseReference,e&&e.sourceId,e&&e.reportId].join(" "));
+}
+function traceEntryLooksMixedForCase(e,c){
+  if(!e||!c)return false;
+  var txt=caseTraceEntryText(e);
+  if(!txt)return false;
+  var ownRef=normalizePersonComparableText(caseBaseReference(c));
+  var ownOc=normalizePersonComparableText(purchaseOrderValue(c));
+  var ownId=normalizePersonComparableText(c.id);
+  var reportId=String(e.reportId||e.sourceReportId||e.relatedReportId||"");
+  if(reportId){
+    var r=reportByIdStrict(reportId);
+    if(r && !reportBelongsToCase(r,c))return true;
+  }
+  var hasNovedad=/novedad|reporte|report|hilo|ventas|requerimiento/.test(txt);
+  if(!hasNovedad)return false;
+  var refs=[].concat((state.cases||[]).map(function(x){return {id:x.id,ref:caseBaseReference(x),oc:purchaseOrderValue(x),client:x.client||""};}));
+  for(var i=0;i<refs.length;i++){
+    var other=refs[i];
+    if(String(other.id||"")===String(c.id||""))continue;
+    var otherRef=normalizePersonComparableText(other.ref);
+    var otherOc=normalizePersonComparableText(other.oc);
+    if(otherRef && otherRef.length>=5 && txt.indexOf(otherRef)>=0 && otherRef!==ownRef){
+      if(!ownRef || txt.indexOf(ownRef)<0)return true;
+      if(otherOc && ownOc && otherOc!==ownOc && txt.indexOf(otherOc)>=0)return true;
+    }
+    if(otherOc && otherOc.length>=5 && txt.indexOf(otherOc)>=0 && (!ownOc || otherOc!==ownOc)){
+      if(!ownOc || txt.indexOf(ownOc)<0)return true;
+    }
+  }
+  return false;
+}
+function cleanCaseMixedTraceForStrictCase(c){
+  var changed=false, removedState=[], removedFlow=[];
+  function cleanArr(arr,removed){
+    var keep=[];
+    (arr||[]).forEach(function(e){
+      if(traceEntryLooksMixedForCase(e,c)){removed.push(e);changed=true;}
+      else keep.push(e);
+    });
+    return keep;
+  }
+  var stateKeep=cleanArr(c.stateHistory||[],removedState);
+  var flowKeep=cleanArr(c.flowTrace||[],removedFlow);
+  return {changed:changed,stateKeep:stateKeep,flowKeep:flowKeep,removedState:removedState,removedFlow:removedFlow};
+}
+function forceStrictTraceCorrectionNow(){
+  if(!canForceReportThreadMigration()){alert("Solo roles de gestión pueden forzar la corrección de trazabilidad.");return;}
+  var reportJobs=[],caseJobs=[],reportsFixed=0,entriesRemoved=0,casesFixed=0,caseEntriesRemoved=0,stamp=now();
+  (state.reports||[]).forEach(function(r){
+    if(!r||!r.id)return;
+    var cleaned=cleanReportThreadsForStrictCase(r);
+    var master=null, wrongMerge=false;
+    if(r.mergedIntoReportId){
+      master=reportByIdStrict(r.mergedIntoReportId);
+      wrongMerge=!(master && reportsHaveSameStrictCase(master,r));
+    }
+    if(cleaned.changed || wrongMerge){
+      reportsFixed++;
+      entriesRemoved+=cleaned.removedThread.length+cleaned.removedComments.length;
+      var quarantine=(r.quarantinedMixedNotes||[]).concat(cleaned.removedThread).concat(cleaned.removedComments).slice(-300);
+      var payload={
+        noveltyThread:cleaned.keepThread,
+        managementComments:cleaned.keepComments,
+        quarantinedMixedNotes:quarantine,
+        mixedNotesQuarantinedAt:stamp,
+        mixedNotesQuarantinedBy:state.user.uid,
+        mixedNotesQuarantinedByName:state.user.name,
+        lastUpdateType:"CORRECCION_FORZADA_TRAZABILIDAD_V162",
+        updatedAt:stamp
+      };
+      if(wrongMerge){
+        payload.hiddenFromMain=false;
+        payload.mergedIntoReportId="";
+        payload.mergedIntoTitle="";
+        payload.unmixedAt=stamp;
+        payload.unmixedBy=state.user.uid;
+        payload.unmixedByName=state.user.name;
+      }
+      reportJobs.push(db.collection("reportes_novedad").doc(r.id).set(payload,{merge:true}));
+    }
+  });
+  (state.cases||[]).forEach(function(c){
+    if(!c||!c.id)return;
+    var cleaned=cleanCaseMixedTraceForStrictCase(c);
+    if(cleaned.changed){
+      casesFixed++;
+      caseEntriesRemoved+=cleaned.removedState.length+cleaned.removedFlow.length;
+      var q=(c.quarantinedMixedTrace||[]).concat(cleaned.removedState).concat(cleaned.removedFlow).slice(-300);
+      caseJobs.push(db.collection("cases").doc(c.id).set({
+        stateHistory:cleaned.stateKeep,
+        flowTrace:cleaned.flowKeep,
+        quarantinedMixedTrace:q,
+        mixedTraceQuarantinedAt:stamp,
+        mixedTraceQuarantinedBy:state.user.uid,
+        mixedTraceQuarantinedByName:state.user.name,
+        updatedAt:stamp
+      },{merge:true}));
+    }
+  });
+  var total=reportJobs.length+caseJobs.length;
+  if(!total){alert("No encontré comentarios ni trazas cruzadas para corregir.");return;}
+  var msg="Se corregirán "+reportsFixed+" reporte(s) y "+casesFixed+" pedido(s). Se sacarán de la vista operativa "+entriesRemoved+" nota(s) y "+caseEntriesRemoved+" traza(s) cruzadas, dejando copia en cuarentena. ¿Continuar?";
+  if(!confirm(msg))return;
+  Promise.all(reportJobs.concat(caseJobs)).then(function(){
+    return createEvent({type:"FORCED_TRACE_CORRECTION_V162",detail:"Corrección forzada de trazabilidad: "+reportsFixed+" reportes, "+casesFixed+" pedidos, "+entriesRemoved+" notas y "+caseEntriesRemoved+" trazas en cuarentena.",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
+  }).then(loadData).then(function(){renderReports();alert("Listo. Se corrigió la trazabilidad cruzada. Las notas/trazas retiradas quedaron en cuarentena, no eliminadas.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo forzar la corrección de trazabilidad.");});
+}
 function repairMixedReportThreadsNow(){
   if(!canForceReportThreadMigration()){alert("Solo roles de gestión pueden reparar hilos mezclados.");return;}
   var jobs=[],fixed=0,stamp=now();
@@ -7016,7 +7142,7 @@ function renderReports(){
     if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
     return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+normalizeNoveltyThread(r).length+'</td><td>'+fmtDate(r.updatedAt||r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
   }).join('');
-  layout(header("Reportes y novedades","Las novedades por pedido se agrupan como hilo solo cuando tienen el mismo identificador real de pedido. No se mezclan por cliente, texto o notas parecidas.",canForceReportThreadMigration()?'<button class="btn btn-gold" data-action="forceReportThreads">Unir novedades antiguas</button><button class="btn btn-danger" data-action="repairMixedReportThreads">Separar hilos mezclados</button>':'')+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Las novedades por pedido se agrupan solo con identificador real. Use la corrección forzada para sacar notas o trazas cruzadas que ya hayan quedado guardadas.",canForceReportThreadMigration()?'<button class="btn btn-gold" data-action="forceReportThreads">Unir novedades antiguas</button><button class="btn btn-danger" data-action="repairMixedReportThreads">Separar hilos mezclados</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Forzar corrección trazabilidad</button>':'')+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
@@ -9141,6 +9267,7 @@ function bindActions(){
     if(a==="deleteReport")deleteReport(id);
     if(a==="forceReportThreads")forceLegacyReportsToThreads();
     if(a==="repairMixedReportThreads")repairMixedReportThreadsNow();
+    if(a==="forceStrictTraceCorrection")forceStrictTraceCorrectionNow();
     if(a==="closeReceptionGoods")closeReceptionGoods(id);
     if(a==="deleteReceptionGoods")deleteReceptionGoods(id);
     if(a==="check")updateCheck(b);
