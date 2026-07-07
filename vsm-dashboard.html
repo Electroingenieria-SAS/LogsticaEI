@@ -21,7 +21,7 @@
     .power-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}.power-card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:14px;box-shadow:0 10px 28px rgba(15,23,42,.06);min-height:240px}.power-card h3{margin:.1rem 0 .7rem;color:var(--azul)}.chart-row{display:grid;grid-template-columns:minmax(110px,1.1fr) minmax(120px,2fr) auto;gap:8px;align-items:center;margin:8px 0;font-size:.84rem}.chart-row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-track{height:14px;background:#edf2f7;border-radius:999px;overflow:hidden}.chart-track i{display:block;height:100%;background:linear-gradient(90deg,var(--azul),var(--dorado));border-radius:999px}.stack{height:18px;display:flex;border-radius:999px;overflow:hidden;background:#edf2f7}.stack i{display:block;height:100%}.stack .va{background:var(--ok)}.stack .wait{background:var(--warn)}.stack .dead{background:var(--bad)}.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.78rem;color:var(--muted)}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}.dot.va{background:var(--ok)}.dot.wait{background:var(--warn)}.dot.dead{background:var(--bad)}.subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.mini-kpi{border:1px solid #edf2f7;border-radius:16px;padding:10px;background:#f8fafc}.mini-kpi span{display:block;color:var(--muted);font-size:.75rem;font-weight:800}.mini-kpi strong{display:block;color:var(--azul);font-size:1.12rem;margin-top:3px}@media(max-width:1100px){.power-grid{grid-template-columns:1fr}.subgrid{grid-template-columns:1fr}}
     @media(max-width:920px){.shell{padding:10px}.top{display:block;border-radius:18px}.actions{margin-top:12px}.grid-4,.grid-3,.grid-2{grid-template-columns:1fr}.filters,.card{border-radius:18px}.table-wrap{max-height:58vh}th,td{font-size:.78rem;padding:8px}.btn{width:100%}}
 
-    /* V157 precisión visual: evita superposición y compresión en VSM */
+    /* V158 precisión visual: evita superposición y compresión en VSM */
     .shell{max-width:1680px}
     .top{flex-wrap:wrap}.top>div:first-child{min-width:280px;flex:1}.actions{justify-content:flex-end}
     .filters .grid-4{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
@@ -41,13 +41,41 @@
     .vsm-reconcile strong{color:#061b46}
     @media(max-width:720px){table{min-width:960px}.chart-row{grid-template-columns:1fr}.actions .btn{width:100%}}
 
+
+    /* V158 principal VSM: más aire, lectura por tarjetas y cero superposición */
+    .vsm-results-wrap{margin-top:6px;width:100%;overflow:visible}
+    .vsm-main-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;align-items:stretch}
+    .vsm-order-card{background:#fff;border:1px solid var(--line);border-radius:24px;padding:16px 16px 14px;box-shadow:0 12px 32px rgba(15,23,42,.07);display:flex;flex-direction:column;gap:13px;min-width:0;position:relative;overflow:hidden}
+    .vsm-order-card:before{content:"";position:absolute;inset:0 0 auto 0;height:5px;background:linear-gradient(90deg,var(--azul),var(--dorado))}
+    .vsm-order-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;min-width:0}
+    .vsm-order-title{min-width:0}.vsm-order-title strong{display:block;color:var(--azul);font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.vsm-order-title small{display:block;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .vsm-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:48%}
+    .badge{display:inline-flex;border-radius:999px;padding:5px 9px;background:#eef2ff;color:#1e3a8a;font-size:.72rem;font-weight:900;line-height:1;white-space:nowrap}
+    .badge.ok{background:#ecfdf5;color:#065f46}.badge.warn{background:#fff7ed;color:#9a3412}.badge.bad{background:#fef2f2;color:#991b1b}.badge.dark{background:#e2e8f0;color:#0f172a}
+    .vsm-order-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .vsm-metric{border:1px solid #edf2f7;background:#f8fafc;border-radius:18px;padding:10px;min-width:0}
+    .vsm-metric span{display:block;color:var(--muted);font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.02em}
+    .vsm-metric strong{display:block;color:var(--azul);font-size:1rem;margin-top:4px;overflow-wrap:anywhere}
+    .vsm-metric small{display:block;color:var(--muted);font-size:.72rem;margin-top:2px;overflow-wrap:anywhere}
+    .time-tags{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .time-tag{border-radius:16px;padding:9px;border:1px solid #edf2f7;background:#fff;min-width:0;overflow:hidden}
+    .time-tag b{display:block;font-size:.72rem;margin-bottom:4px;color:var(--muted);text-transform:uppercase}.time-tag.va{border-color:#bbf7d0;background:#f0fdf4}.time-tag.wait{border-color:#fed7aa;background:#fff7ed}.time-tag.dead{border-color:#fecaca;background:#fef2f2}
+    .vsm-card-foot{display:grid;grid-template-columns:1fr 1fr;gap:10px;color:#334155;font-size:.82rem}
+    .vsm-card-foot div{border-top:1px dashed #e2e8f0;padding-top:9px;min-width:0;overflow-wrap:anywhere}
+    .vsm-card-foot strong{display:block;color:var(--azul);margin-bottom:2px}
+    .vsm-empty{background:#fff;border:1px dashed #cbd5e1;border-radius:22px;padding:26px;text-align:center;color:var(--muted)}
+    .section-title{margin-top:22px;margin-bottom:12px;padding:0 2px}.section-title h2{font-size:1.25rem}.section-title .muted{line-height:1.35;text-align:right}
+    .filters{padding:16px}.filters .grid{gap:14px}.field span{margin-bottom:7px}.input,.select{min-height:46px}
+    #summary{gap:16px}.vsm-split{gap:16px!important;margin-top:16px!important}.power-grid{gap:16px!important;margin-top:18px!important}
+    @media(max-width:900px){.vsm-main-grid{grid-template-columns:1fr}.vsm-order-metrics,.time-tags,.vsm-card-foot{grid-template-columns:1fr}.vsm-badges{max-width:none;justify-content:flex-start}.vsm-order-head{display:block}.vsm-order-title{margin-bottom:10px}.section-title{display:block}.section-title .muted{text-align:left;display:block;margin-top:4px}}
+
   </style>
 </head>
 <body>
   <main class="shell">
     <section class="top">
       <div><h1>VSM operativo · Normal / PVE</h1><p>Indicadores conciliados para todos los pedidos, normal y PVE. El LT se calcula con jornada laboral y calendario colombiano, mostrando incluidos, cancelados, excluidos y no trazados.</p></div>
-      <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
+      <div class="actions"><button class="btn primary" id="btnLoad">Cargar datos</button><button class="btn" id="btnLoadAll">Cargar histórico por lotes</button><button class="btn" id="btnReset">Limpiar filtros</button><button class="btn dark" id="btnExport" disabled>Exportar Excel VSM</button></div>
     </section>
     <div id="status" class="notice ok">Inicializando VSM...</div>
     <section class="filters">
@@ -74,9 +102,9 @@
     
     <section class="grid grid-2" style="margin-top:16px"><article class="card"><h2>Cuello de botella</h2><div id="bottleneck"></div></article><article class="card"><h2>Función de indicadores</h2><table class="def-list"><tr><td>LT</td><td>Duración total del pedido.</td><td>h / min</td></tr><tr><td>LT/día</td><td>LT dividido por días calendario del pedido.</td><td>h/día</td></tr><tr><td>Ocupación</td><td>Tiempo tramitando el pedido.</td><td>VA</td></tr><tr><td>Espera/bloqueo</td><td>Retenciones, requerimientos o pausas.</td><td>Espera</td></tr><tr><td>NVA</td><td>Tiempo muerto o no clasificado.</td><td>NVA</td></tr><tr><td>% Ocupación</td><td>Ocupación frente al LT.</td><td>Productividad</td></tr></table></article></section>
     <div class="section-title"><h2 id="tableTitle">Resultados VSM</h2><span class="muted" id="rowCount"></span></div>
-    <section class="table-wrap"><table id="mainTable"></table></section>
-    <p class="footer">V157 · VSM con LT calculado solo dentro de jornada laboral y calendario colombiano: 7:00–12:00 y 13:40–17:30.</p>
+    <section class="vsm-results-wrap"><div id="mainTable"></div></section>
+    <p class="footer">V158 · VSM con LT calculado solo dentro de jornada laboral y calendario colombiano: 7:00–12:00 y 13:40–17:30.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=157"></script>
+  <script src="./vsm-dashboard.js?v=158"></script>
 </body>
 </html>
