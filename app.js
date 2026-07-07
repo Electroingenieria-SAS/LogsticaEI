@@ -469,6 +469,7 @@ function normalizeRole(r){
   if((x.indexOf("logistica")>=0||x.indexOf("logistico")>=0) && (x.indexOf("despacho")>=0||x.indexOf("unificado")>=0||x.indexOf("unificada")>=0))return "coordinador_logistico";
   if(x==="lider_de_recepcion"||x==="recepcion_mercancia"||x==="recepcionista"||x==="mendoza")return "lider_recepcion";
   if(x==="proyecto"||x==="proyectos"||x==="rol_proyectos"||x==="area_proyectos"||x==="modulo_proyectos"||x==="projects")return "proyectos";
+  if(x==="auditoria"||x==="auditor"||x==="auditor_operativo"||x==="auditoría"||x==="solo_lectura"||x==="consulta"||x==="consulta_general")return "auditoria";
   return x;
 }
 function roleTitle(r){var nr=normalizeRole(r);return roles[nr]||roles[r]||r||"Sin rol";}
@@ -494,6 +495,10 @@ function isKnownSuperAdminUser(u){
 }
 function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser)));}
 function currentUserIsAdminOrSuper(){return !!(state.user && (isAdminRoleValue(state.user.role)||currentUserIsSuperAdmin()));}
+function isAuditReadOnlyRoleValue(r){return normalizeRole(r)==="auditoria";}
+function currentUserIsAuditReadOnly(){return !!(state.user && isAuditReadOnlyRoleValue(state.user.role));}
+function canAuditViewAll(){return currentUserIsAuditReadOnly();}
+function auditReadOnlyNotice(){return currentUserIsAuditReadOnly()?'<section class="notice info" style="margin-bottom:12px"><strong>Modo auditoría:</strong> visualización general de módulos y movimientos. Este perfil no crea, edita, aprueba, cierra, elimina ni cambia estados.</section>':'';}
 function processTitle(p){return processes[p]?processes[p].title:p||"Sin proceso";}
 function legacyProcessTarget(p){
   if(p==="compromiso_mercancia"||p==="compromiso_inicial")return "alistamiento";
@@ -1056,8 +1061,8 @@ function canApprovePriority(){return state.user && normalizeRole(state.user.role
 function canSeeAll(){return state.user && (isPrivilegedKpiRole(state.user.role)||currentUserIsSuperAdmin());}
 function isProjectsRole(){return state.user && normalizeRole(state.user.role)==="proyectos";}
 function canCreate(){return state.user && (normalizeRole(state.user.role)==="ventas" || currentUserIsAdminOrSuper());}
-function canAccessProjectsModule(){return state.user && (isProjectsRole() || currentUserIsAdminOrSuper());}
-function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || currentUserIsAdminOrSuper());}
+function canAccessProjectsModule(){return state.user && (isProjectsRole() || currentUserIsAdminOrSuper() || canAuditViewAll());}
+function canAccessReceptionGoods(){return state.user && (normalizeRole(state.user.role)==="lider_recepcion" || currentUserIsAdminOrSuper() || canAuditViewAll());}
 function canDeleteReceptionGoods(){return state.user && currentUserIsSuperAdmin();}
 function canDeleteReceptionStickers(){return state.user && currentUserIsSuperAdmin();}
 function canAccessReportsModule(){return !!state.user;}
@@ -1103,7 +1108,7 @@ function reportBelongsToCase(r,c){
 function reportRelevantToCurrentUser(r){
   if(!state.user || !r)return false;
   var role=normalizeRole(state.user.role);
-  if(canSeeAll())return true;
+  if(canSeeAll()||canAuditViewAll())return true;
   if(role==="compras")return reportAssignedToCurrentRole(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
   if(role!=="ventas")return true;
   if(reportHasSalesAssignee(r)){
@@ -1629,7 +1634,7 @@ function loadingPedidosPanel(text){
   return '<section class="mobile-loading-orders card"><div class="loading-spinner-dot"></div><div><strong>Cargando pedidos</strong><span>'+esc(text||'Estamos trayendo solo la información necesaria para tu rol. Espere un momento.')+'</span></div></section>';
 }
 function loadCasesForRole(){
-  if(canSeeAll()){
+  if(canSeeAll()||canAuditViewAll()){
     return db.collection("cases").orderBy("updatedAt","desc").get().then(docsToList);
   }
 
@@ -1680,7 +1685,7 @@ function loadCasesForRole(){
 }
 
 function loadEventsForRole(){
-  if(canSeeAll())return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
+  if(canSeeAll()||canAuditViewAll())return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
   if(!state.user)return Promise.resolve([]);
   return db.collection("case_events").where("visibleRoles","array-contains",normalizeRole(state.user.role)).limit(120).get().then(docsToList).catch(function(){return [];});
 }
@@ -1688,7 +1693,7 @@ function loadEventsForRole(){
 function loadUsersForRole(){
   if(!state.user)return Promise.resolve([]);
   var r=normalizeRole(state.user.role);
-  if(!canSeeAll() && !canManageUsers() && r!=="coordinador_logistico" && r!=="lider_logistico" && r!=="lider_logistica")return Promise.resolve([]);
+  if(!canSeeAll() && !canAuditViewAll() && !canManageUsers() && r!=="coordinador_logistico" && r!=="lider_logistico" && r!=="lider_logistica")return Promise.resolve([]);
   return db.collection("users").get().then(docsToList).catch(function(){return [];});
 }
 
@@ -1703,7 +1708,7 @@ function loadReceptionStickersForRole(){
 }
 
 function loadProjectOrdersForRole(){
-  if(!canAccessProjectsModule() && !canSeeAll())return Promise.resolve([]);
+  if(!canAccessProjectsModule() && !canSeeAll() && !canAuditViewAll())return Promise.resolve([]);
   return db.collection("proyectos_pedidos").orderBy("updatedAt","desc").limit(200).get().then(docsToList).catch(function(){return [];});
 }
 
@@ -2085,7 +2090,7 @@ function mobileSimpleCasePanel(c){
 
 function caseRelevantToCurrentUser(c){
   if(!state.user || !c)return false;
-  if(canSeeAll())return true;
+  if(canSeeAll()||canAuditViewAll())return true;
   if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(currentUserBlockedByAssignment(c))return false;
   var r=normalizeRole(state.user.role);
@@ -2309,7 +2314,7 @@ function eventHash(list){
 
 function eventRelevantToCurrentUser(e){
   if(!state.user || !e)return false;
-  if(canSeeAll())return true;
+  if(canSeeAll()||canAuditViewAll())return true;
   var relatedCase=e.caseId?caseById(e.caseId):null;
   if(relatedCase && (!currentUserAllowedByDeliveryRoute(relatedCase)||currentUserBlockedByAssignment(relatedCase)))return false;
   if(!relatedCase && e.process && isDeliveryProcess(e.process) && !currentUserAllowedByDeliveryProcess(e.process))return false;
@@ -2441,7 +2446,7 @@ function addEventRealtimeListener(key,query){
 
 function startNotificationListeners(){
   if(!db || !state.user)return;
-  if(canSeeAll()){
+  if(canSeeAll()||canAuditViewAll()){
     addEventRealtimeListener("events_all",db.collection("case_events").orderBy("timestamp","desc").limit(200));
     return;
   }
@@ -2542,7 +2547,7 @@ function startRealtimeSync(){
   stopRealtimeSync();
   state.realtime.startedAt=Date.now();
   var nr=normalizeRole(state.user.role);
-  if(canSeeAll()){
+  if(canSeeAll()||canAuditViewAll()){
     addCaseRealtimeListener("all",db.collection("cases").orderBy("updatedAt","desc"));
   }else{
     if(nr==="auxiliar_corte")addCaseRealtimeListener("cuts",db.collection("cases").where("hasCuts","==",true));
@@ -2568,7 +2573,7 @@ function startRealtimeSync(){
     }
   }
   startNotificationListeners();
-  if(canSeeAll()){
+  if(canSeeAll()||canAuditViewAll()){
     try{
       state.realtime.userUnsub=db.collection("users").onSnapshot(function(snap){state.users=docsToList(snap);},function(e){console.warn("Usuarios en vivo no disponibles",e);});
     }catch(e){}
@@ -2688,6 +2693,7 @@ function routes(){
   if(!state.user)return{main:[],processes:[]};
   var r=normalizeRole(state.user.role);
   if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return{main:["dashboard","create","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
+  if(r==="auditoria")return{main:["dashboard","sales_reports","projects","reception_goods","reports","cases","requirements","approvals","indicators","users"],processes:activeProcessKeys()};
   if(r==="auxiliar_corte")return{main:["corte_cable","reports"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","reports"],processes:[]};
@@ -2712,6 +2718,7 @@ function navBtn(r){
 
 function mobileItems(){
   var r=state.user?normalizeRole(state.user.role):"";
+  if(r==="auditoria")return [["dashboard","Inicio","⌂"],["cases","Casos","▤"],["reports","Nov.","RP"],["indicators","VSM","VS"]];
   if(r==="auxiliar_corte")return [["corte_cable","Cortes","CT"],["dashboard","Inicio","⌂"]];
   if(r==="lider_recepcion")return [["reception_goods","Recepción","RM"],["dashboard","Inicio","⌂"]];
   if(r==="proyectos")return [["projects","Proyectos","PR"],["dashboard","Inicio","⌂"]];
@@ -2725,7 +2732,7 @@ function mobileItems(){
 
 function mobileRouteAllowed(route){
   var r=state.user?normalizeRole(state.user.role):"";
-  if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return true;
+  if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser)||r==="auditoria")return true;
   var always=["dashboard","cases","requirements","approvals"];
   if(always.indexOf(route)>=0)return true;
   if(route==="compras")return r==="compras"||isAdminRoleValue(r);
@@ -2805,7 +2812,7 @@ function openRouteSafely(route){
 function layout(content){
   injectExecutiveMinimalCss();
   var rs=routes();
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
@@ -2941,7 +2948,7 @@ function login(fd){
 
 function caseVisibleForCurrentUser(c){
   if(!state.user || !c)return false;
-  if(canSeeAll())return true;
+  if(canSeeAll()||canAuditViewAll())return true;
   if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(c.createdBy===state.user.uid)return true;
   if(normalizeRole(state.user.role)==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
@@ -6054,7 +6061,7 @@ function renderCutsQueue(){
 function isRequirementVisibleForUser(c){
   if(!state.user || !c)return false;
   var activeReq=(c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja"||c.openRequirement||(c.requirements&&c.requirements.length));
-  if(canSeeAll())return !!activeReq;
+  if(canSeeAll()||canAuditViewAll())return !!activeReq;
   var r=normalizeRole(state.user.role);
   if(isNoDeliveryCase(c) && noDeliveryVisibleRoles().map(normalizeRole).indexOf(r)>=0)return true;
   if(c.openRequirement){
@@ -6164,14 +6171,14 @@ function closeDrawer(){
 }
 
 function renderUsers(){
-  if(!canManageUsers()){layout(header("Usuarios","Acceso restringido.")+'<div class="empty">Solo admin y gerencia.</div>');return;}
+  if(!canManageUsers() && !canAuditViewAll()){layout(header("Usuarios","Acceso restringido.")+'<div class="empty">Solo admin, gerencia o auditoría pueden consultar este módulo.</div>');return;}
   var ger=state.users.filter(function(u){return normalizeRole(u.role)==="gerencia" && u.isActive!==false;}).length;
   var active=state.users.filter(function(u){return u.isActive!==false;}).length;
   var rows=state.users.map(function(u){
     var self=state.user && u.id===state.user.uid;
-    return '<tr><td><strong>'+esc(u.name||'Sin nombre')+'</strong>'+(self?'<br><small>Sesión actual</small>':'')+'</td><td>'+esc(u.email||'')+'</td><td>'+esc(roleTitle(u.role))+'</td><td>'+(u.isActive===false?'<span class="chip danger">Inactivo</span>':'<span class="chip success">Activo</span>')+'</td><td><div class="top-actions"><button class="btn btn-small" data-action="editUserRole" data-id="'+esc(u.id)+'">Rol</button><button class="btn btn-small btn-gold" data-action="toggleUserActive" data-id="'+esc(u.id)+'">'+(u.isActive===false?'Activar':'Inactivar')+'</button>'+((self||!isAdminRoleValue(state.user.role))?'':'<button class="btn btn-small btn-danger" data-action="deleteUserProfile" data-id="'+esc(u.id)+'">Eliminar</button>')+'</div></td></tr>';
+    return '<tr><td><strong>'+esc(u.name||'Sin nombre')+'</strong>'+(self?'<br><small>Sesión actual</small>':'')+'</td><td>'+esc(u.email||'')+'</td><td>'+esc(roleTitle(u.role))+'</td><td>'+(u.isActive===false?'<span class="chip danger">Inactivo</span>':'<span class="chip success">Activo</span>')+'</td><td>'+(canManageUsers()?'<div class="top-actions"><button class="btn btn-small" data-action="editUserRole" data-id="'+esc(u.id)+'">Rol</button><button class="btn btn-small btn-gold" data-action="toggleUserActive" data-id="'+esc(u.id)+'">'+(u.isActive===false?'Activar':'Inactivar')+'</button>'+((self||!isAdminRoleValue(state.user.role))?'':'<button class="btn btn-small btn-danger" data-action="deleteUserProfile" data-id="'+esc(u.id)+'">Eliminar</button>')+'</div>':'<span class="chip info">Solo lectura</span>')+'</td></tr>';
   }).join('');
-  layout(header("Usuarios","Gestión completa de perfiles: crear usuarios, cambiar roles, activar/inactivar y eliminar perfiles operativos.",'<button class="btn btn-primary" data-action="userModal">Crear usuario</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Usuarios activos</span><strong>'+active+'</strong><small>'+state.users.length+' perfiles cargados</small></article><article class="card kpi"><span>Gerencia</span><strong>'+ger+'/2</strong><small>Límite operativo</small></article><article class="card kpi"><span>Roles</span><strong>'+uniqueRoles()+'</strong><small>Incluye líder recepción</small></article></section><section class="card" style="margin-top:16px"><div class="notice"><strong>Control administrativo:</strong> El botón eliminar borra el perfil de Firestore y bloquea el acceso operativo. Para eliminar también la cuenta de Firebase Authentication se requiere hacerlo desde Firebase Console o una Cloud Function segura.</div><h3>Directorio</h3><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay usuarios cargados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Usuarios",canAuditViewAll()?"Directorio de usuarios en modo auditoría solo lectura.":"Gestión completa de perfiles: crear usuarios, cambiar roles, activar/inactivar y eliminar perfiles operativos.",canManageUsers()?'<button class="btn btn-primary" data-action="userModal">Crear usuario</button>':"")+auditReadOnlyNotice()+'<section class="grid grid-3"><article class="card kpi"><span>Usuarios activos</span><strong>'+active+'</strong><small>'+state.users.length+' perfiles cargados</small></article><article class="card kpi"><span>Gerencia</span><strong>'+ger+'/2</strong><small>Límite operativo</small></article><article class="card kpi"><span>Roles</span><strong>'+uniqueRoles()+'</strong><small>Incluye líder recepción</small></article></section><section class="card" style="margin-top:16px"><div class="notice"><strong>Control administrativo:</strong> El botón eliminar borra el perfil de Firestore y bloquea el acceso operativo. Para eliminar también la cuenta de Firebase Authentication se requiere hacerlo desde Firebase Console o una Cloud Function segura.</div><h3>Directorio</h3><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">No hay usuarios cargados.</td></tr>')+'</tbody></table></div></section>');
 }
 function uniqueRoles(){var m={};state.users.forEach(function(u){if(u&&u.role)m[normalizeRole(u.role)]=1;});return Object.keys(m).length;}
 function roleOptionsHtml(selected){return Object.keys(roles).filter(function(r){return r!=="lider_logistico";}).map(function(r){return '<option value="'+esc(r)+'" '+(normalizeRole(selected)===normalizeRole(r)?'selected':'')+'>'+esc(roles[r])+'</option>';}).join('');}
@@ -8665,7 +8672,7 @@ function salesNotesPanel(c){
   var body=notes.slice(-12).reverse().map(function(n){return '<article class="sales-note-item"><strong>'+esc(n.tipo||'Nota')+':</strong> '+esc(n.detalle||'')+'<br><small>'+esc(n.usuario||'')+(n.fecha?' · '+esc(fmtDate(n.fecha)):'')+'</small></article>';}).join('');
   return '<section class="'+cls+' sales-notes-panel" style="margin-top:16px"><h3>'+esc(title)+'</h3><p class="muted">Toda nota comercial, comentario de requerimiento, reporte o novedad queda visible aquí y en Registro de Ventas.</p>'+body+'</section>';
 }
-function canSeeAllSalesReports(){return canSeeAll() || isAdminRoleValue(state.user&&state.user.role);}
+function canSeeAllSalesReports(){return canSeeAll() || canAuditViewAll() || isAdminRoleValue(state.user&&state.user.role);}
 function salesBaseRows(){
   var role=normalizeRole(state.user&&state.user.role);
   if(state.route==="sales_reports" && state.salesRegistryLoadedOnce){
@@ -8788,6 +8795,10 @@ function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.o
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
+    if(currentUserIsAuditReadOnly()){
+      var allowedAuditActions=["logout","open","openReport","openReceptionGoods","salesCaseInfo","certificate","printCertificate","openMobileMenu","closeMobileMenu","forceRefreshCases","refreshSalesReports","refreshReceptionGoods","exportSalesReport","exportReceptionStickers","clearPwa"];
+      if(allowedAuditActions.indexOf(a)<0){alert("Modo auditoría: este usuario solo puede visualizar movimientos. No puede crear, editar, aprobar, cerrar, eliminar ni cambiar estados.");return;}
+    }
     if(a==="logout"){stopRealtimeSync();sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
     if(a==="migrateLegacy")migrateLegacyProcessesNow();
     if(a==="forcePvePurchases")forceExistingPveToPurchasesNow();
