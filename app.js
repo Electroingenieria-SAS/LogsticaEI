@@ -1126,7 +1126,9 @@ function filterReportsForCurrentUser(list){
   return (list||[]).filter(reportRelevantToCurrentUser);
 }
 function visibleReports(){
-  return filterReportsForCurrentUser(state.reports||[]);
+  return filterReportsForCurrentUser(state.reports||[]).filter(function(r){
+    return !(r && (r.hiddenFromMain===true || r.mergedIntoReportId || r.status==="CERRADO_MIGRADO" || r.status==="MIGRADO_AL_HILO"));
+  });
 }
 function canCloseReceptionNovelty(){var r=state.user?normalizeRole(state.user.role):"";return currentUserIsSuperAdmin()||isSuperAdminRoleValue(r)||r==="lider_recepcion";}
 function isProjectUploadDay(d){var day=(d||new Date()).getDay();return day===1||day===4;}
@@ -1714,7 +1716,7 @@ function loadProjectOrdersForRole(){
 
 function loadReportsForRole(){
   if(!canAccessReportsModule())return Promise.resolve([]);
-  return db.collection("reportes_novedad").orderBy("updatedAt","desc").limit(300).get().then(docsToList).catch(function(){return [];});
+  return db.collection("reportes_novedad").orderBy("updatedAt","desc").limit(1000).get().then(docsToList).catch(function(){return [];});
 }
 
 function safeLoadBlock(label, loader){
@@ -6735,6 +6737,71 @@ function reportStatusChip(st){
   var cls=(x.indexOf("CERRADO")>=0||x.indexOf("RESPONDIDO")>=0||x.indexOf("GESTIONADO")>=0)?"success":(x.indexOf("REVISION")>=0||x.indexOf("PENDIENTE")>=0?"warning":"danger");
   return '<span class="chip '+cls+'">'+esc(st||"ABIERTO")+'</span>';
 }
+
+function noveltyMergeName(r){
+  var raw=String((r&&r.title)||"").trim();
+  raw=raw.replace(/\s*[·-]\s*(OC|Pedido|PVE|Referencia)?\s*#?\s*[A-Z0-9._/-]+$/i,"").trim();
+  if(!raw || /^novedad\s*$/i.test(raw) || /^reporte\s*$/i.test(raw))raw=String((r&&r.category)||(r&&r.sourceModule)||"Novedad operativa").trim();
+  return normalizePersonComparableText(raw||"Novedad operativa");
+}
+function noveltyCaseKey(r){
+  var ids=[r&&r.sourceId,r&&r.caseId,r&&r.sourceCaseId,r&&r.caseUid,r&&r.sourceReference,r&&r.caseReference,r&&r.reference,r&&r.pedido,r&&r.orderNumber].map(function(x){return String(x||"").trim();}).filter(Boolean);
+  return normalizePersonComparableText(ids[0]||"sin_pedido");
+}
+function noveltyMergeKey(r){
+  return noveltyCaseKey(r)+"|"+noveltyMergeName(r);
+}
+function reportEntryForThread(r,label){
+  if(!r)return null;
+  return {id:"MIG-"+(r.id||uid("MIG")),comment:(label?label+"\\n":"")+(r.detail||r.description||r.lastNoveltyDetail||""),status:r.status||"ABIERTO",createdAt:r.createdAt||r.updatedAt||now(),userId:r.createdBy||r.lastNoveltyBy||"",userName:r.createdByName||r.lastNoveltyByName||"Reporta",userRole:r.createdByRole||"",isMergedLegacy:true,sourceReportId:r.id||""};
+}
+function reportThreadWithMerged(base,items){
+  var out=normalizeNoveltyThread(base);
+  function add(x){
+    if(!x || !String(x.comment||"").trim())return;
+    var key=[x.sourceReportId||x.id,x.createdAt,x.userName,x.comment].join("|");
+    var exists=out.some(function(y){return [y.sourceReportId||y.id,y.createdAt,y.userName,y.comment].join("|")===key;});
+    if(!exists)out.push(x);
+  }
+  items.forEach(function(r){
+    add(reportEntryForThread(r,"Novedad/reporte histórico unido al hilo."));
+    (r.managementComments||[]).forEach(function(c){add(Object.assign({},c,{sourceReportId:r.id||c.sourceReportId||""}));});
+    (r.noveltyThread||[]).forEach(function(c){add(Object.assign({},c,{sourceReportId:r.id||c.sourceReportId||""}));});
+  });
+  return out.sort(function(a,b){return new Date(a.createdAt||0)-new Date(b.createdAt||0);});
+}
+function canForceReportThreadMigration(){
+  return state.user && !currentUserIsAuditReadOnly() && canManageReports();
+}
+function forceLegacyReportsToThreads(){
+  if(!canForceReportThreadMigration()){alert("Solo roles de gestión pueden forzar la unión de novedades.");return;}
+  var reports=(state.reports||[]).filter(function(r){return r && !r.mergedIntoReportId && r.hiddenFromMain!==true;});
+  var groups={};
+  reports.forEach(function(r){
+    var key=noveltyMergeKey(r);
+    groups[key]=groups[key]||[];
+    groups[key].push(r);
+  });
+  var jobs=[],mergedCount=0,groupCount=0,stamp=now();
+  Object.keys(groups).forEach(function(key){
+    var g=groups[key].sort(function(a,b){return new Date(a.createdAt||a.updatedAt||0)-new Date(b.createdAt||b.updatedAt||0);});
+    if(g.length<2)return;
+    groupCount++;
+    var master=g[0],dups=g.slice(1),thread=reportThreadWithMerged(master,dups);
+    var visible=uniqueArray([].concat(master.visibleRoles||[],dups.reduce(function(acc,r){return acc.concat(r.visibleRoles||[]).concat(r.targetRole||[],r.assignedRole||[],r.reportTo||[]);},[]),["admin","super_admin","super_administrador","gerencia","jefe_logistica"]));
+    var payload={managementComments:thread.filter(function(x){return !x.isInitialNovelty;}),noveltyThread:thread,updatedAt:stamp,lastUpdateType:"MIGRACION_HILO_NOVEDADES",mergedReports:dups.map(function(r){return {id:r.id,title:r.title||"",category:r.category||"",createdAt:r.createdAt||"",status:r.status||""};}),mergedReportsCount:dups.length,threadConsolidatedAt:stamp,threadConsolidatedBy:state.user.uid,threadConsolidatedByName:state.user.name,visibleRoles:visible};
+    jobs.push(db.collection("reportes_novedad").doc(master.id).set(payload,{merge:true}));
+    dups.forEach(function(r){
+      mergedCount++;
+      jobs.push(db.collection("reportes_novedad").doc(r.id).set({status:"MIGRADO_AL_HILO",hiddenFromMain:true,mergedIntoReportId:master.id,mergedIntoTitle:master.title||master.id,mergedAt:stamp,mergedBy:state.user.uid,mergedByName:state.user.name,updatedAt:stamp},{merge:true}));
+    });
+  });
+  if(!jobs.length){alert("No se encontraron novedades duplicadas para unir.");return;}
+  if(!confirm("Se unirán "+mergedCount+" reporte(s)/novedad(es) en "+groupCount+" hilo(s). No se borra información; los duplicados quedan ocultos como migrados. ¿Continuar?"))return;
+  Promise.all(jobs).then(function(){
+    return createEvent({type:"REPORTS_FORCED_TO_THREADS",detail:"Novedades históricas unidas en hilos: "+mergedCount+" registro(s) en "+groupCount+" hilo(s).",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
+  }).then(loadData).then(function(){renderReports();alert("Listo. Se consolidaron "+mergedCount+" novedades/reportes antiguos en hilos tipo chat.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo forzar la unión de novedades.");});
+}
 function renderReports(){
   if(!canAccessReportsModule()){layout(header("Reportes","Acceso restringido.")+'<div class="empty">No tiene acceso a reportes.</div>');return;}
   var list=visibleReports();
@@ -6745,7 +6812,7 @@ function renderReports(){
     if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
     return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+normalizeNoveltyThread(r).length+'</td><td>'+fmtDate(r.updatedAt||r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
   }).join('');
-  layout(header("Reportes y novedades","Las novedades por pedido se agrupan como un hilo tipo chat. Si el mismo pedido recibe otra novedad, se actualiza el mismo registro y no se crea otra solicitud.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Las novedades por pedido se agrupan como un hilo tipo chat. Si el mismo pedido recibe otra novedad, se actualiza el mismo registro y no se crea otra solicitud.",canForceReportThreadMigration()?'<button class="btn btn-gold" data-action="forceReportThreads">Unir novedades antiguas</button>':'')+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
@@ -8853,6 +8920,7 @@ function bindActions(){
     if(a==="openReport")openReport(id);
     if(a==="manageReport")openManageReport(id);
     if(a==="deleteReport")deleteReport(id);
+    if(a==="forceReportThreads")forceLegacyReportsToThreads();
     if(a==="closeReceptionGoods")closeReceptionGoods(id);
     if(a==="deleteReceptionGoods")deleteReceptionGoods(id);
     if(a==="check")updateCheck(b);
