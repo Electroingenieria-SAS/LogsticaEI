@@ -66,6 +66,15 @@ function ensureV104UiFixes(){
   st.id="ei-v104-ui-fixes";
   st.textContent='\
 \
+.novelty-chat{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px}\
+.chat-bubble{max-width:82%;border:1px solid #dbe4f0;border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 6px 14px rgba(15,23,42,.05)}\
+.chat-bubble.mine{margin-left:auto;background:#ecfdf5;border-color:#bbf7d0}\
+.chat-meta{display:flex;justify-content:space-between;gap:10px;color:#061b46;font-size:.82rem}\
+.chat-meta span{color:#64748b;font-weight:700}\
+.chat-bubble p{margin:7px 0;white-space:pre-wrap}\
+.chat-bubble small{color:#64748b;font-weight:800}\
+\
+\
 .card.kpi.time-va{border-color:#bbf7d0!important;background:#f7fffb!important}\
 .card.kpi.time-va span,.card.kpi.time-va strong{color:#065f46!important}\
 .card.kpi.time-wait{border-color:#fed7aa!important;background:#fffaf2!important}\
@@ -6245,7 +6254,7 @@ function renderReceptionGoods(){
   var rows=list.map(function(r){var non=(r.findings||[]).length;var del=canDeleteReceptionGoods()?'<button class="btn btn-small btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar</button>':'';var stickerBtn=receptionConformityIsFullConforme(r.conformity)?'<button class="btn btn-small btn-gold" data-action="openReceptionStickerWizard" data-id="'+esc(r.id)+'">Stickers</button>':'';var stForReception=stickers.filter(function(st){return st.receptionId===r.id;});var stCount=stForReception.length;var printBtn=stCount?'<button class="btn btn-small btn-primary" data-action="printReceptionStickersReception" data-id="'+esc(r.id)+'">Imprimir OC</button>':'';return '<tr><td><strong>'+esc(r.documentNumber||r.id)+'</strong><br><small>'+esc(r.supplier||'')+'</small><br><small>OC: '+esc(receptionPurchaseOrder(r)||'Sin OC')+'</small></td><td>'+esc(r.receiptType||'Ingreso')+'</td><td>'+esc(r.status||'ABIERTO')+'</td><td>'+esc(r.conformity||'Pendiente')+'</td><td>'+non+'</td><td>'+stCount+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions"><button class="btn btn-small btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.id)+'">Abrir</button>'+stickerBtn+printBtn+del+'</div></td></tr>';}).join('');
   layout(header("Recepción de mercancía","Control de ingresos, chequeos, stickers imprimibles por orden de compra y base descargable para cruce con SIESA.",'<button class="btn btn-primary" data-action="receptionGoodsModal">Nuevo ingreso</button> <button class="btn btn-gold" data-action="exportReceptionStickers">Exportar base stickers</button> <button class="btn" data-action="refreshReceptionGoods">Actualizar</button>')+
     '<section class="grid grid-4"><article class="card kpi"><span>Ingresos</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Conformes</span><strong>'+conformes+'</strong><small>Generan stickers</small></article><article class="card kpi"><span>Stickers</span><strong>'+stickers.length+'</strong><small>Etiquetas imprimibles</small></article><article class="card kpi"><span>Retenidos</span><strong>'+retained+'</strong><small>Requieren decisión</small></article></section>'+ 
-    '<section class="card" style="margin-top:16px"><div class="notice"><strong>Flujo de stickers físicos:</strong> cuando el ingreso queda <strong>Conforme</strong>, se crea una base de stickers por <strong>orden de compra</strong>. Cada sticker puede imprimirse y pegarse en la mercancía; también puede imprimirse toda la OC en lote.</div><h3>Ingresos de mercancía</h3><div class="table-wrap"><table><thead><tr><th>Documento / proveedor / OC</th><th>Tipo</th><th>Estado</th><th>Conformidad</th><th>Hallazgos</th><th>Stickers</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin ingresos registrados.</td></tr>')+'</tbody></table></div></section>'+ 
+    '<section class="card" style="margin-top:16px"><div class="notice"><strong>Flujo de stickers físicos:</strong> cuando el ingreso queda <strong>Conforme</strong>, se crea una base de stickers por <strong>orden de compra</strong>. Cada sticker puede imprimirse y pegarse en la mercancía; también puede imprimirse toda la OC en lote.</div><h3>Ingresos de mercancía</h3><div class="table-wrap"><table><thead><tr><th>Documento / proveedor / OC</th><th>Tipo</th><th>Estado</th><th>Conformidad</th><th>Hallazgos</th><th>Stickers</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin ingresos registrados.</td></tr>')+'</tbody></table></div></section>'+ 
     '<section class="grid grid-3" style="margin-top:16px"><article class="card"><h3>Órdenes de compra con stickers</h3>'+miniBarsHtml(byPurchase)+'</article><article class="card"><h3>Materiales con más stickers</h3>'+miniBarsHtml(byMaterial)+'</article><article class="card"><h3>Ubicaciones principales</h3>'+miniBarsHtml(byLocation)+'</article></section>'+ 
     '<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Base de stickers de separación</h3><p>Últimos 50 registros. La exportación descarga la base completa cargada en la app.</p></div><button class="btn btn-small btn-gold" data-action="exportReceptionStickers">Descargar Excel</button></div><div class="table-wrap"><table><thead><tr><th>OC / Documento</th><th>Material</th><th>Cantidad</th><th>Ubicación</th><th>Medidas</th><th>Fecha ingreso</th><th>Responsable</th><th>Estado impresión</th><th>Acción</th></tr></thead><tbody>'+(stickerRows||'<tr><td colspan="9">Sin stickers creados.</td></tr>')+'</tbody></table></div></section>');
 }
@@ -6727,13 +6736,13 @@ function renderReports(){
   var rows=list.map(function(r){
     var manage=canCommentReports(r)?'<button class="btn btn-small btn-primary" data-action="openReport" data-id="'+esc(r.id)+'">Abrir</button>':'<button class="btn btn-small" data-action="openReport" data-id="'+esc(r.id)+'">Ver estado</button>';
     if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
-    return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+fmtDate(r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
+    return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+normalizeNoveltyThread(r).length+'</td><td>'+fmtDate(r.updatedAt||r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
   }).join('');
-  layout(header("Reportes y novedades","Los reportes operativos quedan trazados al asesor o a Logística según el caso. Las solicitudes de cancelación no cancelan automáticamente: Logística debe validar y adjuntar el PDF soporte.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Las novedades por pedido se agrupan como un hilo tipo chat. Si el mismo pedido recibe otra novedad, se actualiza el mismo registro y no se crea otra solicitud.")+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  var comments=(r.managementComments||[]).map(function(c){return '<article class="notice"><strong>'+esc(c.userName||'Gestor')+':</strong> '+esc(c.comment||'')+'<br><small>'+fmtDate(c.createdAt)+' · '+esc(c.status||'')+'</small></article>';}).join('')||'<div class="empty">Sin comentarios de gestión.</div>';
+  var comments=chatHtmlForReport(r);
   var sourceBtn='';
   if(r.sourceModule==="recepcion_mercancia" && canAccessReceptionGoods())sourceBtn='<button class="btn btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.sourceId)+'">Abrir ingreso de recepción</button>';
   var linkedCase=caseById(r.sourceId||r.caseId||r.sourceCaseId||"");
@@ -6744,7 +6753,8 @@ function openReport(id){
   var actions='';
   if(canCommentReports(r))actions+='<button class="btn btn-gold" data-action="manageReport" data-id="'+esc(r.id)+'">Responder / agregar gestión</button>';
   if(canDeleteReports())actions+='<button class="btn btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar reporte</button>';
-  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p><p><strong>Responsable de gestión:</strong> '+esc(reportTargetName(r))+'</p>'+(r.salesResponseAt?'<p><strong>Última respuesta de asesor:</strong> '+esc(r.salesResponseByName||'')+' · '+fmtDate(r.salesResponseAt)+'</p>':'')+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Detalle</h3><pre style="white-space:pre-wrap;background:#f8fafc;border-radius:14px;padding:12px;max-height:320px;overflow:auto">'+esc(r.detail||r.description||'')+'</pre></section><section class="card" style="margin-top:12px"><h3>Gestión</h3>'+comments+'<div class="top-actions">'+sourceBtn+actions+'</div></section>'));
+  var threadCount=normalizeNoveltyThread(r).length;
+  drawer(modal("Reporte / novedad",'<section class="card"><h3>'+esc(r.title||r.id)+'</h3><p>'+reportStatusChip(r.status)+' · '+esc(r.category||'')+' · '+esc(r.severity||'')+'</p><p><strong>Referencia:</strong> '+esc(r.sourceReference||r.sourceId||'')+'</p><p><strong>Reporta:</strong> '+esc(r.createdByName||'')+' · '+fmtDate(r.createdAt)+'</p><p><strong>Responsable de gestión:</strong> '+esc(reportTargetName(r))+'</p><p><strong>Actualizaciones del hilo:</strong> '+threadCount+'</p>'+(r.salesResponseAt?'<p><strong>Última respuesta de asesor:</strong> '+esc(r.salesResponseByName||'')+' · '+fmtDate(r.salesResponseAt)+'</p>':'')+(r.sourceUrl?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.sourceUrl)+'">Abrir soporte</a>':'')+'</section><section class="card" style="margin-top:12px"><h3>Historial tipo chat</h3>'+comments+'</section><section class="card" style="margin-top:12px"><h3>Gestión</h3><div class="top-actions">'+sourceBtn+actions+'</div></section>'));
 }
 function deleteReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];
@@ -6791,6 +6801,80 @@ function openGeneralReportModal(id){
   if(roleSel){roleSel.onchange=sync;sync();}
   qs("#generalReportForm").onsubmit=function(e){e.preventDefault();submitGeneralReport(id,new FormData(e.target));};
 }
+
+function reportIsOpenStatus(r){
+  return String((r&&r.status)||"").indexOf("CERRADO")<0 && String((r&&r.status)||"").indexOf("CANCELADO")<0;
+}
+function findOpenCaseNoveltyReport(caseId){
+  return (state.reports||[]).filter(function(r){
+    return r && reportIsOpenStatus(r)
+      && (r.sourceModule==="caso_operativo" || r.sourceType==="case")
+      && String(r.sourceId||r.caseId||r.sourceCaseId||"")===String(caseId||"");
+  }).sort(function(a,b){return new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0);})[0]||null;
+}
+function noveltyThreadEntryFromReport(r){
+  if(!r)return null;
+  return {id:"INI-"+(r.id||uid("INI")),comment:r.detail||r.description||"",status:r.status||"ABIERTO",createdAt:r.createdAt||r.updatedAt||now(),userId:r.createdBy||"",userName:r.createdByName||"Reporta",userRole:r.createdByRole||"",isInitialNovelty:true};
+}
+function normalizeNoveltyThread(r){
+  var out=[],seen={};
+  function add(x){
+    if(!x || !String(x.comment||"").trim())return;
+    var key=[x.id,x.createdAt,x.userName,x.comment].join("|");
+    if(seen[key])return;
+    seen[key]=1;out.push(x);
+  }
+  add(noveltyThreadEntryFromReport(r));
+  (r.managementComments||[]).forEach(add);
+  (r.noveltyThread||[]).forEach(add);
+  return out.sort(function(a,b){return new Date(a.createdAt||0)-new Date(b.createdAt||0);});
+}
+function chatHtmlForReport(r){
+  var thread=normalizeNoveltyThread(r);
+  if(!thread.length)return '<div class="empty">Sin historial de novedad.</div>';
+  return '<div class="novelty-chat">'+thread.map(function(c){
+    var mine=state.user && (String(c.userId||"")===String(state.user.uid||"") || String(c.userName||"")===String(state.user.name||""));
+    return '<article class="chat-bubble '+(mine?'mine':'')+'"><div class="chat-meta"><strong>'+esc(c.userName||'Usuario')+'</strong><span>'+fmtDate(c.createdAt)+'</span></div><p>'+esc(c.comment||'')+'</p><small>'+esc(c.status||'')+(c.isInitialNovelty?' · Inicio de novedad':'')+'</small></article>';
+  }).join('')+'</div>';
+}
+function appendToExistingCaseNoveltyReport(existing,c,detail,fd,targetRole,targetName,target){
+  var status="ACTUALIZADO";
+  var entry={id:uid("COM"),comment:detail,status:status,createdAt:now(),userId:state.user.uid,userName:state.user.name,userRole:state.user.role,isNoveltyUpdate:true,targetRole:targetRole,targetName:targetName,category:fd.get("category")||"Novedad operativa",severity:fd.get("severity")||existing.severity||"Media"};
+  var comments=normalizeNoveltyThread(existing).filter(function(x){return !x.isInitialNovelty;}).concat([entry]);
+  var visible=uniqueArray((existing.visibleRoles||[]).concat(["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion",targetRole,c.assignedRole,"ventas"]));
+  var payload={
+    status:existing.status==="CERRADO"?"ABIERTO":(existing.status||"ABIERTO"),
+    lastNoveltyDetail:detail,
+    lastNoveltyAt:entry.createdAt,
+    lastNoveltyBy:state.user.uid,
+    lastNoveltyByName:state.user.name,
+    lastUpdateType:"NOVEDAD_AGREGADA_AL_HILO",
+    managementComments:comments,
+    noveltyThread:comments,
+    updatedAt:entry.createdAt,
+    managedBy:state.user.uid,
+    managedByName:state.user.name,
+    severity:fd.get("severity")||existing.severity||"Media",
+    category:existing.category||fd.get("category")||"Novedad operativa",
+    targetRole:existing.targetRole||targetRole,
+    assignedRole:existing.assignedRole||targetRole,
+    targetAreaName:existing.targetAreaName||roleTitle(targetRole),
+    visibleRoles:visible
+  };
+  if(targetRole==="ventas" && target){
+    payload.targetSalesKey=existing.targetSalesKey||target.key||"";
+    payload.targetSalesUid=existing.targetSalesUid||target.uid||"";
+    payload.targetSalesName=existing.targetSalesName||targetName;
+    payload.targetSalesEmail=existing.targetSalesEmail||target.email||"";
+    payload.assignedSalesUid=existing.assignedSalesUid||target.uid||"";
+    payload.assignedSalesName=existing.assignedSalesName||targetName;
+    payload.assignedSalesEmail=existing.assignedSalesEmail||target.email||"";
+  }
+  return db.collection("reportes_novedad").doc(existing.id).update(payload).then(function(){
+    Object.assign(existing,payload);
+    return createEvent({type:"REPORT_THREAD_UPDATED",caseId:c.id,process:c.currentProcess,detail:"Novedad agregada al hilo del pedido "+(c.reference||c.id)+" para "+roleTitle(targetRole)+": "+entry.category,targetRole:targetRole,visibleRoles:visible}).catch(function(){return null;});
+  }).then(function(){return existing;});
+}
 function submitGeneralReport(id,fd){
   var c=caseById(id);if(!c)return;
   var detail=String(fd.get("detail")||"").trim();if(!detail){alert("Debe escribir la novedad.");return;}
@@ -6801,8 +6885,14 @@ function submitGeneralReport(id,fd){
     target=resolveReportSalesUser(fd.get("targetSales"),c);if(!target){alert("Debe seleccionar el asesor de Ventas que responderá el reporte.");return;}
     targetName=target.name||target.email||"Asesor de Ventas";targetUid=target.uid||"";targetEmail=target.email||"";targetSalesKey=target.key||"";
   }
+  var existing=findOpenCaseNoveltyReport(c.id);
+  if(existing){
+    appendToExistingCaseNoveltyReport(existing,c,detail,fd,targetRole,targetName,target).then(loadData).then(function(){closeDrawer();openReport(existing.id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo actualizar el hilo de novedad.");});
+    return;
+  }
   var visible=uniqueArray(["admin","super_admin","super_administrador","gerencia","jefe_logistica","lider_recepcion",targetRole,c.assignedRole,"ventas"].concat(targetRole==="compras"?["compras"]:[]));
-  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,caseClient:c.client||"",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:targetRole==="ventas"?targetName:(c.salesAdvisor||''),caseOwnerUid:c.createdBy||'',targetRole:targetRole,assignedRole:targetRole,targetRoleName:roleTitle(targetRole),targetAreaName:roleTitle(targetRole),targetSalesKey:targetSalesKey,targetSalesUid:targetUid,targetSalesName:targetRole==="ventas"?targetName:"",targetSalesEmail:targetEmail,assignedSalesUid:targetUid,assignedSalesName:targetRole==="ventas"?targetName:"",assignedSalesEmail:targetEmail,assignedSalesAt:targetRole==="ventas"?now():"",assignedSalesBy:targetRole==="ventas"?state.user.uid:"",assignedSalesByName:targetRole==="ventas"?state.user.name:"",reportTo:[targetRole,targetName],visibleRoles:visible};
+  var firstEntry={id:uid("COM"),comment:detail,status:"ABIERTO",createdAt:now(),userId:state.user.uid,userName:state.user.name,userRole:state.user.role,isInitialNovelty:true,targetRole:targetRole,targetName:targetName,category:fd.get("category")||"Novedad operativa",severity:fd.get("severity")||"Media"};
+  var report={id:uid("REP"),title:"Novedad · "+(c.reference||c.id),category:fd.get("category")||"Novedad operativa",sourceModule:"caso_operativo",sourceType:"case",sourceId:c.id,sourceReference:c.reference||c.id,process:c.currentProcess,processName:processTitle(c.currentProcess),status:"ABIERTO",severity:fd.get("severity")||"Media",description:detail,detail:detail,lastNoveltyDetail:detail,lastNoveltyAt:firstEntry.createdAt,lastNoveltyBy:state.user.uid,lastNoveltyByName:state.user.name,caseClient:c.client||"",createdAt:now(),updatedAt:firstEntry.createdAt,createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,managementComments:[],noveltyThread:[firstEntry],caseCreatedBy:c.createdBy||'',caseCreatedByName:c.createdByName||'',caseCreatedByEmail:c.createdByEmail||'',salesAdvisor:targetRole==="ventas"?targetName:(c.salesAdvisor||''),caseOwnerUid:c.createdBy||'',targetRole:targetRole,assignedRole:targetRole,targetRoleName:roleTitle(targetRole),targetAreaName:roleTitle(targetRole),targetSalesKey:targetSalesKey,targetSalesUid:targetUid,targetSalesName:targetRole==="ventas"?targetName:"",targetSalesEmail:targetEmail,assignedSalesUid:targetUid,assignedSalesName:targetRole==="ventas"?targetName:"",assignedSalesEmail:targetEmail,assignedSalesAt:targetRole==="ventas"?now():"",assignedSalesBy:targetRole==="ventas"?state.user.uid:"",assignedSalesByName:targetRole==="ventas"?state.user.name:"",reportTo:[targetRole,targetName],visibleRoles:visible};
   saveReportDocument(report).then(function(){return createEvent({type:"REPORT_CREATED",caseId:c.id,process:c.currentProcess,detail:"Novedad interna reportada para respuesta de "+roleTitle(targetRole)+": "+report.category+(targetRole==="ventas"?" · Asesor: "+targetName:""),targetRole:targetRole,visibleRoles:visible}).catch(function(){return null;});}).then(loadData).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el reporte.");});
 }
 
