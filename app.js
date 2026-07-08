@@ -119,6 +119,7 @@ var roles = {
   aux_logistica:"Auxiliar logística",
   auxiliar_corte:"Auxiliar de corte",
   caja:"Caja",
+  cartera:"Cartera",
   inventarios:"Inventarios",
   lider_recepcion:"Líder de recepción",
   auditoria:"Auditoría"
@@ -131,6 +132,7 @@ var FLOW = [
   "corte_cable",
   "facturacion",
   "caja",
+  "cartera",
   "cliente_punto",
   "cliente_recoge",
   "despacho_local",
@@ -188,6 +190,12 @@ var processes = {
     checklist:["Pedido recibido desde facturación","Valor validado","Soporte de pago validado","Recaudo confirmado","Liberación registrada","Pedido listo para despacho"],
     waits:["Cliente no ha pagado","Pago pendiente de validación","Soporte incompleto","Diferencia en valor","Caja no confirma recaudo"],
     next:["cliente_punto","cliente_recoge","despacho_local","despacho_nacional"]
+  },
+  cartera:{
+    code:"S-PR-CAR", title:"Cartera", ownerRoles:["cartera"], icon:"CA",
+    checklist:["Solicitud recibida de Ventas","Comentario comercial revisado","Soporte de conversación visualizado","Gestión validada en SIESA/cartera","Aprobación registrada"],
+    waits:["Falta pantallazo o soporte de conversación","Falta aclaración de Ventas","Gestión pendiente en SIESA","Cliente pendiente por cartera","Autorización de crédito pendiente"],
+    next:["compras","recepcion_pedidos"]
   },
   cliente_punto:{
     code:"S-PR-6", title:"Entrega cliente en punto", ownerRoles:["coordinador_logistico"], icon:"CP",
@@ -461,7 +469,7 @@ function normalizeRole(r){
   if(x==="admin"||x==="administrador"||x==="administracion"||x==="administrador_desarrollador"||x==="admin_desarrollador"||x==="desarrollador"||x==="developer"||x==="administrator")return "admin";
   if(x==="compras"||x==="compra"||x==="area_compras"||x==="comprador"||x==="pve_compras"||x==="gestion_compras")return "compras";
   if(x==="asesor"||x==="asesor_ventas"||x==="asesor_de_ventas"||x==="vendedor"||x==="comercial")return "ventas";
-  if(x==="cartera")return "caja";
+  if(x==="cartera"||x==="credito"||x==="creditos"||x==="area_cartera"||x==="analista_cartera")return "cartera";
   if(x==="jefe_logistico")return "jefe_logistica";
   if(x==="auxiliar_de_corte"||x==="operario_corte"||x==="operario_de_corte")return "auxiliar_corte";
   if(x==="auxiliar_logistica"||x==="auxiliar_de_logistica"||x==="aux_logistico"||x==="auxiliar_despacho")return "aux_logistica";
@@ -928,18 +936,92 @@ function alistamientoAssignableUsers(){
 function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
 function normalizeOrderKindValue(v){return String(v||"").trim().toUpperCase().replace(/\s+/g,"");}
-function isPveOrder(c){
-  if(!c)return false;
-  var kind=normalizeOrderKindValue(c.orderKind||c.tipoPedido||c.orderType||"");
-  var ref=normalizeOrderKindValue(c.reference||c.pedido||c.orderNumber||"");
-  return kind==="PVE" || /^PVE[\-_.\dA-Z]*/.test(ref);
-}
+function isPveOrder(c){return orderKindCode(c)==="PVE";}
 function firstProcessForSalesOrder(orderKind,reference){
   var kind=normalizeOrderKindValue(orderKind||"");
   var ref=normalizeOrderKindValue(reference||"");
   return (kind==="PVE" || /^PVE[\-_.\dA-Z]*/.test(ref)) ? "compras" : "recepcion_pedidos";
 }
-function nextProcessAfterCommercialGate(c){return isPveOrder(c)?"compras":"recepcion_pedidos";}
+function orderKindCodeFromValue(v,reference){
+  var k=normalizeOrderKindValue(v||"");
+  var ref=normalizeOrderKindValue(reference||"");
+  if(k==="PVE"||/^PVE[\-_.\dA-Z]*/.test(ref))return "PVE";
+  if(k==="PVC"||/^PVC[\-_.\dA-Z]*/.test(ref))return "PVC";
+  if(k==="PVN"||/^PVN[\-_.\dA-Z]*/.test(ref))return "PVN";
+  return k||"PVN";
+}
+function orderKindCode(c){
+  if(!c)return "PVN";
+  return orderKindCodeFromValue(c.orderKind||c.tipoPedido||c.orderType||"",c.reference||c.pedido||c.orderNumber||"");
+}
+function isPvcOrder(c){return orderKindCode(c)==="PVC";}
+function isPvnOrder(c){return orderKindCode(c)==="PVN";}
+function financialProcessForOrder(c){
+  var k=orderKindCode(c);
+  return (k==="PVC"||k==="PVE")?"cartera":"caja";
+}
+function financialRoleTitleForOrder(c){return financialProcessForOrder(c)==="cartera"?"Cartera":"Caja";}
+function financialVisibleRolesForOrder(c){
+  return uniqueArray(["ventas",financialProcessForOrder(c),"caja","cartera","jefe_logistica","gerencia","admin","super_admin","super_administrador"]);
+}
+function isFinancialProcess(p){return p==="caja"||p==="cartera";}
+function carteraSupportHtml(c){
+  var sup=(c&&((c.financialSupport)||((c.salesHold||{}).supportInline)||((c.salesHold||{}).support)))||null;
+  if(!sup)return '<div class="notice warning"><strong>Sin soporte visible:</strong> esta gestión debería tener pantallazo, imagen o PDF anexado por Ventas.</div>';
+  var href=sup.inlineUrl||sup.dataUrl||sup.url||sup.driveUrl||"";
+  var link=href?'<a class="btn btn-primary" target="_blank" rel="noopener" href="'+esc(href)+'">Abrir soporte</a>':'<span class="chip warning">Soporte sin URL</span>';
+  return '<div class="notice"><strong>Soporte de Ventas:</strong> '+esc(sup.fileName||sup.name||'Archivo anexado')+' · '+esc(sup.mimeType||'')+'<br>'+link+'</div>';
+}
+function carteraPanel(c){
+  if(!c || (c.currentProcess!=="cartera" && financialProcessForOrder(c)!=="cartera" && !c.financialSupport))return "";
+  var sh=c.salesHold||{};
+  return '<section class="card" style="margin-top:16px"><h3>Gestión de Cartera</h3><p><strong>Tipo:</strong> '+esc(orderKindCode(c))+' · <strong>OC:</strong> '+esc(purchaseOrderValue(c)||'—')+'</p><p><strong>Comentario del asesor:</strong> '+esc(sh.reason||c.description||'Sin comentario')+'</p>'+carteraSupportHtml(c)+'</section>';
+}
+function inlineFinancialSupportFile(file,c,detail){
+  if(!file||!file.name)return Promise.reject(new Error("Debe anexar pantallazo, imagen o PDF de la conversación/gestión de Ventas."));
+  var type=String(file.type||"");
+  if(!/^image\//i.test(type) && type!=="application/pdf")return Promise.reject(new Error("El soporte debe ser imagen o PDF."));
+  if(type==="application/pdf" && file.size>850000)return Promise.reject(new Error("El PDF supera el tamaño permitido para Firebase. Comprímalo o adjunte una imagen del soporte."));
+  return prepareFileForDrive(file,{fastCutUpload:true}).then(function(prep){
+    if(Number(prep.sizeBytes||0)>850000)throw new Error("El soporte comprimido supera el tamaño permitido para Firebase. Use una imagen más liviana o PDF comprimido.");
+    var uploadedAt=now();
+    var dataUrl="data:"+(prep.mimeType||type||"application/octet-stream")+";base64,"+prep.base64;
+    return {ok:true,storage:"firestore_inline",inlineUrl:dataUrl,dataUrl:dataUrl,fileName:prep.fileName||file.name,mimeType:prep.mimeType||type,sizeBytes:prep.sizeBytes||file.size||0,compressed:!!prep.compressed,evidenceType:"SOPORTE_CARTERA_VENTAS",uploadedAt:uploadedAt,uploadedBy:state.user?state.user.uid:"",uploadedByName:state.user?state.user.name:"",processKey:financialProcessForOrder(c),processName:financialRoleTitleForOrder(c),detail:detail||""};
+  });
+}
+function migrateCajaToCarteraIfNeeded(c,reason){
+  if(!c||c.closedAt||c.cancelledAt)return false;
+  if(financialProcessForOrder(c)!=="cartera")return false;
+  var inCaja=(c.currentProcess==="caja"||normalizeRole(c.assignedRole)==="caja"||(c.salesHold&&/CAJA/i.test(String(c.salesHold.status||""))));
+  if(!inCaja)return false;
+  var stamp=now();
+  c.currentProcess="cartera";
+  c.assignedRole="cartera";
+  c.assignedName="Cartera";
+  c.status=c.status==="en_proceso"?"asignado":(c.status||"asignado");
+  c.assignedTo="";c.assignedUid="";c.assignedEmail="";c.assignedUsers=[];c.assignedUserIds=[];
+  c.salesHold=c.salesHold||{history:[]};
+  c.salesHold.destination="cartera";
+  c.salesHold.status=String(c.salesHold.status||"EN_CARTERA").replace(/CAJA/g,"CARTERA");
+  c.salesHold.history=c.salesHold.history||[];
+  c.salesHold.history.push({at:stamp,by:state.user?state.user.name:"Sistema",action:"normalizacion_caja_a_cartera",detail:reason||"PVC/PVE pertenece a Cartera, no a Caja."});
+  addStateHistory(c,"normalizacion_cartera",reason||"Pedido PVC/PVE redirigido de Caja a Cartera.",{tipo_estado:"normalizacion_cartera",fromProcess:"caja",toProcess:"cartera",fecha_hora_inicio_estado:stamp});
+  return true;
+}
+function forceCajaPvcPveToCarteraNow(){
+  if(!state.user || !(canSeeAll()||isAdminRoleValue(state.user.role)||currentUserIsAdminOrSuper())){alert("Solo roles de gestión pueden normalizar Caja/Cartera.");return;}
+  var jobs=[],count=0;
+  (state.cases||[]).forEach(function(c){
+    if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V163: PVC/PVE debe estar en Cartera.")){
+      count++;
+      jobs.push(persistCase(c,{type:"FINANCIAL_ROUTE_NORMALIZED_TO_CARTERA",detail:"Pedido "+orderKindCode(c)+" movido de Caja a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}));
+    }
+  });
+  if(!count){alert("No encontré PVC/PVE pendientes en Caja para mover a Cartera.");return;}
+  Promise.all(jobs).then(loadData).then(function(){renderCases();alert("Listo. Se movieron "+count+" pedido(s) PVC/PVE de Caja a Cartera.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo normalizar Caja/Cartera.");});
+}
+
+function nextProcessAfterCommercialGate(c){return orderKindCode(c)==="PVE"?"compras":"recepcion_pedidos";}
 function purchasesVisibleRoles(){return ["compras","ventas","coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador"];}
 function purchaseGateReleased(c){
   if(!c)return false;
@@ -2112,12 +2194,12 @@ function processGuidePanel(c){
 }
 function createOrderGuidePanel(){
   var steps=[
-    "Digite el número del pedido y la orden de compra con la que nació la venta.",
-    "Seleccione cliente, tipo de pedido y tipo de entrega esperado.",
-    "Defina si entra normal, retenido a Caja o como caso prioritario.",
-    "Agregue una observación corta y cree el pedido para iniciar trazabilidad."
+    "Seleccione el tipo real del pedido: PVC, PVE o PVN.",
+    "Si queda retenido, PVC/PVE se envían a Cartera y PVN a Caja.",
+    "Para retenidos se exige soporte: pantallazo, imagen o PDF de la gestión comercial.",
+    "Cartera aprueba de forma simple y devuelve el pedido al flujo normal."
   ];
-  return '<section class="card process-guide-card"><div class="section-title"><div><h3>Crear pedido en 4 pasos</h3><p>La OC queda visible en el título para que Ventas pueda buscar y auditar el pedido fácilmente.</p></div><span class="chip primary">Ventas</span></div><ol class="process-steps">'+steps.map(function(step,i){return '<li><span>'+(i+1)+'</span><p>'+esc(step)+'</p></li>';}).join('')+'</ol></section>';
+  return '<section class="card process-guide-card"><div class="section-title"><div><h3>Crear pedido en 4 pasos</h3><p>La OC queda visible y la jurisdicción financiera se define por tipo de pedido.</p></div><span class="chip primary">Ventas</span></div><ol class="process-steps">'+steps.map(function(step,i){return '<li><span>'+(i+1)+'</span><p>'+esc(step)+'</p></li>';}).join('')+'</ol></section>';
 }
 
 function mobileSimpleCasePanel(c){
@@ -3021,7 +3103,7 @@ function renderDashboard(){
   var loadingHtml=state.dataLoading?loadingPedidosPanel('Cargando pedidos y bandeja del usuario...'):'';
   var refreshCard='';
   var hiddenNote=hiddenClosed?'<div class="notice" style="margin-top:12px"><strong>Limpieza automática:</strong> '+hiddenClosed+' pedido(s) cerrado(s) con más de 2 días se ocultaron del inicio para evitar congestión. Siguen disponibles en consultas/reportes.</div>':'';
-  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Corregir trazabilidad cruzada</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
+  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+(canSeeAll()||isAdminRoleValue(state.user&&state.user.role)?'<button class="btn btn-gold" data-action="forceCajaPvcPveToCartera">Mover PVC/PVE a Cartera</button>':'')+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Corregir trazabilidad cruzada</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
 }
 
 function caseList(list){
@@ -3044,7 +3126,7 @@ function renderCases(){
 
 function renderCreate(){
   if(!canCreate()){layout(header("Crear pedido","Acceso restringido.")+'<div class="empty">Solo ventas inicia pedidos. Los demás roles reciben por secuencia.</div>');return;}
-  layout(header("Crear pedido","Ventas registra el pedido, orden de compra y define si entra normal, retenido a caja o prioritario.")+createOrderGuidePanel()+'<section class="card"><form class="form" id="caseForm"><div class="notice"><strong>Flujo documental:</strong> ventas registra el pedido PVC/PVN/PVE. Los pedidos PVE pasan primero a Compras; Compras los libera a Recepción de pedidos. Si está retenido, entra primero a Caja y al cerrar vuelve al proceso correspondiente.</div><div class="grid grid-2"><label class="field"><span>Número / nombre del pedido</span><input class="input" name="reference" id="reference" required placeholder="PVC-0000 / PVN-0000 / PVE-0000"></label><label class="field"><span>Orden de compra / OC</span><input class="input" name="purchaseOrder" id="purchaseOrder" placeholder="OC, orden de compra o referencia comercial"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de pedido</span><select class="select" name="orderKind" id="orderKind"><option value="PVC">PVC</option><option value="PVN">PVN</option><option value="PVE">PVE · Compras primero</option><option value="VENTAS">Otro ventas</option><option value="ALUMBRADO">Alumbrado</option></select></label><label class="field"><span>Cliente</span><input class="input" name="client" id="client" placeholder="Nombre del cliente"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de gestión</span><select class="select" name="priorityMode"><option value="normal">Pedido normal a logística / compras si es PVE</option><option value="retenido_caja">Pedido retenido: enviar a Caja</option><option value="gerencia">Pedido prioritario / salida especial a gerencia</option></select></label><label class="field"><span>Motivo / soporte de gestión</span><input class="input" name="priorityReason" placeholder="Retención, pago, autorización, cliente crítico"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de entrega esperado</span><select class="select" name="requestedDelivery" id="requestedDelivery"><option value="">Sin definir</option><option value="cliente_punto">Cliente en punto</option><option value="cliente_recoge">Cliente recoge</option><option value="despacho_local">Despacho local</option><option value="despacho_nacional">Despacho nacional</option></select></label><label class="field"><span>Condición de pago</span><select class="select" name="paymentCondition" id="paymentCondition"><option value="">Sin definir</option><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option><option value="ANTICIPO">Anticipo / mixto</option></select></label></div><label class="field"><span>Observación comercial</span><textarea class="textarea" name="description" id="description" placeholder="Aclaraciones del asesor, condición especial o instrucción inicial."></textarea></label><button class="btn btn-primary" type="submit">Crear pedido</button></form></section>');
+  layout(header("Crear pedido","Ventas registra el pedido y define si entra normal, retenido financiero o prioritario.")+createOrderGuidePanel()+'<section class="card"><form class="form" id="caseForm"><div class="notice"><strong>Regla financiera:</strong> Caja gestiona solo PVN. Cartera gestiona PVC y PVE. Si el pedido queda retenido, debe anexarse soporte de conversación o gestión comercial.</div><div class="grid grid-2"><label class="field"><span>Número / nombre del pedido</span><input class="input" name="reference" id="reference" required placeholder="PVC-0000 / PVN-0000 / PVE-0000"></label><label class="field"><span>Orden de compra / OC</span><input class="input" name="purchaseOrder" id="purchaseOrder" placeholder="OC, orden de compra o referencia comercial"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de pedido</span><select class="select" name="orderKind" id="orderKind" required><option value="PVC">PVC · Cartera si hay retenido</option><option value="PVE">PVE · Cartera si hay retenido / Compras si normal</option><option value="PVN">PVN · Caja si hay retenido</option></select></label><label class="field"><span>Cliente</span><input class="input" name="client" id="client" placeholder="Nombre del cliente"></label></div><div class="grid grid-2"><label class="field"><span>Tipo de gestión</span><select class="select" name="priorityMode" id="priorityMode"><option value="normal">Pedido normal</option><option value="retenido_caja">Pedido retenido financiero · Caja/Cartera según tipo</option><option value="gerencia">Pedido prioritario / salida especial a gerencia</option></select></label><label class="field"><span>Motivo / soporte de gestión</span><input class="input" name="priorityReason" placeholder="Retención, pago, autorización, cliente crítico"></label></div><label class="field"><span>Soporte de conversación o gestión comercial cuando esté retenido</span><input class="input" type="file" name="retainedSupport" id="retainedSupport" accept="image/*,application/pdf"><small class="muted">Para PVC/PVE retenido se guarda en Firebase comprimido. En PDF use archivo liviano.</small></label><div class="grid grid-2"><label class="field"><span>Tipo de entrega esperado</span><select class="select" name="requestedDelivery" id="requestedDelivery"><option value="">Sin definir</option><option value="cliente_punto">Cliente en punto</option><option value="cliente_recoge">Cliente recoge</option><option value="despacho_local">Despacho local</option><option value="despacho_nacional">Despacho nacional</option></select></label><label class="field"><span>Condición de pago</span><select class="select" name="paymentCondition" id="paymentCondition"><option value="">Sin definir</option><option value="CONTADO">Contado</option><option value="CREDITO">Crédito</option><option value="ANTICIPO">Anticipo / mixto</option></select></label></div><label class="field"><span>Observación comercial</span><textarea class="textarea" name="description" id="description" placeholder="Aclaraciones del asesor, condición especial o instrucción inicial."></textarea></label><button class="btn btn-primary" type="submit">Crear pedido</button></form></section>');
   qs("#caseForm").onsubmit=function(e){e.preventDefault();createCase(new FormData(e.target));};
 }
 
@@ -4386,20 +4468,34 @@ extractPedidoItems = function(text){
 };
 
 function createCase(fd){
-  var created=now(), orderKind=fd.get("orderKind")||"VENTAS", reference=fd.get("reference")||"", p=firstProcessForSalesOrder(orderKind,reference), def=processes[p], priority=fd.get("priorityMode")==="gerencia";
-  var retained=fd.get("priorityMode")==="retenido_caja";
-  if(retained){p="caja";def=processes[p];priority=false;}
-  var assignedRole=retained?"caja":(priority?"gerencia":primaryOwnerRole(p));
-  var assignedName=retained?"Caja":(priority?"Gerencia":processOwnerTitle(p));
-  var routeDetail=p==="compras"?"Pedido PVE registrado por ventas y enviado a Compras":"Pedido registrado por ventas y enviado a recepción";
-  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:retained?"asignado":(priority?"pendiente_gerencia":"asignado"),priority:priority?"Pendiente gerencia":(retained?"Retenido caja":"Normal"),reference:reference,purchaseOrder:fd.get("purchaseOrder")||"",orderKind:orderKind,client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:fd.get("paymentCondition")||"",cashBilling:(isCashPaymentValue(fd.get("paymentCondition"))?{required:true,status:"pendiente",source:"ventas",createdAt:created,createdByName:state.user.name}:null),salesAdvisor:state.user.name,createdByEmail:(state.user&&state.user.email)||"",assignedRole:assignedRole,assignedName:assignedName,assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,salesNotes:(String(fd.get("description")||fd.get("priorityReason")||"").trim()?[{id:uid("SN"),type:"Nota inicial de Ventas",detail:String(fd.get("description")||fd.get("priorityReason")||"").trim(),createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||""}]:[]),updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,salesHold:retained?{status:"EN_CAJA",createdAt:created,createdByName:state.user.name,reason:fd.get("priorityReason")||fd.get("description")||"Pedido retenido desde ventas",purchaseOrder:fd.get("purchaseOrder")||"",history:[{at:created,by:state.user.name,action:"Ventas envía pedido retenido a Caja"}]}:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:p==="compras"?"PENDIENTE_COMPRAS":"PENDIENTE_RECEPCION",initialCommitmentDetail:p==="compras"?"PVE debe ser gestionado y liberado por Compras antes de Recepción":""},processStats:{}};
+  var created=now(), orderKind=orderKindCodeFromValue(fd.get("orderKind")||"PVN",fd.get("reference")||""), reference=fd.get("reference")||"", p=firstProcessForSalesOrder(orderKind,reference), def=processes[p], priority=fd.get("priorityMode")==="gerencia";
+  var retained=fd.get("priorityMode")==="retenido_caja", financialDest=financialProcessForOrder({orderKind:orderKind,reference:reference});
+  if(retained){p=financialDest;def=processes[p];priority=false;}
+  var supportFile=fd.get("retainedSupport");
+  if(retained && (!supportFile || !supportFile.name)){alert("Debe anexar pantallazo, imagen o PDF de la conversación/gestión comercial para pedidos retenidos.");return;}
+  var assignedRole=retained?financialDest:(priority?"gerencia":primaryOwnerRole(p));
+  var assignedName=retained?processTitle(financialDest):(priority?"Gerencia":processOwnerTitle(p));
+  var routeDetail=p==="compras"?"Pedido PVE registrado por ventas y enviado a Compras":(retained?"Pedido retenido por ventas y enviado a "+processTitle(financialDest):"Pedido registrado por ventas y enviado a recepción");
+  var c={id:uid("PED"),type:"pedido_venta",procedureCode:def.code,currentProcess:p,status:retained?"asignado":(priority?"pendiente_gerencia":"asignado"),priority:priority?"Pendiente gerencia":(retained?"Retenido "+processTitle(financialDest):"Normal"),reference:reference,purchaseOrder:fd.get("purchaseOrder")||"",orderKind:orderKind,tipoPedido:orderKind,client:fd.get("client"),description:fd.get("description"),requestedDelivery:fd.get("requestedDelivery"),deliveryType:"",paymentCondition:fd.get("paymentCondition")||"",cashBilling:(isCashPaymentValue(fd.get("paymentCondition"))?{required:true,status:"pendiente",source:"ventas",createdAt:created,createdByName:state.user.name}:null),salesAdvisor:state.user.name,createdByEmail:(state.user&&state.user.email)||"",assignedRole:assignedRole,assignedName:assignedName,assignedTo:"",createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,salesNotes:(String(fd.get("description")||fd.get("priorityReason")||"").trim()?[{id:uid("SN"),type:"Nota inicial de Ventas",detail:String(fd.get("description")||fd.get("priorityReason")||"").trim(),createdAt:created,createdBy:state.user.uid,createdByName:state.user.name,createdByEmail:(state.user&&state.user.email)||""}]:[]),updatedAt:created,activeStartedAt:null,waitStartedAt:priority?created:null,deadStartedAt:priority?null:created,totalRequirements:0,checklist:{},openRequirement:null,salesHold:retained?{status:financialDest==="cartera"?"EN_CARTERA":"EN_CAJA",destination:financialDest,createdAt:created,createdByName:state.user.name,reason:fd.get("priorityReason")||fd.get("description")||"Pedido retenido desde ventas",purchaseOrder:fd.get("purchaseOrder")||"",history:[{at:created,by:state.user.name,action:"Ventas envía pedido retenido a "+processTitle(financialDest)}]}:null,priorityApproval:priority?{status:"pendiente",reason:fd.get("priorityReason")||"Solicitud prioritaria",requestedAt:created,requestedByName:state.user.name}:null,evidence:[],pdfExtraction:null,orderItems:[],cutRequests:[],hasCuts:false,documentFlow:{salesRegisteredAt:created,salesRegisteredBy:state.user.name,receptionPdfLoadedAt:null,initialCommitmentStatus:p==="compras"?"PENDIENTE_COMPRAS":(p==="cartera"?"PENDIENTE_CARTERA":"PENDIENTE_RECEPCION"),initialCommitmentDetail:p==="compras"?"PVE debe ser gestionado y liberado por Compras antes de Recepción":(p==="cartera"?"Cartera debe aprobar gestión financiera antes de continuar":"")},processStats:{}};
   if(p==="compras"){c.visibleRoles=purchasesVisibleRoles();c.targetRoles=purchasesVisibleRoles();c.purchaseFlow={required:true,status:"PENDIENTE_COMPRAS",createdAt:created,createdByName:state.user.name,source:"ventas_pve"};}
+  if(retained){c.visibleRoles=financialVisibleRolesForOrder(c);c.targetRoles=c.visibleRoles;}
   procStats(c,p).startedAt=created;
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   resetChecklistForProcess(c,p);
-  addStateHistory(c,"creacion",retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
+  addStateHistory(c,"creacion",routeDetail,{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
   ensurePvePurchasingMetadata(c,"Creación V137: pedido PVE debe pasar por Compras antes de Recepción");
-  persistCase(c,{type:"CASE_CREATED",detail:retained?"Pedido retenido por ventas y enviado a caja":(priority?"Pedido registrado por ventas y enviado a gerencia":routeDetail),targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();}).catch(function(e){showError(e.message||e);});
+  var finish=function(){
+    return persistCase(c,{type:"CASE_CREATED",detail:routeDetail,targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();});
+  };
+  var chain=Promise.resolve();
+  if(retained){
+    chain=inlineFinancialSupportFile(supportFile,c,fd.get("priorityReason")||fd.get("description")||"Soporte retenido financiero").then(function(up){
+      c.financialSupport=up;
+      c.salesHold.supportInline=up;
+      appendEvidence(c,up,"Soporte de conversación/gestión comercial para "+processTitle(financialDest));
+    });
+  }
+  chain.then(finish).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el pedido.");});
 }
 
 function initialCheckFromPdf(item,x){if(!x)return"pending";if(item==="Contenido del pedido completo")return x.orderNumber&&x.client?"ok":"pending";if(item==="Cliente identificado")return x.client?"ok":"pending";if(item==="Forma de pago definida")return x.paymentCondition?"ok":"pending";return"pending";}
@@ -4439,6 +4535,7 @@ function renderDetail(id){
   }
   cacheDetailCase(c);
   var correctedOnOpen=false;
+  if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V163: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
   if(caseLooksBlockedInSales(c)){
     if(releaseAnyCaseIfResolvedByReqOrReport(c,"Corrección automática V160: requerimiento o novedad/reporte ya respondido/cerrado.","Corrección automática V160"))correctedOnOpen=true;
   }
@@ -4480,6 +4577,9 @@ function renderDetail(id){
         if(separationNeedsCashNormalization(c))actions+='<button class="btn btn-success" data-action="releaseSeparationPayment" data-id="'+c.id+'">Registrar pago y liberar facturación</button>';
         else actions+='<button class="btn btn-primary" data-action="delivery" data-id="'+c.id+'">Definir facturación / entrega</button>';
       }
+      else if(c.currentProcess==="cartera"){
+        actions+='<button class="btn btn-success" data-action="approveCartera" data-id="'+c.id+'">Aprobar Cartera</button>';
+      }
       else if(c.currentProcess==="caja"){
         if(c.salesHold&&c.salesHold.status!=="CERRADO")actions+='<button class="btn btn-gold" data-action="boxHold" data-id="'+c.id+'">Gestionar retenido</button>';
         else if(cashBillingPending(c))actions+='<button class="btn btn-primary" data-action="cashInvoice" data-id="'+c.id+'">Subir factura contado y devolver a logística</button>';
@@ -4498,7 +4598,7 @@ function renderDetail(id){
   var detailPanels=checklistPanel?'<section class="grid grid-2 detail-panels" style="margin-top:16px">'+checklistPanel+caseDataPanel+'</section>':'<section class="mobile-desktop-extra" style="margin-top:16px">'+caseDataPanel+'</section>';
   var activeReqActions=(c.openRequirement&&canManageNoDelivery(c))?'<div style="margin-top:10px"><button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Resolver requerimiento / gestionar no entrega</button></div>':'';
   var headerActions=compactDetailActions(actions);
-  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+cancellationNoticePanel(c)+salesNotesPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.45rem">'+fmtHours(totalMs(c))+'</strong><small>Total del pedido</small></article><article class="card kpi time-va"><span>Ocupación</span><strong style="font-size:1.45rem">'+fmtHours(activeMs(c))+'</strong><small>Tiempo tramitando</small></article><article class="card kpi time-wait"><span>Espera / bloqueo</span><strong style="font-size:1.45rem">'+fmtHours(waitMs(c))+'</strong><small>Retenciones y pausas</small></article><article class="card kpi time-dead"><span>NVA</span><strong style="font-size:1.45rem">'+fmtHours(deadMs(c))+'</strong><small>Tiempo muerto</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
+  layout(header(caseDisplayTitle(c),processTitle(c.currentProcess)+" · "+caseDisplaySubtitle(c),headerActions)+mobileSimpleCasePanel(c)+separationNoticePanel(c)+cancellationNoticePanel(c)+salesNotesPanel(c)+carteraPanel(c)+processGuidePanel(c)+'<section class="grid grid-4 detail-metrics mobile-desktop-extra"><article class="card kpi"><span>Lead Time</span><strong style="font-size:1.45rem">'+fmtHours(totalMs(c))+'</strong><small>Total del pedido</small></article><article class="card kpi time-va"><span>Ocupación</span><strong style="font-size:1.45rem">'+fmtHours(activeMs(c))+'</strong><small>Tiempo tramitando</small></article><article class="card kpi time-wait"><span>Espera / bloqueo</span><strong style="font-size:1.45rem">'+fmtHours(waitMs(c))+'</strong><small>Retenciones y pausas</small></article><article class="card kpi time-dead"><span>NVA</span><strong style="font-size:1.45rem">'+fmtHours(deadMs(c))+'</strong><small>Tiempo muerto</small></article></section>'+deliveryMismatchPanel+'<div class="mobile-desktop-extra">'+pdfDocumentCard(c,false)+'</div>'+(c.openRequirement?'<section class="notice" style="margin-top:16px"><strong>Requerimiento activo:</strong> '+esc(c.openRequirement.reason)+' · '+esc(c.openRequirement.detail||"")+activeReqActions+'</section>':"")+(isNoDeliveryCase(c)?'<section class="notice danger" style="margin-top:16px"><strong>Estado no entregado:</strong> el pedido está en requerimiento de entrega y debe ser gestionado por Logística/Líder/Jefe/Gerencia/Super Admin. Si aplica devolución, se debe reenviar a Caja.</section>':"")+cutAlertPanel+orderItemsPanel(c)+'<div class="mobile-desktop-extra">'+cutsPanel(c)+'</div>'+cashBillingDownloadPanel(c)+deliveryEvidencePanel(c)+'<div class="mobile-desktop-extra">'+evidencePanel(c)+'</div>'+detailPanels);
 }
 
 
@@ -4933,7 +5033,11 @@ function deliveryEvidencePanel(c){
 function evidencePanel(c){
   var list=c.evidence||[];
   if(!list.length)return "";
-  return '<section class="card" style="margin-top:16px"><h3>Evidencias del proceso</h3><div class="table-wrap"><table><thead><tr><th>Proceso</th><th>Archivo</th><th>Descripción</th><th>Responsable</th><th>Fecha</th><th>Drive</th></tr></thead><tbody>'+list.slice().reverse().map(function(e){return '<tr><td>'+esc(e.processName||processTitle(e.process))+'</td><td>'+esc(e.fileName||'')+'</td><td>'+esc(e.detail||'')+'</td><td>'+esc(e.uploadedByName||'')+'</td><td>'+esc(fmtDate(e.uploadedAt))+'</td><td>'+(e.driveUrl?'<a href="'+esc(e.driveUrl)+'" target="_blank" rel="noopener">Abrir</a>':'Sin URL')+'</td></tr>';}).join('')+'</tbody></table></div></section>';
+  function evLink(e){
+    var href=e.driveUrl||e.inlineUrl||e.dataUrl||"";
+    return href?'<a href="'+esc(href)+'" target="_blank" rel="noopener">Abrir</a>':'Sin URL';
+  }
+  return '<section class="card" style="margin-top:16px"><h3>Evidencias del proceso</h3><div class="table-wrap"><table><thead><tr><th>Proceso</th><th>Archivo</th><th>Descripción</th><th>Responsable</th><th>Fecha</th><th>Soporte</th></tr></thead><tbody>'+list.slice().reverse().map(function(e){return '<tr><td>'+esc(e.processName||processTitle(e.process))+'</td><td>'+esc(e.fileName||'')+'</td><td>'+esc(e.detail||'')+'</td><td>'+esc(e.uploadedByName||'')+'</td><td>'+esc(fmtDate(e.uploadedAt))+'</td><td>'+evLink(e)+'</td></tr>';}).join('')+'</tbody></table></div></section>';
 }
 
 
@@ -8319,39 +8423,34 @@ function openDelivery(id){
     openSeparationPaymentRelease(id);
     return;
   }
-  var isCaja = c.currentProcess === "caja";
-  var title = isCaja ? "Confirmar caja y enviar a despacho" : "Definir facturación y ruta de entrega";
-  var typeField = isCaja ? "" : '<label class="field"><span>Tipo de pedido</span><select class="select" name="billingType" required><option value="PVC">PVC · continúa facturación logística</option><option value="NO_PVC">No es PVC · relevar a caja</option></select></label>';
+  var isCaja=c.currentProcess==="caja", isCartera=c.currentProcess==="cartera", isFin=isCaja||isCartera;
+  var title=isCaja?"Confirmar Caja y enviar a despacho":(isCartera?"Confirmar Cartera y enviar a despacho":"Definir facturación y ruta de entrega");
+  var currentKind=orderKindCode(c);
+  var typeField=isFin?"":'<label class="field"><span>Tipo de pedido / jurisdicción financiera</span><select class="select" name="billingType" required><option value="LIBERADO">Sin novedad financiera · continuar despacho</option><option value="PVC" '+(currentKind==="PVC"?"selected":"")+'>PVC · si se retiene va a Cartera</option><option value="PVE" '+(currentKind==="PVE"?"selected":"")+'>PVE · si se retiene va a Cartera</option><option value="PVN" '+(currentKind==="PVN"?"selected":"")+'>PVN · si se retiene va a Caja</option></select></label>';
   var selectedRoute=preferredDeliveryRoute(c);
-  var lockedRoute=isCaja && !!normalizedDeliveryRoute(c.pendingDeliveryType);
-  var deliveryField=lockedRoute
-    ? '<input type="hidden" name="next" value="'+esc(selectedRoute)+'"><div class="notice"><strong>Tipo de entrega respetado:</strong> '+esc(processTitle(selectedRoute))+'<br>Esta ruta quedó definida antes de Caja y no se cambia al liberar el pedido.</div>'
-    : '<label class="field"><span>Tipo de entrega</span><select class="select" name="next" required>'+deliveryRouteOptions(selectedRoute)+'</select></label>';
+  var lockedRoute=isFin && !!normalizedDeliveryRoute(c.pendingDeliveryType);
+  var deliveryField=lockedRoute?'<input type="hidden" name="next" value="'+esc(selectedRoute)+'"><div class="notice"><strong>Tipo de entrega respetado:</strong> '+esc(processTitle(selectedRoute))+'</div>':'<label class="field"><span>Tipo de entrega</span><select class="select" name="next" required>'+deliveryRouteOptions(selectedRoute)+'</select></label>';
   drawer(modal(title,'<form class="form" id="delForm">'+typeField+deliveryField+'<label class="field"><span>Observación</span><textarea class="textarea" name="detail"></textarea></label><button class="btn btn-primary" type="submit">Continuar flujo</button></form>'));
   qs("#delForm").onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target), next=normalizedDeliveryRoute(fd.get("next")), billingType=fd.get("billingType")||"CAJA_OK";
-    if(isCaja && c.pendingDeliveryType){next=normalizedDeliveryRoute(c.pendingDeliveryType);c.pendingDeliveryType="";}
+    var fd=new FormData(e.target), next=normalizedDeliveryRoute(fd.get("next")), billingType=fd.get("billingType")||"LIBERADO";
+    if(isFin && c.pendingDeliveryType){next=normalizedDeliveryRoute(c.pendingDeliveryType);c.pendingDeliveryType="";}
     if(!next){alert("Seleccione un tipo de entrega válido.");return;}
     if(c.currentProcess==="facturacion"){c.documentFlow=c.documentFlow||{};c.documentFlow.finalCommitmentStatus="RATIFICADO_POR_FACTURACION";c.documentFlow.finalCommitmentDetail=(fd.get("detail")||"") || "Al facturar se ratifica el compromiso de mercancía.";c.documentFlow.finalCommitmentAt=now();c.documentFlow.finalCommitmentBy=state.user.name;if(c.checklist&&c.checklist["Compromiso ratificado por facturación"]!==undefined)c.checklist["Compromiso ratificado por facturación"]="ok";}
-    if(!isCaja && isCashOrder(c)){
-      c.pendingDeliveryType=next;
-      c.deliveryType=next;
-      c.billingType=billingType;
-      c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"pendiente",source:"facturacion",requestedAt:now(),requestedByName:state.user.name,nextProcess:next});
-      assignToProcess(c,"caja",fd.get("detail")||"Pedido al contado: Caja debe cargar factura antes de continuar a "+processTitle(next)).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    if(!isFin && billingType!=="LIBERADO"){
+      c.orderKind=billingType;c.tipoPedido=billingType;c.pendingDeliveryType=next;c.deliveryType=next;c.billingType=billingType;
+      var fin=financialProcessForOrder(c);
+      assignToProcess(c,fin,fd.get("detail")||("Facturación identifica "+billingType+" con novedad financiera y envía a "+processTitle(fin))).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
       return;
     }
-    if(!isCaja && billingType==="NO_PVC"){
-      c.pendingDeliveryType=next;
-      c.deliveryType=next;
-      c.billingType="NO_PVC";
-      assignToProcess(c,"caja",fd.get("detail")||"Facturación identifica No PVC y releva a caja").then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    if(!isFin && isCashOrder(c)){
+      var finCash=financialProcessForOrder(c);
+      c.pendingDeliveryType=next;c.deliveryType=next;c.billingType=billingType;c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"pendiente",source:"facturacion",requestedAt:now(),requestedByName:state.user.name,nextProcess:next});
+      assignToProcess(c,finCash,fd.get("detail")||"Pedido al contado: "+processTitle(finCash)+" debe validar antes de continuar a "+processTitle(next)).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
       return;
     }
-    c.deliveryType=next;
-    c.billingType=billingType;
-    assignToProcess(c,next,fd.get("detail")||((isCaja?"Caja libera y envía a ":"Facturación define ")+processTitle(next))).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    c.deliveryType=next;c.billingType=billingType;
+    assignToProcess(c,next,fd.get("detail")||((isFin?processTitle(c.currentProcess)+" libera y envía a ":"Facturación define ")+processTitle(next))).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 }
 function openClose(id){
@@ -8878,6 +8977,23 @@ function caseAllAttachments(c){
   Object.keys(c.deliveryEvidence||{}).forEach(function(k){var e=c.deliveryEvidence[k];if(e&&e.driveUrl)out.push({tipo:k,nombre:e.fileName||k,url:e.driveUrl,fecha:e.uploadedAt,responsable:e.uploadedByName});});
   return out;
 }
+
+function approveCartera(id){
+  var c=caseById(id);if(!c)return;
+  if(c.currentProcess!=="cartera"){alert("Este pedido no está en Cartera.");return;}
+  if(!canOperateCurrentProcess(c)){alert("No tiene permiso para aprobar este pedido de Cartera.");return;}
+  if(!confirm("¿Aprobar gestión de Cartera y devolver el pedido al flujo normal?"))return;
+  stopActive(c);stopWait(c);
+  c.salesHold=c.salesHold||{history:[]};
+  c.salesHold.status="CERRADO";
+  c.salesHold.closedAt=now();
+  c.salesHold.closedByName=state.user.name;
+  c.salesHold.history=c.salesHold.history||[];
+  c.salesHold.history.push({at:now(),by:state.user.name,action:"Cartera aprueba gestión",detail:"Aprobado para continuar flujo normal."});
+  c.carteraApproval={approvedAt:now(),approvedBy:state.user.uid,approvedByName:state.user.name,detail:"Aprobado por Cartera"};
+  var next=nextProcessAfterCommercialGate(c);
+  assignToProcess(c,next,"Cartera aprobó gestión financiera y devuelve el pedido a "+processTitle(next)).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+}
 function openBoxHold(id){
   var c=caseById(id);if(!c)return;
   if(separationActive(c) || (c.salesHold && /^SEPARACION/i.test(String(c.salesHold.status||"")))){
@@ -8889,7 +9005,7 @@ function openBoxHold(id){
       c.salesHold.history=c.salesHold.history||[];
       c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});
       if(fd.get('decision')==='ventas_gestiona'){
-        stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja/Cartera',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:'caja',source:'separacion_pedido'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS_SEPARACION';
+        stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja/Cartera',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:c.currentProcess||financialProcessForOrder(c),source:'separacion_pedido'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS_SEPARACION';
         persistCase(c,{type:'SEPARATION_PAYMENT_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','cartera','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
       }else{
         c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;c.salesHold.normalizationDetail=d;
@@ -8899,8 +9015,8 @@ function openBoxHold(id){
     };
     return;
   }
-  drawer(modal('Gestión de pedido retenido en Caja','<form class="form" id="boxHoldForm"><div class="notice"><strong>Pedido retenido:</strong> Caja decide si lo soluciona directamente o si requiere gestión del asesor de ventas. Al cerrar por Caja, el pedido vuelve a Recepción de pedidos. Si se envía a Ventas, al responder vuelve a Caja para verificar pago.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>OC: '+esc(c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||'—')+' · Cliente: '+esc(c.client||'—')+'</p><p>'+esc((c.salesHold||{}).reason||c.description||'')+'</p></section><label class="field"><span>Decisión</span><select class="select" name="decision"><option value="caja_resuelve">Caja lo gestiona y cierra</option><option value="ventas_gestiona">Requiere gestión del asesor de ventas</option></select></label><label class="field"><span>Detalle de gestión *</span><textarea class="textarea" name="detail" required placeholder="Indique validación de pago, cartera, autorización o novedad comercial."></textarea></label><button class="btn btn-primary" type="submit">Guardar decisión</button></form>'));
-  qs('#boxHoldForm').onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),d=String(fd.get('detail')||'');c.salesHold=c.salesHold||{history:[]};c.salesHold.history=c.salesHold.history||[];c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});if(fd.get('decision')==='ventas_gestiona'){stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:'caja'};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS';persistCase(c,{type:'BOX_HOLD_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}else{c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;assignToProcess(c,nextProcessAfterCommercialGate(c),'Caja cerró retenido y devuelve al proceso correspondiente: '+d).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}};
+  drawer(modal('Gestión de pedido retenido en Caja / Cartera','<form class="form" id="boxHoldForm"><div class="notice"><strong>Pedido retenido:</strong> Caja/Cartera decide si lo soluciona directamente o si requiere gestión del asesor de ventas. Al cerrar por Caja, el pedido vuelve a Recepción de pedidos. Si se envía a Ventas, al responder vuelve a Caja para verificar pago.</div><section class="card"><strong>'+esc(c.reference||c.id)+'</strong><p>OC: '+esc(c.purchaseOrder||((c.salesHold||{}).purchaseOrder)||'—')+' · Cliente: '+esc(c.client||'—')+'</p><p>'+esc((c.salesHold||{}).reason||c.description||'')+'</p></section><label class="field"><span>Decisión</span><select class="select" name="decision"><option value="caja_resuelve">Caja lo gestiona y cierra</option><option value="ventas_gestiona">Requiere gestión del asesor de ventas</option></select></label><label class="field"><span>Detalle de gestión *</span><textarea class="textarea" name="detail" required placeholder="Indique validación de pago, cartera, autorización o novedad comercial."></textarea></label><button class="btn btn-primary" type="submit">Guardar decisión</button></form>'));
+  qs('#boxHoldForm').onsubmit=function(e){e.preventDefault();var fd=new FormData(e.target),d=String(fd.get('detail')||'');c.salesHold=c.salesHold||{history:[]};c.salesHold.history=c.salesHold.history||[];c.salesHold.history.push({at:now(),by:state.user.name,action:fd.get('decision'),detail:d});if(fd.get('decision')==='ventas_gestiona'){stopActive(c);c.status='espera_ventas';c.waitStartedAt=now();c.assignedRole='ventas';c.assignedName=roleTitle('ventas');c.openRequirement={reason:'Gestión comercial requerida por Caja',detail:d,targetRole:'ventas',sentAt:now(),sentBy:state.user.uid,returnProcess:c.currentProcess||financialProcessForOrder(c)};c.totalRequirements=Number(c.totalRequirements||0)+1;c.salesHold.status='ESPERA_VENTAS';persistCase(c,{type:'BOX_HOLD_TO_SALES',detail:d,targetRole:'ventas',visibleRoles:['ventas','caja','cartera','jefe_logistica','admin','super_admin','super_administrador']}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}else{c.salesHold.status='CERRADO';c.salesHold.closedAt=now();c.salesHold.closedByName=state.user.name;assignToProcess(c,nextProcessAfterCommercialGate(c),'Caja cerró retenido y devuelve al proceso correspondiente: '+d).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});}};
 }
 
 function openSalesSeparation(id){
@@ -9220,6 +9336,7 @@ function bindActions(){
     if(a==="delivery")openDelivery(id);
     if(a==="cashInvoice")openCashInvoiceBox(id);
     if(a==="boxHold")openBoxHold(id);
+    if(a==="approveCartera")approveCartera(id);
     if(a==="salesNoDelivery")openSalesNoDelivery(id);
     if(a==="salesSeparation")openSalesSeparation(id);
     if(a==="sendSeparationCash")openSeparationPaymentRelease(id);
@@ -9229,6 +9346,7 @@ function bindActions(){
     if(a==="exportSalesReport")safeExportExcel("Registro de Ventas",exportSalesReport);
     if(a==="refreshSalesReports"){refreshRegistroVentas(false);}
     if(a==="forceRefreshCases")forceRefreshCurrentUserCases();
+    if(a==="forceCajaPvcPveToCartera")forceCajaPvcPveToCarteraNow();
     if(a==="forceReleaseSalesBlocks")forceReleaseResolvedSalesBlocksNow();
     if(a==="forceReleaseOneSalesBlock")forceReleaseOneSalesBlock(id);
     if(a==="resendPending")resendPendingItems(id);
