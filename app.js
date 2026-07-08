@@ -187,13 +187,13 @@ var processes = {
   },
   caja:{
     code:"S-PR-5", title:"Caja", ownerRoles:["caja"], icon:"CJ",
-    checklist:["Pedido recibido desde facturación","Valor validado","Soporte de pago validado","Recaudo confirmado","Liberación registrada","Pedido listo para despacho"],
+    checklist:[],
     waits:["Cliente no ha pagado","Pago pendiente de validación","Soporte incompleto","Diferencia en valor","Caja no confirma recaudo"],
     next:["cliente_punto","cliente_recoge","despacho_local","despacho_nacional"]
   },
   cartera:{
     code:"S-PR-CAR", title:"Cartera", ownerRoles:["cartera"], icon:"CA",
-    checklist:["Solicitud recibida de Ventas","Comentario comercial revisado","Soporte de conversación visualizado","Gestión validada en SIESA/cartera","Aprobación registrada"],
+    checklist:[],
     waits:["Falta pantallazo o soporte de conversación","Falta aclaración de Ventas","Gestión pendiente en SIESA","Cliente pendiente por cartera","Autorización de crédito pendiente"],
     next:["compras","recepcion_pedidos"]
   },
@@ -4622,11 +4622,12 @@ function initialCheckFromPdf(item,x){if(!x)return"pending";if(item==="Contenido 
 function canEditGenericChecklist(c){
   if(!c || c.closedAt || !state.user)return false;
   var role=normalizeRole(state.user.role);
-  if(role==="ventas" || role==="caja")return false;
-  if(c.currentProcess==="caja")return false;
+  if(role==="ventas" || role==="caja" || role==="cartera")return false;
+  if(c.currentProcess==="caja" || c.currentProcess==="cartera")return false;
   return canOperateCurrentProcess(c);
 }
 function checklistPanelHtml(c,def){
+  if(c && (c.currentProcess==="caja" || c.currentProcess==="cartera"))return "";
   if(!canEditGenericChecklist(c))return "";
   def=def||processes[c.currentProcess]||processes.recepcion_pedidos;
   var isAlist=(c && c.currentProcess==="alistamiento");
@@ -8473,7 +8474,6 @@ function openCashInvoiceBox(id){
       }
       c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"cargada",invoiceUrl:up.url||up.driveUrl||"",invoiceFileName:up.fileName||up.name||file.name,invoiceFileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,returnedToLogisticsAt:now()});
       c.checklist=c.checklist||{};
-      ["Pedido recibido desde facturación","Valor validado","Soporte de pago validado","Recaudo confirmado","Liberación registrada","Pedido listo para despacho"].forEach(function(k){if(c.checklist[k]!==undefined)c.checklist[k]="ok";});
       appendEvidence(c,up,fd.get("detail")||"Factura de Caja pedido contado con marca de agua FACTURADO + ENTREGADO");
       var next=normalizedDeliveryRoute(c.pendingDeliveryType||c.deliveryType||c.requestedDelivery)||"despacho_nacional";
       c.cashBilling.nextProcess=next;
