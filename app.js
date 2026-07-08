@@ -1200,10 +1200,7 @@ function reportAssignedToCurrentSalesUser(r){
   });
 }
 function reportAssignedToCurrentRole(report){
-  if(!state.user || !report)return false;
-  var r=normalizeRole(state.user.role);
-  var targets=[report.targetRole,report.assignedRole,report.responsibleRole].concat(report.visibleRoles||[]).concat(report.reportTo||[]).map(normalizeRole).filter(Boolean);
-  return targets.indexOf(r)>=0;
+  return recordTargetsCurrentRole(report);
 }
 function canCommentReports(report){var r=state.user?normalizeRole(state.user.role):"";return canManageReports()||r==="lider_recepcion"||reportAssignedToCurrentSalesUser(report)||reportAssignedToCurrentRole(report)||canManageCancellationReport(report);}
 function canDeleteReports(){return state.user && currentUserIsSuperAdmin();}
@@ -1262,22 +1259,88 @@ function reportBelongsToCase(r,c){
     return false;
   });
 }
-function reportRelevantToCurrentUser(r){
-  if(!state.user || !r)return false;
-  var role=normalizeRole(state.user.role);
-  if(canSeeAll()||canAuditViewAll())return true;
-  if(role==="compras")return reportAssignedToCurrentRole(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
-  if(role!=="ventas")return true;
-  if(reportHasSalesAssignee(r)){
-    return reportAssignedToCurrentSalesUser(r) || r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
+
+function userIsGlobalVisibilityRole(){
+  var r=state.user?normalizeRole(state.user.role):"";
+  return currentUserIsAdminOrSuper()||isAdminRoleValue(r)||r==="gerencia"||r==="jefe_logistica"||canAuditViewAll();
+}
+function currentRoleValue(){return state.user?normalizeRole(state.user.role):"";}
+function recordTargetsCurrentRole(obj){
+  if(!state.user||!obj)return false;
+  var r=currentRoleValue();
+  var targets=[obj.targetRole,obj.assignedRole,obj.responsibleRole,obj.toRole,obj.role,obj.targetAreaRole].concat(obj.reportTo||[]).concat(obj.targetRoles||[]).map(normalizeRole).filter(Boolean);
+  return targets.indexOf(r)>=0;
+}
+function recordCreatedByCurrentUser(obj){
+  if(!state.user||!obj)return false;
+  return obj.createdBy===state.user.uid || obj.userId===state.user.uid || samePersonText(obj.createdByName,state.user.name) || samePersonText(obj.createdByEmail,state.user.email);
+}
+function linkedCaseForRecord(obj){
+  if(!obj)return null;
+  var ids=[obj.caseId,obj.sourceId,obj.sourceCaseId,obj.caseUid,obj.caseDocumentId].map(function(x){return String(x||"").trim();}).filter(Boolean);
+  for(var i=0;i<ids.length;i++){var c=caseById(ids[i]);if(c)return c;}
+  for(var x=0;x<(state.cases||[]).length;x++){if(reportBelongsToCase(obj,state.cases[x]))return state.cases[x];}
+  return null;
+}
+function caseBelongsToCurrentRoleStrict(c){
+  if(!state.user||!c)return false;
+  var r=currentRoleValue();
+  if(recordCreatedByCurrentUser(c))return true;
+  if(r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
+  if(shouldHideFromCajaBecauseCartera(c))return false;
+  if(shouldShowToCarteraDespiteCaja(c))return true;
+  if(currentUserIsAssignedToCase(c)||currentUserDirectlyAssigned(c))return true;
+  if(normalizeRole(c.assignedRole)===r)return true;
+  if(canAccessProcess(r,c.currentProcess))return true;
+  return false;
+}
+function reportBelongsToCurrentAreaStrict(r){
+  if(!state.user||!r)return false;
+  var role=currentRoleValue();
+  if(recordCreatedByCurrentUser(r))return true;
+  if(role==="ventas"){
+    if(reportHasSalesAssignee(r))return reportAssignedToCurrentSalesUser(r)||recordCreatedByCurrentUser(r);
+    var ownCases=(state.cases||[]).filter(function(c){return caseBelongsToCurrentSalesUser(c);});
+    return ownCases.some(function(c){return reportBelongsToCase(r,c);});
   }
-  var ownCases=(state.cases||[]).filter(function(c){return sameSalesOwner ? sameSalesOwner(c) : (c.createdBy===state.user.uid);});
-  if(ownCases.some(function(c){return reportBelongsToCase(r,c);})){return true;}
-  if(reportLooksLinkedToCase(r)){
-    if(samePersonText(r.caseCreatedByName,state.user.name) || samePersonText(r.salesAdvisor,state.user.name) || samePersonText(r.caseCreatedByEmail,state.user.email))return true;
+  if(recordTargetsCurrentRole(r))return true;
+  if(role==="lider_recepcion" && r.sourceModule==="recepcion_mercancia")return true;
+  if(canManageCancellationReport(r))return true;
+  var c=linkedCaseForRecord(r);
+  if(c)return caseBelongsToCurrentRoleStrict(c);
+  return false;
+}
+function requirementTargetsCurrentArea(c,req){
+  if(!state.user||!c)return false;
+  var r=currentRoleValue();
+  if(req && requirementIsPending(req)){
+    if(normalizeRole(req.targetRole)===r || normalizeRole(req.assignedRole)===r)return true;
+    if(req.sentBy===state.user.uid || samePersonText(req.sentByName,state.user.name))return true;
+  }
+  if(c.openRequirement && requirementIsPending(c.openRequirement)){
+    if(normalizeRole(c.openRequirement.targetRole)===r || normalizeRole(c.openRequirement.assignedRole)===r)return true;
+    if(c.openRequirement.sentBy===state.user.uid || samePersonText(c.openRequirement.sentByName,state.user.name))return true;
+  }
+  if(isNoDeliveryCase(c)){
+    if(r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
+    if(canAccessProcess(r,c.currentProcess)||normalizeRole(c.assignedRole)===r)return true;
     return false;
   }
-  return r.createdBy===state.user.uid || samePersonText(r.createdByName,state.user.name) || samePersonText(r.createdByEmail,state.user.email);
+  return caseBelongsToCurrentRoleStrict(c) && (c.status==="espera_ventas"||c.status==="en_espera"||!!c.openRequirement);
+}
+function eventBelongsToCurrentAreaStrict(e){
+  if(!state.user||!e)return false;
+  if(recordCreatedByCurrentUser(e))return true;
+  if(recordTargetsCurrentRole(e))return true;
+  var c=e.caseId?caseById(e.caseId):linkedCaseForRecord(e);
+  if(c)return caseBelongsToCurrentRoleStrict(c);
+  if(e.process)return canAccessProcess(currentRoleValue(),e.process);
+  return false;
+}
+function reportRelevantToCurrentUser(r){
+  if(!state.user || !r)return false;
+  if(userIsGlobalVisibilityRole())return true;
+  return reportBelongsToCurrentAreaStrict(r);
 }
 function filterReportsForCurrentUser(list){
   return (list||[]).filter(reportRelevantToCurrentUser);
@@ -1858,7 +1921,17 @@ function loadCasesForRole(){
 function loadEventsForRole(){
   if(canSeeAll()||canAuditViewAll())return db.collection("case_events").orderBy("timestamp","desc").limit(900).get().then(docsToList).catch(function(){return [];});
   if(!state.user)return Promise.resolve([]);
-  return db.collection("case_events").where("visibleRoles","array-contains",normalizeRole(state.user.role)).limit(120).get().then(docsToList).catch(function(){return [];});
+  var role=currentRoleValue();
+  var queries=[
+    safeQuerySnapshot(db.collection("case_events").where("targetRole","==",role).limit(120),"events.targetRole:"+role),
+    safeQuerySnapshot(db.collection("case_events").where("assignedRole","==",role).limit(120),"events.assignedRole:"+role),
+    safeQuerySnapshot(db.collection("case_events").where("process","==",role).limit(120),"events.process:"+role),
+    safeQuerySnapshot(db.collection("case_events").where("visibleRoles","array-contains",role).limit(120),"events.visibleRoles:"+role)
+  ];
+  return Promise.all(queries).then(function(snaps){
+    var all=[];snaps.forEach(function(s){if(s)all=all.concat(docsToList(s));});
+    return sortByUpdated(uniqueById(all)).filter(eventRelevantToCurrentUser).slice(0,160);
+  }).catch(function(){return [];});
 }
 
 function loadUsersForRole(){
@@ -1885,7 +1958,9 @@ function loadProjectOrdersForRole(){
 
 function loadReportsForRole(){
   if(!canAccessReportsModule())return Promise.resolve([]);
-  return db.collection("reportes_novedad").orderBy("updatedAt","desc").limit(1000).get().then(docsToList).catch(function(){return [];});
+  return db.collection("reportes_novedad").orderBy("updatedAt","desc").limit(1000).get().then(function(snap){
+    return docsToList(snap).filter(reportRelevantToCurrentUser);
+  }).catch(function(){return [];});
 }
 
 function safeLoadBlock(label, loader){
@@ -2274,8 +2349,6 @@ function caseRelevantToCurrentUser(c){
   var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
   if(normalizeRole(c.assignedRole)===r || c.assignedTo===state.user.uid || c.assignedUid===state.user.uid || c.createdBy===state.user.uid)return true;
   if(Array.isArray(c.assignedUserIds) && c.assignedUserIds.indexOf(state.user.uid)>=0)return true;
-  if(Array.isArray(c.visibleRoles) && c.visibleRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
-  if(Array.isArray(c.targetRoles) && c.targetRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
   if(r==="auxiliar_corte" && c.hasCuts===true)return true;
   return canAccessProcess(r,c.currentProcess);
 }
@@ -2491,19 +2564,8 @@ function eventHash(list){
 
 function eventRelevantToCurrentUser(e){
   if(!state.user || !e)return false;
-  if(canSeeAll()||canAuditViewAll())return true;
-  var relatedCase=e.caseId?caseById(e.caseId):null;
-  if(relatedCase && (!currentUserAllowedByDeliveryRoute(relatedCase)||currentUserBlockedByAssignment(relatedCase)))return false;
-  if(!relatedCase && e.process && isDeliveryProcess(e.process) && !currentUserAllowedByDeliveryProcess(e.process))return false;
-  var r=normalizeRole(state.user.role);
-  var aliases=roleQueryAliases(state.user.role).map(normalizeRole);
-  if(e.userId===state.user.uid || e.createdBy===state.user.uid || e.assignedTo===state.user.uid || e.assignedUid===state.user.uid)return true;
-  if(Array.isArray(e.assignedUserIds) && e.assignedUserIds.indexOf(state.user.uid)>=0)return true;
-  if(normalizeRole(e.targetRole)===r || normalizeRole(e.assignedRole)===r || normalizeRole(e.sourceRole)===r || normalizeRole(e.role)===r)return true;
-  if(Array.isArray(e.visibleRoles) && e.visibleRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
-  if(Array.isArray(e.targetRoles) && e.targetRoles.map(normalizeRole).some(function(x){return aliases.indexOf(x)>=0;}))return true;
-  var c=relatedCase||null;
-  return c?caseRelevantToCurrentUser(c):false;
+  if(userIsGlobalVisibilityRole())return true;
+  return eventBelongsToCurrentAreaStrict(e);
 }
 
 function eventKindLabel(type){
@@ -6412,24 +6474,16 @@ function isRequirementVisibleForUser(c){
   var unresolved=pendingRequirements(c);
   var activeReq=(c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja"||!!c.openRequirement||unresolved.length>0);
   if(!activeReq)return false;
-  if(canSeeAll()||canAuditViewAll())return !!activeReq;
-  var r=normalizeRole(state.user.role);
-  if(isNoDeliveryCase(c) && noDeliveryVisibleRoles().map(normalizeRole).indexOf(r)>=0)return true;
-  if(c.openRequirement && requirementIsPending(c.openRequirement)){
-    if(normalizeRole(c.openRequirement.targetRole)===r)return true;
-    if(Array.isArray(c.openRequirement.visibleRoles) && c.openRequirement.visibleRoles.map(normalizeRole).indexOf(r)>=0)return true;
-  }
-  if(normalizeRole(c.assignedRole)===r && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja"))return true;
-  return unresolved.some(function(req){
-    return normalizeRole(req.targetRole)===r || (Array.isArray(req.visibleRoles)&&req.visibleRoles.map(normalizeRole).indexOf(r)>=0);
-  });
+  if(userIsGlobalVisibilityRole())return !!activeReq;
+  if(c.openRequirement && requirementTargetsCurrentArea(c,c.openRequirement))return true;
+  return unresolved.some(function(req){return requirementTargetsCurrentArea(c,req);});
 }
 function visibleRequirements(){
   return state.cases.filter(isRequirementVisibleForUser).sort(function(a,b){return new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt);});
 }
 function renderRequirements(){
   var title=state.user&&normalizeRole(state.user.role)==="ventas"?"Requerimientos de Ventas":"Requerimientos";
-  var subtitle=state.user&&normalizeRole(state.user.role)==="ventas"?"Solicitudes enviadas a Ventas desde corte, alistamiento u otros procesos para corregir o aclarar el pedido.":"Trazabilidad de requerimientos, incluidos pedidos marcados como no entregados y devoluciones reenviadas a Caja.";
+  var subtitle=state.user&&normalizeRole(state.user.role)==="ventas"?"Solicitudes enviadas a Ventas sobre pedidos propios o asignados.":"Solo se muestran requerimientos asignados a su área, proceso o usuario.";
   layout(header(title,subtitle)+caseList(visibleRequirements()));
 }
 function cutApprovalsForRole(){
@@ -7303,10 +7357,11 @@ function renderReports(){
     if(canDeleteReports())manage+='<button class="btn btn-small btn-danger" data-action="deleteReport" data-id="'+esc(r.id)+'">Eliminar</button>';
     return '<tr><td><strong>'+esc(r.title||r.id)+'</strong><br><small>'+esc(r.category||r.sourceModule||'Reporte')+'</small></td><td>'+esc(r.sourceReference||r.sourceId||'')+'</td><td>'+esc(r.createdByName||'')+'</td><td><strong>'+esc(reportTargetName(r))+'</strong><br><small>'+esc(reportTargetCaption(r))+'</small></td><td>'+reportStatusChip(r.status)+'</td><td>'+esc(r.severity||'')+'</td><td>'+normalizeNoveltyThread(r).length+'</td><td>'+fmtDate(r.updatedAt||r.createdAt)+'</td><td><div class="top-actions">'+manage+'</div></td></tr>';
   }).join('');
-  layout(header("Reportes y novedades","Las novedades por pedido se agrupan solo con identificador real. Use la corrección forzada para sacar notas o trazas cruzadas que ya hayan quedado guardadas.",canForceReportThreadMigration()?'<button class="btn btn-gold" data-action="forceReportThreads">Unir novedades antiguas</button><button class="btn btn-danger" data-action="repairMixedReportThreads">Separar hilos mezclados</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Forzar corrección trazabilidad</button>':'')+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
+  layout(header("Reportes y novedades","Solo se muestran reportes de su área, módulo, pedidos propios o asignaciones directas. No se muestran novedades de otros módulos.",canForceReportThreadMigration()?'<button class="btn btn-gold" data-action="forceReportThreads">Unir novedades antiguas</button><button class="btn btn-danger" data-action="repairMixedReportThreads">Separar hilos mezclados</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Forzar corrección trazabilidad</button>':'')+'<section class="grid grid-3"><article class="card kpi"><span>Total reportes</span><strong>'+list.length+'</strong><small>Registros</small></article><article class="card kpi"><span>Abiertos</span><strong>'+open+'</strong><small>En gestión</small></article><article class="card kpi"><span>Recepción retenida</span><strong>'+retained+'</strong><small>Cierre solo recepción</small></article></section><section class="card" style="margin-top:16px"><h3>Bandeja de novedades</h3><div class="table-wrap"><table><thead><tr><th>Reporte</th><th>Referencia</th><th>Reporta</th><th>Responsable</th><th>Estado</th><th>Criticidad</th><th>Actualizaciones</th><th>Fecha</th><th>Acción</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9">Sin reportes registrados.</td></tr>')+'</tbody></table></div></section>');
 }
 function openReport(id){
   var r=(state.reports||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
+  if(!reportRelevantToCurrentUser(r)){alert("Este reporte pertenece a otra área o módulo y no está disponible para este perfil.");return;}
   var comments=chatHtmlForReport(r);
   var sourceBtn='';
   if(r.sourceModule==="recepcion_mercancia" && canAccessReceptionGoods())sourceBtn='<button class="btn btn-primary" data-action="openReceptionGoods" data-id="'+esc(r.sourceId)+'">Abrir ingreso de recepción</button>';
