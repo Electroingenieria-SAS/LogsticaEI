@@ -952,6 +952,11 @@ function orderKindCodeFromValue(v,reference){
 }
 function orderKindCode(c){
   if(!c)return "PVN";
+  var fields=[c.orderKind,c.tipoPedido,c.orderType,c.reference,c.pedido,c.orderNumber,c.caseNumber,c.description,c.priority,c.billingType,(c.salesHold||{}).reason,(c.salesHold||{}).status].join(" ");
+  var t=normalizeOrderKindValue(fields);
+  if(/PVE/.test(t))return "PVE";
+  if(/PVC/.test(t))return "PVC";
+  if(/PVN/.test(t))return "PVN";
   return orderKindCodeFromValue(c.orderKind||c.tipoPedido||c.orderType||"",c.reference||c.pedido||c.orderNumber||"");
 }
 function isPvcOrder(c){return orderKindCode(c)==="PVC";}
@@ -1009,7 +1014,7 @@ function migrateCajaToCarteraIfNeeded(c,reason){
   return true;
 }
 function forceCajaPvcPveToCarteraNow(){
-  if(!state.user || !(canSeeAll()||isAdminRoleValue(state.user.role)||currentUserIsAdminOrSuper())){alert("Solo roles de gestión pueden normalizar Caja/Cartera.");return;}
+  if(!state.user || !(canSeeAll()||isAdminRoleValue(state.user.role)||currentUserIsAdminOrSuper()||normalizeRole(state.user.role)==="caja"||normalizeRole(state.user.role)==="cartera")){alert("Solo Caja, Cartera o roles de gestión pueden normalizar Caja/Cartera.");return;}
   var jobs=[],count=0;
   (state.cases||[]).forEach(function(c){
     if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V163: PVC/PVE debe estar en Cartera.")){
@@ -1020,6 +1025,38 @@ function forceCajaPvcPveToCarteraNow(){
   if(!count){alert("No encontré PVC/PVE pendientes en Caja para mover a Cartera.");return;}
   Promise.all(jobs).then(loadData).then(function(){renderCases();alert("Listo. Se movieron "+count+" pedido(s) PVC/PVE de Caja a Cartera.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo normalizar Caja/Cartera.");});
 }
+function canNormalizeCajaCarteraSilently(c){
+  if(!state.user||!c)return false;
+  var r=normalizeRole(state.user.role);
+  if(canSeeAll()||isAdminRoleValue(r)||currentUserIsAdminOrSuper())return true;
+  if(r==="caja" && (c.currentProcess==="caja"||normalizeRole(c.assignedRole)==="caja"))return true;
+  if(r==="cartera")return true;
+  return false;
+}
+function autoNormalizeLoadedPvcPveFromCajaToCartera(reason){
+  if(!firebaseReady||!db||!state.user)return Promise.resolve(0);
+  var jobs=[],count=0;
+  (state.cases||[]).forEach(function(c){
+    if(!c||!canNormalizeCajaCarteraSilently(c))return;
+    if(migrateCajaToCarteraIfNeeded(c,reason||"Normalización automática V164: PVC/PVE no puede permanecer en Caja.")){
+      count++;
+      c.visibleRoles=financialVisibleRolesForOrder(c);
+      c.targetRoles=financialVisibleRolesForOrder(c);
+      jobs.push(db.collection("cases").doc(c.id).set(c,{merge:true}).then(function(){
+        return createEvent({type:"AUTO_CARTERA_REDIRECT_V164",caseId:c.id,process:"cartera",detail:"PVC/PVE detectado en Caja y redirigido automáticamente a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}).catch(function(){return null;});
+      }).catch(function(e){console.warn("No se pudo normalizar a Cartera",c.id,e);return null;}));
+    }
+  });
+  if(!jobs.length)return Promise.resolve(0);
+  return Promise.all(jobs).then(function(){return count;});
+}
+function shouldHideFromCajaBecauseCartera(c){
+  return !!(c && normalizeRole(state.user&&state.user.role)==="caja" && financialProcessForOrder(c)==="cartera" && (c.currentProcess==="caja"||normalizeRole(c.assignedRole)==="caja"||((c.salesHold||{}).destination==="cartera")));
+}
+function shouldShowToCarteraDespiteCaja(c){
+  return !!(c && normalizeRole(state.user&&state.user.role)==="cartera" && financialProcessForOrder(c)==="cartera" && (c.currentProcess==="caja"||c.currentProcess==="cartera"||normalizeRole(c.assignedRole)==="caja"||normalizeRole(c.assignedRole)==="cartera"||((c.salesHold||{}).destination==="cartera")));
+}
+
 
 function nextProcessAfterCommercialGate(c){return orderKindCode(c)==="PVE"?"compras":"recepcion_pedidos";}
 function purchasesVisibleRoles(){return ["compras","ventas","coordinador_logistico","lider_logistico","lider_logistica","jefe_logistica","gerencia","admin","super_admin","super_administrador"];}
@@ -1509,6 +1546,12 @@ function roleQueryAliases(roleValue){
   if(normalized==="auxiliar_corte"){
     aliases=aliases.concat(["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte"]);
   }
+  if(normalized==="cartera"){
+    aliases=aliases.concat(["cartera","Cartera","credito","creditos","area_cartera","analista_cartera"]);
+  }
+  if(normalized==="caja"){
+    aliases=aliases.concat(["caja","Caja"]);
+  }
   if(normalized==="compras"){
     aliases=aliases.concat(["compras","compra","area_compras","comprador","pve_compras","gestion_compras","Compras"]);
   }
@@ -1771,6 +1814,12 @@ function loadCasesForRole(){
     return loadSalesCasesFast();
   }
 
+  if(nr==="cartera"){
+    queries.push(safeQuerySnapshot(db.collection("cases").where("currentProcess","==","caja"),"cases.cartera.misroutedCaja"));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==","caja"),"cases.cartera.misroutedAssignedCaja"));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("salesHold.destination","==","cartera"),"cases.cartera.destination"));
+  }
+
   if(nr==="auxiliar_corte"){
     queries.push(safeQuerySnapshot(db.collection("cases").where("hasCuts","==",true),"cases.hasCuts"));
   }
@@ -1869,9 +1918,13 @@ function loadData(){
     state.projectOrders=res[5]||[];
     state.reports=filterReportsForCurrentUser(res[6]||[]);
     state.dataLoading=false;
+    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera("Normalización al cargar datos V164: PVC/PVE debe ir a Cartera.");
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
     }
+    return normalizePromise.then(function(moved){
+      if(moved>0)console.info("[V164] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+    });
   }).catch(function(e){
     state.dataLoading=false;
     throw e;
@@ -2212,6 +2265,8 @@ function mobileSimpleCasePanel(c){
 
 function caseRelevantToCurrentUser(c){
   if(!state.user || !c)return false;
+  if(shouldHideFromCajaBecauseCartera(c))return false;
+  if(shouldShowToCarteraDespiteCaja(c))return true;
   if(canSeeAll()||canAuditViewAll())return true;
   if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(currentUserBlockedByAssignment(c))return false;
@@ -3070,6 +3125,8 @@ function login(fd){
 
 function caseVisibleForCurrentUser(c){
   if(!state.user || !c)return false;
+  if(shouldHideFromCajaBecauseCartera(c))return false;
+  if(shouldShowToCarteraDespiteCaja(c))return true;
   if(canSeeAll()||canAuditViewAll())return true;
   if(!currentUserAllowedByDeliveryRoute(c))return false;
   if(c.createdBy===state.user.uid)return true;
@@ -3103,7 +3160,7 @@ function renderDashboard(){
   var loadingHtml=state.dataLoading?loadingPedidosPanel('Cargando pedidos y bandeja del usuario...'):'';
   var refreshCard='';
   var hiddenNote=hiddenClosed?'<div class="notice" style="margin-top:12px"><strong>Limpieza automática:</strong> '+hiddenClosed+' pedido(s) cerrado(s) con más de 2 días se ocultaron del inicio para evitar congestión. Siguen disponibles en consultas/reportes.</div>':'';
-  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+(canSeeAll()||isAdminRoleValue(state.user&&state.user.role)?'<button class="btn btn-gold" data-action="forceCajaPvcPveToCartera">Mover PVC/PVE a Cartera</button>':'')+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Corregir trazabilidad cruzada</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
+  layout(header("Inicio","Bandeja operativa según el flujo secuencial.",'<button class="btn btn-gold" data-action="forceRefreshCases">Actualizar pedidos</button>'+((canSeeAll()||isAdminRoleValue(state.user&&state.user.role)||normalizeRole(state.user&&state.user.role)==='caja'||normalizeRole(state.user&&state.user.role)==='cartera')?'<button class="btn btn-gold" data-action="forceCajaPvcPveToCartera">Mover PVC/PVE a Cartera</button>':'')+(canForceReleaseSalesBlocks()?'<button class="btn btn-gold" data-action="forceReleaseSalesBlocks">Liberar bloqueos Ventas</button><button class="btn btn-danger" data-action="forceStrictTraceCorrection">Corregir trazabilidad cruzada</button>':'')+((canNotify()&&Notification.permission!=="granted")?'<button class="btn btn-gold" data-action="notifyOn">Activar notificaciones</button>':'')+(canCreate()?'<button class="btn btn-primary" data-route="create">Crear pedido</button>':''))+loadingHtml+'<section class="grid grid-4 mobile-kpi-strip" style="margin-top:16px"><article class="card kpi"><span>Abiertos</span><strong>'+open.length+'</strong><small>Casos visibles</small></article><article class="card kpi"><span>Esperas</span><strong>'+waits.length+'</strong><small>Bloqueos activos</small></article><article class="card kpi"><span>Requerimientos</span><strong>'+state.cases.filter(function(c){return !caseClosedOlderThanDays(c,2) && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja");}).length+'</strong><small>En resolución</small></article><article class="card kpi"><span>Prioritarios</span><strong>'+state.cases.filter(function(c){return c.priority==="Alta"&&!c.closedAt;}).length+'</strong><small>Gerencia aprobada</small></article></section>'+hiddenNote+'<section class="card mobile-orders-section" style="margin-top:16px"><h3>Casos recientes</h3>'+(state.dataLoading?'<div class="case-skeleton-list"><span></span><span></span><span></span></div>':caseList(list.slice(0,10)))+'</section>');
 }
 
 function caseList(list){
