@@ -938,9 +938,22 @@ function primaryOwnerRole(p){return processOwnerRoles(p)[0]||"";}
 function processOwnerTitle(p){return processOwnerRoles(p).map(function(r){return roleTitle(r);}).join(" / ");}
 function normalizeOrderKindValue(v){return String(v||"").trim().toUpperCase().replace(/\s+/g,"");}
 function isPveOrder(c){return orderKindCode(c)==="PVE";}
+function legacyPveSignals(c){
+  if(!c)return false;
+  var df=c.documentFlow||{}, pf=c.purchaseFlow||{};
+  var txt=normalizeOrderKindValue([c.orderKind,c.tipoPedido,c.orderType,c.reference,c.pedido,c.caseNumber,c.orderNumber,c.description,c.billingType,c.purchaseType,c.flowType,df.initialCommitmentStatus,df.purchaseReleasedBy,pf.status,pf.migrationReason].join(" "));
+  if(/PVE/.test(txt))return true;
+  if(pf.releasedAt||pf.forcedToPurchasesAt||df.purchaseReleasedAt||df.purchaseForcedAt)return true;
+  if(df.initialCommitmentStatus==="PENDIENTE_RECEPCION" && (pf.status==="LIBERADO"||df.purchaseReleasedAt))return true;
+  return false;
+}
+function isPveOrderForMerchandise(c){
+  return isPveOrder(c)||legacyPveSignals(c);
+}
+
 function pveMerchandiseEligible(c){
   if(!c || c.closedAt || c.cancelledAt)return false;
-  if(!isPveOrder(c))return false;
+  if(!isPveOrderForMerchandise(c))return false;
   if(["compras","cartera","caja"].indexOf(c.currentProcess)>=0)return false;
   if(!processes[c.currentProcess])return false;
   return ["recepcion_pedidos","alistamiento","corte_cable","facturacion"].indexOf(c.currentProcess)>=0;
@@ -955,14 +968,14 @@ function pveMerchandiseWaiting(c){
 }
 function pveMerchandiseActionHtml(c){
   if(!canManagePveMerchandiseWait(c))return "";
-  if(pveMerchandiseWaiting(c))return '<button class="btn btn-small btn-success" data-action="pveGoodsOk" data-id="'+esc(c.id)+'">OK mercancía</button>';
-  return '<button class="btn btn-small btn-gold" data-action="pveGoodsWait" data-id="'+esc(c.id)+'">Marcar espera de mercancía</button>';
+  if(pveMerchandiseWaiting(c))return '<button class="btn btn-small btn-success" data-action="pveGoodsOk" data-id="'+esc(c.id)+'" title="Liberar PVE cuando la mercancía ya llegó">OK mercancía</button>';
+  return '<button class="btn btn-small btn-gold" data-action="pveGoodsWait" data-id="'+esc(c.id)+'" title="Medir espera de llegada de mercancía en PVE">Marcar espera de mercancía</button>';
 }
 function pveMerchandiseChipHtml(c){
   if(!pveMerchandiseEligible(c))return "";
   if(pveMerchandiseWaiting(c))return '<span class="chip warning">PVE espera mercancía</span>';
   if(c.pveMerchandiseWait && c.pveMerchandiseWait.status==="OK")return '<span class="chip success">PVE mercancía OK</span>';
-  return '';
+  return '<span class="chip gold-chip">PVE mercancía</span>';
 }
 
 function pveMerchandisePanel(c){
@@ -3316,7 +3329,7 @@ function caseList(list){
     var alert=(c.cutReturnAlerts||[]).slice(-1)[0];
     var alertHtml=alert?'<div class="notice success" style="margin-top:10px;padding:10px 12px"><strong>Carreto disponible para empaletar:</strong> '+esc(alert.reference||alert.cutCode||'Corte')+' · '+esc(alert.meters||'')+' m · '+esc(alert.detail||'Recoger en corte, llevar a alistamiento y empaletar para facturación.')+'</div>':'';
     var assignedLabel=assignedPeopleText(c);
-    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+pveMerchandiseChipHtml(c)+'<span class="chip info">'+fmtHours(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+(c.status==="asignado"&&canOperateCurrentProcess(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+(canDeleteReceptionPedidosCase(c)?'<button class="btn btn-danger btn-small" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar</button>':"")+'</div></article>';
+    return'<article class="case-card mobile-feed-card"><div class="case-card-main"><div class="case-feed-top"><div class="case-feed-avatar">'+esc((caseDisplayTitle(c)||'P').slice(0,2).toUpperCase())+'</div><div class="case-feed-title"><h3>'+esc(caseDisplayTitle(c))+'</h3><p class="case-card-subtitle">'+esc(caseDisplaySubtitle(c))+'</p></div></div><div class="case-meta">'+(c.priority==="Alta"?'<span class="chip warning">Prioritario</span>':'')+(purchaseOrderValue(c)?'<span class="chip gold-chip">OC '+esc(purchaseOrderValue(c))+'</span>':'')+'<span class="chip primary">'+esc(processes[c.currentProcess]?processes[c.currentProcess].code:"")+'</span><span class="chip process-chip">'+esc(processTitle(c.currentProcess))+'</span>'+statusChip(c.status)+pveMerchandiseChipHtml(c)+'<span class="chip info">'+fmtHours(totalMs(c))+'</span>'+(assignedLabel?'<span class="chip success assigned-chip">Asignado: '+esc(assignedLabel)+'</span>':'')+'</div>'+alertHtml+'</div><div class="case-actions"><button class="btn btn-small" data-action="open" data-id="'+c.id+'">Ver pedido</button>'+pveMerchandiseActionHtml(c)+(c.status==="asignado"&&canOperateCurrentProcess(c)&&!pveMerchandiseWaiting(c)?'<button class="btn btn-primary btn-small" data-action="accept" data-id="'+c.id+'">Aceptar</button>':"")+(canDeleteReceptionPedidosCase(c)?'<button class="btn btn-danger btn-small" data-action="deleteReceptionPedidoCase" data-id="'+c.id+'">Eliminar</button>':"")+'</div></article>';
   }).join("")+'</div>';
 }
 
