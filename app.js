@@ -3127,6 +3127,96 @@ function injectExecutiveMinimalCss(){
   document.head.appendChild(st);
 }
 
+function applyLowResolutionMode(){
+  try{
+    var h=window.innerHeight||document.documentElement.clientHeight||900;
+    var w=window.innerWidth||document.documentElement.clientWidth||1366;
+    document.body.classList.toggle("ei-low-height", h<=760);
+    document.body.classList.toggle("ei-very-low-height", h<=680);
+    document.body.classList.toggle("ei-low-width-pc", w<=1180 && w>820);
+    document.body.classList.toggle("ei-compact-pc", (h<=760 && w>820) || (w<=1180 && w>820));
+  }catch(e){}
+}
+function ensureLowResolutionResponsiveCss(){
+  if(document.getElementById("ei-v173-lowres-responsive-css")){applyLowResolutionMode();return;}
+  var st=document.createElement("style");
+  st.id="ei-v173-lowres-responsive-css";
+  st.textContent='\
+:root{--ei-sidebar-w:260px;--ei-card-pad:18px;--ei-gap:16px;--ei-font-scale:1;}\
+.app-layout{min-height:100dvh;}\
+.main{min-width:0;}\
+.table-wrap{max-width:100%;overflow:auto;}\
+.case-card,.card,.filters,.topbar{box-sizing:border-box;}\
+.ei-compact-pc .app-layout{grid-template-columns:minmax(210px,228px) 1fr!important;}\
+.ei-compact-pc .sidebar{width:auto!important;min-width:0!important;padding:12px 10px!important;gap:10px!important;}\
+.ei-compact-pc .sidebar-brand{gap:8px!important;margin-bottom:8px!important;}\
+.ei-compact-pc .sidebar-logo{width:34px!important;height:34px!important;object-fit:contain!important;}\
+.ei-compact-pc .sidebar-brand strong{font-size:.86rem!important;line-height:1.1!important;}\
+.ei-compact-pc .sidebar-brand span,.ei-compact-pc .sidebar-footer div div{font-size:.72rem!important;}\
+.ei-compact-pc .nav{gap:5px!important;overflow:auto!important;padding-right:2px!important;}\
+.ei-compact-pc .nav button{min-height:32px!important;padding:7px 9px!important;border-radius:11px!important;font-size:.78rem!important;line-height:1.1!important;}\
+.ei-compact-pc .nav button b{font-size:.72rem!important;min-width:24px!important;height:24px!important;}\
+.ei-compact-pc .sidebar-footer{gap:6px!important;padding-top:8px!important;}\
+.ei-compact-pc .sidebar-footer .btn{padding:7px 8px!important;font-size:.72rem!important;min-height:30px!important;}\
+.ei-compact-pc .main{padding:12px 14px!important;max-height:100dvh!important;overflow:auto!important;}\
+.ei-compact-pc .topbar{gap:8px!important;margin-bottom:10px!important;}\
+.ei-compact-pc .topbar h1{font-size:1.15rem!important;line-height:1.12!important;margin:0!important;}\
+.ei-compact-pc .topbar p{font-size:.78rem!important;line-height:1.25!important;margin:3px 0 0!important;}\
+.ei-compact-pc .top-actions{gap:6px!important;align-items:center!important;}\
+.ei-compact-pc .btn{min-height:30px!important;padding:7px 10px!important;border-radius:10px!important;font-size:.76rem!important;line-height:1.1!important;}\
+.ei-compact-pc .btn-small{min-height:27px!important;padding:6px 8px!important;font-size:.72rem!important;}\
+.ei-compact-pc .card{padding:12px!important;border-radius:14px!important;margin-bottom:10px!important;}\
+.ei-compact-pc .card h3{font-size:.98rem!important;margin-bottom:7px!important;}\
+.ei-compact-pc .kpi span{font-size:.70rem!important}.ei-compact-pc .kpi strong{font-size:1.18rem!important}.ei-compact-pc .kpi small{font-size:.68rem!important;}\
+.ei-compact-pc .grid{gap:10px!important}.ei-compact-pc .grid-4{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:10px!important}.ei-compact-pc .grid-3{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}.ei-compact-pc .grid-2{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}\
+.ei-compact-pc .filters{padding:10px!important;gap:8px!important;margin-bottom:10px!important;}\
+.ei-compact-pc .input,.ei-compact-pc .select,.ei-compact-pc .textarea{min-height:32px!important;padding:7px 9px!important;font-size:.78rem!important;border-radius:10px!important;}\
+.ei-compact-pc .field span{font-size:.73rem!important;margin-bottom:4px!important;}\
+.ei-compact-pc .case-list{gap:9px!important;}\
+.ei-compact-pc .case-card{padding:11px 12px!important;border-radius:15px!important;gap:8px!important;}\
+.ei-compact-pc .case-feed-avatar{width:34px!important;height:34px!important;font-size:.78rem!important;}\
+.ei-compact-pc .case-feed-title h3{font-size:.94rem!important;line-height:1.12!important;}\
+.ei-compact-pc .case-card-subtitle{font-size:.72rem!important;line-height:1.22!important;}\
+.ei-compact-pc .case-meta{gap:5px!important;margin-top:6px!important;}\
+.ei-compact-pc .chip{font-size:.68rem!important;padding:4px 6px!important;border-radius:999px!important;}\
+.ei-compact-pc .case-actions{gap:5px!important;flex-wrap:wrap!important;}\
+.ei-compact-pc table th,.ei-compact-pc table td{font-size:.72rem!important;padding:5px 6px!important;line-height:1.18!important;}\
+.ei-compact-pc .notice{padding:9px 10px!important;border-radius:12px!important;font-size:.76rem!important;line-height:1.25!important;}\
+.ei-compact-pc .drawer.open{padding:8px!important;}\
+.ei-compact-pc .drawer .modal{width:min(920px,calc(100vw - 18px))!important;max-height:calc(100dvh - 16px)!important;padding:14px!important;border-radius:16px!important;}\
+.ei-compact-pc .drawer .modal-head{padding-bottom:8px!important;margin-bottom:10px!important;}\
+.ei-compact-pc .drawer .modal-head h3{font-size:1rem!important;}\
+.ei-compact-pc .drawer .card{padding:10px!important;}\
+.ei-compact-pc .bottom-nav,.ei-compact-pc .mobile-top{display:none!important;}\
+.ei-very-low-height .app-layout{grid-template-columns:198px 1fr!important;}\
+.ei-very-low-height .main{padding:8px 10px!important;}\
+.ei-very-low-height .sidebar{padding:8px!important;}\
+.ei-very-low-height .nav button{min-height:28px!important;padding:5px 7px!important;font-size:.70rem!important;}\
+.ei-very-low-height .nav button b{width:21px!important;height:21px!important;font-size:.66rem!important;}\
+.ei-very-low-height .topbar h1{font-size:1rem!important;}\
+.ei-very-low-height .topbar p{display:none!important;}\
+.ei-very-low-height .card{padding:9px!important;margin-bottom:8px!important;}\
+.ei-very-low-height .kpi strong{font-size:1rem!important;}\
+.ei-very-low-height .case-card{padding:8px 9px!important;}\
+.ei-very-low-height .case-feed-avatar{width:30px!important;height:30px!important;}\
+.ei-very-low-height .case-feed-title h3{font-size:.86rem!important;}\
+.ei-very-low-height .case-card-subtitle{display:none!important;}\
+.ei-very-low-height .chip{font-size:.62rem!important;padding:3px 5px!important;}\
+.ei-very-low-height .btn{min-height:26px!important;padding:5px 8px!important;font-size:.70rem!important;}\
+.ei-very-low-height .input,.ei-very-low-height .select{min-height:28px!important;padding:5px 7px!important;font-size:.72rem!important;}\
+@media(max-height:760px) and (min-width:821px){body:not(.ei-compact-pc){font-size:14px}.main{padding:12px 14px}.card{padding:12px}.btn{padding:7px 10px}.input,.select{min-height:32px}.case-card{padding:11px 12px}.topbar h1{font-size:1.15rem}}\
+@media(max-width:1180px) and (min-width:821px){.app-layout{grid-template-columns:228px 1fr}.main{padding:14px}.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}.case-card{align-items:flex-start}.case-actions{flex-wrap:wrap}}\
+';
+  document.head.appendChild(st);
+  applyLowResolutionMode();
+  if(!window.__eiLowResResizeBound){
+    window.__eiLowResResizeBound=true;
+    window.addEventListener("resize",function(){applyLowResolutionMode();});
+    window.addEventListener("orientationchange",function(){setTimeout(applyLowResolutionMode,120);});
+  }
+}
+
+
 function normalizeRouteKeyForNavigation(r){
   r=String(r||"").trim();
   if(r==="vsm"||r==="kpis"||r==="indicadores")return "indicators";
@@ -3148,6 +3238,7 @@ function openRouteSafely(route){
 }
 function layout(content){
   injectExecutiveMinimalCss();
+  ensureLowResolutionResponsiveCss();
   var rs=routes();
   appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
@@ -3157,6 +3248,7 @@ function layout(content){
 function header(t,sub,actions){return '<div class="topbar"><div class="page-title"><h2>'+esc(t)+'</h2><p>'+esc(sub||"")+'</p></div><div class="top-actions">'+(actions||"")+'</div></div>';}
 
 function renderLogin(){
+  ensureLowResolutionResponsiveCss();
   var firebaseMsg=firebaseReady?'Conexión Firebase activa.':'Firebase no conectó: '+esc(firebaseInitError||"revisa conexión");
   var helper=firebaseReady?'':'<div class="alert warning"><strong>Conexión pendiente.</strong><br>En celular normalmente se corrige limpiando caché/PWA o reintentando la carga del SDK. No borra datos de Firebase.</div>';
   appEl.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-panel"><div><div class="logo-box"><img src="'+logoPath+'" alt="Electroingeniería"></div><h1>Trazabilidad secuencial.</h1><p>Ventas inicia, logística valida, aux logística alista, corte opera con evidencias y los estados se actualizan en tiempo real.</p></div><div class="brand-metrics"><div class="metric"><strong>Secuencia</strong><span>Sin procesos sueltos</span></div><div class="metric"><strong>Tiempo</strong><span>Macroproceso y espera</span></div><div class="metric"><strong>VSM</strong><span>Indicadores por área</span></div></div></div><form class="login-panel" id="loginForm"><h2>Ingreso operativo</h2><p>'+firebaseMsg+'</p>'+helper+'<div class="form"><label class="field"><span>Correo</span><input class="input" name="email" type="email" required placeholder="usuario@empresa.com"></label><label class="field"><span>Contraseña</span><input class="input" name="password" type="password" required placeholder="Contraseña"></label><button class="btn btn-primary" type="submit">Ingresar</button><button class="btn" type="button" id="retryFirebaseBtn">Reintentar conexión</button><button class="btn btn-gold" type="button" id="clearPwaBtn">Limpiar caché del celular</button></div></form></section></main>';
