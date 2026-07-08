@@ -1776,12 +1776,12 @@ function readRegistroVentasCache(){
     var pack=JSON.parse(raw);
     if(!pack||!Array.isArray(pack.items))return [];
     state.salesLastRefreshAt=pack.at||0;
-    return normalizeRegistroVentasList(pack.items);
+    return salesRegistryRowsForCurrentUser(pack.items);
   }catch(e){return [];}
 }
 function writeRegistroVentasCache(list){
   try{
-    var items=normalizeRegistroVentasList(list).map(compactSalesCaseForCache).filter(Boolean);
+    var items=salesRegistryRowsForCurrentUser(list).map(compactSalesCaseForCache).filter(Boolean);
     localStorage.setItem(registroVentasCacheKey(),JSON.stringify({at:Date.now(),items:items}));
     state.salesLastRefreshAt=Date.now();
   }catch(e){
@@ -1790,6 +1790,7 @@ function writeRegistroVentasCache(list){
 }
 function loadRegistroVentasAllOnline(){
   if(!db)return Promise.resolve([]);
+  if(isCurrentUserSalesAdvisor())return loadSalesCasesFastOnline().then(function(list){return salesRegistryRowsForCurrentUser(list);});
   function readQuery(q,label){
     return q.get().then(function(snap){return normalizeRegistroVentasList(docsToList(snap));}).catch(function(e){
       console.warn("Registro de ventas: consulta falló",label,e);
@@ -1819,7 +1820,7 @@ function refreshRegistroVentas(silent){
   state.salesLoading=true;
   if(!silent && state.route==="sales_reports")renderSalesReports();
   state.salesRefreshPromise=loadRegistroVentasAllOnline().then(function(list){
-    state.salesRegistryCases=normalizeRegistroVentasList(list);
+    state.salesRegistryCases=salesRegistryRowsForCurrentUser(list);
     state.salesRegistryLoadedOnce=true;
     state.salesRegistryLoadStarted=false;
     state.salesLoading=false;
@@ -9243,7 +9244,9 @@ function openNoDeliveryManagement(id){
   };
 }
 function openSalesCaseInfo(id){
-  var c=caseById(id);if(!c)return;var at=caseAllAttachments(c);var rows=at.map(function(a){return '<tr><td>'+esc(a.tipo)+'</td><td>'+esc(a.nombre)+'</td><td>'+esc(a.responsable||'')+'</td><td>'+esc(fmtDate(a.fecha))+'</td><td>'+fileDownloadLink(a.url,'Descargar')+'</td></tr>';}).join('');
+  var c=caseById(id);if(!c)return;
+  if(isCurrentUserSalesAdvisor() && !(sameSalesOwner ? sameSalesOwner(c) : caseBelongsToCurrentSalesUser(c))){alert("Este pedido pertenece a otro asesor y no está disponible en su Registro de Ventas.");return;}
+  var at=caseAllAttachments(c);var rows=at.map(function(a){return '<tr><td>'+esc(a.tipo)+'</td><td>'+esc(a.nombre)+'</td><td>'+esc(a.responsable||'')+'</td><td>'+esc(fmtDate(a.fecha))+'</td><td>'+fileDownloadLink(a.url,'Descargar')+'</td></tr>';}).join('');
   drawer(modal('Información general del pedido','<section class="grid grid-2"><article class="card"><h3>'+esc(c.reference||c.id)+'</h3><p><strong>Cliente:</strong> '+esc(c.client||'')+'</p><p><strong>Asesor:</strong> '+esc(c.salesAdvisor||c.createdByName||'')+'</p><p><strong>OC:</strong> '+esc(c.purchaseOrder||'')+'</p><p><strong>Factura:</strong> '+esc(c.invoiceNumber||c.factura||'')+'</p><p><strong>Estado:</strong> '+esc(c.status||'')+' · '+esc(processTitle(c.currentProcess))+'</p></article><article class="card"><h3>Acciones</h3><button class="btn btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">Reportar no entrega</button> '+((c.partialShipmentOpen||c.hasPartialShipment)?'<button class="btn btn-primary" data-action="resendPending" data-id="'+esc(c.id)+'">Reenviar faltante</button>':'')+'</article></section>'+salesNotesPanel(c)+'<section class="card" style="margin-top:12px"><h3>Anexos descargables</h3><div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Archivo</th><th>Responsable</th><th>Fecha</th><th>Descarga</th></tr></thead><tbody>'+(rows||'<tr><td colspan="5">Sin anexos registrados.</td></tr>')+'</tbody></table></div></section>'));
 }
 function salesAdvisorName(c){return String((c&&(c.salesAdvisor||c.createdByName||c.createdByEmail))||'Sin asesor').trim()||'Sin asesor';}
@@ -9308,17 +9311,28 @@ function salesNotesPanel(c){
   return '<section class="'+cls+' sales-notes-panel" style="margin-top:16px"><h3>'+esc(title)+'</h3><p class="muted">Toda nota comercial, comentario de requerimiento, reporte o novedad queda visible aquí y en Registro de Ventas.</p>'+body+'</section>';
 }
 function canSeeAllSalesReports(){return canSeeAll() || canAuditViewAll() || isAdminRoleValue(state.user&&state.user.role);}
+function isCurrentUserSalesAdvisor(){
+  return normalizeRole(state.user&&state.user.role)==="ventas";
+}
+function salesRegistryRowsForCurrentUser(list){
+  list=normalizeRegistroVentasList(list||[]);
+  if(isCurrentUserSalesAdvisor()){
+    return list.filter(function(c){return sameSalesOwner ? sameSalesOwner(c) : caseBelongsToCurrentSalesUser(c);});
+  }
+  return list;
+}
+
 function salesBaseRows(){
   var role=normalizeRole(state.user&&state.user.role);
   if(state.route==="sales_reports" && state.salesRegistryLoadedOnce){
-    return normalizeRegistroVentasList(state.salesRegistryCases||[]);
+    return salesRegistryRowsForCurrentUser(state.salesRegistryCases||[]);
   }
   return state.cases.filter(function(c){
     if(!c)return false;
-    if(canSeeAllSalesReports())return true;
     if(role==="ventas"){
-      return sameSalesOwner ? sameSalesOwner(c) : (c.createdBy===(state.user&&state.user.uid));
+      return sameSalesOwner ? sameSalesOwner(c) : caseBelongsToCurrentSalesUser(c);
     }
+    if(canSeeAllSalesReports())return true;
     return c.createdBy===(state.user&&state.user.uid);
   });
 }
@@ -9378,18 +9392,19 @@ function caseProcessFlowWithNames(c){
 function renderSalesReports(){
   ensureRegistroVentasInitialLoad();
   var list=salesReportRows(), f=state.salesFilters||{};
+  if(isCurrentUserSalesAdvisor()){state.salesFilters.advisor="";}
   var advisors=salesAdvisorOptions();
   var summary=salesSummaryStats(list);
   var byAdvisor=salesCountBy(list,salesAdvisorName);
   var byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);});
   var byStatus=salesCountBy(list,function(c){return statusText(c.status);});
-  var advisorOpts='<option value="">Todos los asesores visibles</option>'+advisors.map(function(a){return '<option value="'+esc(a)+'" '+(f.advisor===a?'selected':'')+'>'+esc(a)+'</option>';}).join('');
+  var advisorOpts=isCurrentUserSalesAdvisor()?'<option value="">Mis pedidos</option>':'<option value="">Todos los asesores visibles</option>'+advisors.map(function(a){return '<option value="'+esc(a)+'" '+(f.advisor===a?'selected':'')+'>'+esc(a)+'</option>';}).join('');
   var processOpts='<option value="">Todos los procesos</option>'+activeProcessKeys().map(function(k){return '<option value="'+k+'" '+(f.process===k?'selected':'')+'>'+esc(processTitle(k))+'</option>';}).join('');
   var statusOpts=[['','Todos los estados'],['asignado','Asignado'],['en_proceso','En proceso'],['en_espera','En espera'],['espera_ventas','Ventas pendiente'],['espera_transportadora','Espera transportadora'],['no_entregado','No entregado'],['devolucion_caja','Devolución a Caja'],['cerrado_conforme','Cerrado conforme'],['cerrado_con_novedad','Cerrado con novedad'],['cancelado','Cancelado']].map(function(o){return '<option value="'+o[0]+'" '+(f.status===o[0]?'selected':'')+'>'+esc(o[1])+'</option>';}).join('');
   var rows=list.map(function(c){var notes=salesNoteShort(caseSalesNotesText(c),360);return '<tr><td><strong>'+esc(caseDisplayTitle(c))+'</strong><br><small>Factura: '+esc(c.invoiceNumber||c.factura||'—')+'</small></td><td>'+esc(c.client||'')+'</td><td>'+esc(salesAdvisorName(c))+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+statusChip(c.status)+'</td><td>'+esc(fmtDate(c.createdAt))+'</td><td>'+esc(caseResponsibleNames(c))+'</td><td>'+(notes?'<div class="sales-note-compact">'+esc(notes)+'</div>':'<span class="muted">Sin notas</span>')+'</td><td><button class="btn btn-small btn-primary" data-action="salesCaseInfo" data-id="'+esc(c.id)+'">Ver anexos</button> <button class="btn btn-small btn-gold" data-action="salesNoDelivery" data-id="'+esc(c.id)+'">No entrega</button></td></tr>';}).join('');
   var salesLoadingHtml=state.salesLoading?loadingPedidosPanel(state.salesLastRefreshAt?'Actualizando Registro de Ventas en segundo plano. Ya puedes revisar la información guardada mientras termina.':'Cargando Registro de Ventas por primera vez. Esto no bloquea el resto de la app.'):'';
   var salesRefreshText=state.salesLoading?'Actualizando…':'Actualizar ahora';
-  layout(header('Registro de Ventas','Todos los registros de ventas, búsqueda y exportación.','<button class="btn btn-gold" data-action="refreshSalesReports">'+salesRefreshText+'</button> <button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
+  layout(header('Registro de Ventas',isCurrentUserSalesAdvisor()?'Mis pedidos creados o asignados como asesor.':'Todos los registros de ventas, búsqueda y exportación.','<button class="btn btn-gold" data-action="refreshSalesReports">'+salesRefreshText+'</button> <button class="btn btn-gold" data-action="exportSalesReport">Exportar Excel dashboard</button>')+
     salesLoadingHtml+
     '<section class="card"><div class="grid grid-3"><label class="field"><span>Buscar</span><input class="input" id="salesSearch" value="'+esc(f.search||'')+'" placeholder="Pedido, OC, factura, cliente, asesor, estado"></label><label class="field"><span>Asesor</span><select class="select" id="salesAdvisor">'+advisorOpts+'</select></label><label class="field"><span>Proceso</span><select class="select" id="salesProcess">'+processOpts+'</select></label></div><div class="grid grid-3" style="margin-top:10px"><label class="field"><span>Desde</span><input class="input" type="date" id="salesFrom" value="'+esc(f.from||'')+'"></label><label class="field"><span>Hasta</span><input class="input" type="date" id="salesTo" value="'+esc(f.to||'')+'"></label><label class="field"><span>Estado</span><select class="select" id="salesStatus">'+statusOpts+'</select></label></div></section>'+
     '<section class="grid grid-4" style="margin-top:16px"><article class="card kpi"><span>Total filtrado</span><strong>'+summary.total+'</strong><small>Pedidos</small></article><article class="card kpi"><span>Abiertos</span><strong>'+summary.abiertos+'</strong><small>En flujo</small></article><article class="card kpi"><span>Cerrados</span><strong>'+summary.cerrados+'</strong><small>Finalizados</small></article><article class="card kpi"><span>Req. / retenidos</span><strong>'+summary.requerimientos+' / '+summary.retenidos+'</strong><small>Gestión especial</small></article></section>'+
@@ -9406,7 +9421,7 @@ function exportSalesReport(){
   var list=salesReportRows(), summary=salesSummaryStats(list), byAdvisor=salesCountBy(list,salesAdvisorName), byProcess=salesCountBy(list,function(c){return processTitle(c.currentProcess);}), byStatus=salesCountBy(list,function(c){return statusText(c.status);});
   var parts=[], caseRows=[];
   parts.push('<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif}h1{color:#173b77}h2{color:#173b77;margin-top:24px}table{border-collapse:collapse;margin-bottom:16px}th{background:#173b77;color:#fff}td,th{font-size:12px;border:1px solid #cbd5e1;padding:4px;vertical-align:top}.kpi td{font-size:16px;font-weight:bold;text-align:center}.total-hours{font-weight:bold;background:#eaf2ff}.warn{background:#fff7ed;padding:10px;border:1px solid #fbbf24}</style></head><body>'+ 
-    '<h1>Registro de Ventas · trazabilidad completa</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>El informe respeta los filtros aplicados en el Registro de Ventas. No aplica límite diario ni límite de dos registros.</p>');
+    '<h1>Registro de Ventas · '+escapeExcel(isCurrentUserSalesAdvisor()?'mis pedidos':'trazabilidad completa')+'</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p>El informe respeta los filtros aplicados en el Registro de Ventas. Para asesores solo incluye pedidos creados o asignados a su usuario.</p>');
   function buildMetrics(){
     return excelAsyncAppendRows([],list,'Cálculo registro ventas',function(c){caseRows.push(caseDelayMetrics(c));return '';},10);
   }
