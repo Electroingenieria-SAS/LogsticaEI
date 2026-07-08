@@ -1312,21 +1312,24 @@ function reportBelongsToCurrentAreaStrict(r){
 }
 function requirementTargetsCurrentArea(c,req){
   if(!state.user||!c)return false;
-  var r=currentRoleValue();
-  if(req && requirementIsPending(req)){
-    if(normalizeRole(req.targetRole)===r || normalizeRole(req.assignedRole)===r)return true;
-    if(req.sentBy===state.user.uid || samePersonText(req.sentByName,state.user.name))return true;
-  }
-  if(c.openRequirement && requirementIsPending(c.openRequirement)){
-    if(normalizeRole(c.openRequirement.targetRole)===r || normalizeRole(c.openRequirement.assignedRole)===r)return true;
-    if(c.openRequirement.sentBy===state.user.uid || samePersonText(c.openRequirement.sentByName,state.user.name))return true;
-  }
-  if(isNoDeliveryCase(c)){
-    if(r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
-    if(canAccessProcess(r,c.currentProcess)||normalizeRole(c.assignedRole)===r)return true;
+  var r=currentRoleValue(), uid=String(state.user.uid||"");
+  function targetsMe(x){
+    if(!x || !requirementIsPending(x))return false;
+    if(normalizeRole(x.targetRole)===r || normalizeRole(x.assignedRole)===r)return true;
+    if(uid && (String(x.targetUid||"")===uid || String(x.assignedUid||"")===uid || String(x.targetUserId||"")===uid))return true;
+    if(Array.isArray(x.assignedUserIds) && x.assignedUserIds.indexOf(uid)>=0)return true;
+    if(Array.isArray(x.targetUserIds) && x.targetUserIds.indexOf(uid)>=0)return true;
     return false;
   }
-  return caseBelongsToCurrentRoleStrict(c) && (c.status==="espera_ventas"||c.status==="en_espera"||!!c.openRequirement);
+  if(req && targetsMe(req))return true;
+  if(c.openRequirement && targetsMe(c.openRequirement))return true;
+  if(normalizeRole(c.assignedRole)===r && (c.status==="espera_ventas"||c.status==="en_espera"||c.status==="no_entregado"||c.status==="devolucion_caja"))return true;
+  if(currentUserIsAssignedToCase(c)||currentUserDirectlyAssigned(c))return true;
+  if(isNoDeliveryCase(c)){
+    if(r==="ventas" && caseBelongsToCurrentSalesUser(c))return true;
+    return false;
+  }
+  return false;
 }
 function eventBelongsToCurrentAreaStrict(e){
   if(!state.user||!e)return false;
@@ -1908,14 +1911,14 @@ function loadCasesForRole(){
 
   aliases.forEach(function(a){
     queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==",a),"cases.assignedRole:"+a));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("visibleRoles","array-contains",a),"cases.visibleRoles:"+a));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("targetRoles","array-contains",a),"cases.targetRoles:"+a));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("openRequirement.targetRole","==",a),"cases.openRequirement.targetRole:"+a));
+    queries.push(safeQuerySnapshot(db.collection("cases").where("openRequirement.assignedRole","==",a),"cases.openRequirement.assignedRole:"+a));
   });
 
   return Promise.all(queries).then(function(snaps){
     var all=[];
     snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
-    return sortByUpdated(uniqueById(all));
+    return filterCasesForCurrentUserStrict(all);
   });
 }
 
@@ -1986,7 +1989,7 @@ function loadData(){
     safeLoadBlock("Proyectos", loadProjectOrdersForRole),
     safeLoadBlock("Reportes/Novedades", loadReportsForRole)
   ]).then(function(res){
-    state.cases=res[0]||[];
+    state.cases=filterCasesForCurrentUserStrict(res[0]||[]);
     state.events=res[1]||[];
     state.users=res[2]||[];
     state.receptions=res[3]||[];
@@ -2353,6 +2356,12 @@ function caseRelevantToCurrentUser(c){
   if(r==="auxiliar_corte" && c.hasCuts===true)return true;
   return canAccessProcess(r,c.currentProcess);
 }
+function filterCasesForCurrentUserStrict(list){
+  list=sortByUpdated(uniqueById(list||[]));
+  if(canSeeAll()||canAuditViewAll())return list;
+  return list.filter(caseRelevantToCurrentUser);
+}
+
 
 function shouldAutoRenderNow(){
   var d=qs("#drawer");
@@ -4654,6 +4663,7 @@ function renderDetail(id){
     if(retry)retry.onclick=function(){renderDetail(id);};
     return;
   }
+  if(!caseRelevantToCurrentUser(c) && !userIsGlobalVisibilityRole()){layout(header("Acceso no disponible","Este pedido o requerimiento pertenece a otra área o no está delegado a su usuario.",'<button class="btn" data-route="dashboard">Volver al inicio</button>')+'<div class="empty">No se muestra para evitar confusiones operativas.</div>');return;}
   cacheDetailCase(c);
   var correctedOnOpen=false;
   if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V163: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
@@ -6481,7 +6491,7 @@ function isRequirementVisibleForUser(c){
   return unresolved.some(function(req){return requirementTargetsCurrentArea(c,req);});
 }
 function visibleRequirements(){
-  return state.cases.filter(isRequirementVisibleForUser).sort(function(a,b){return new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt);});
+  return filterCasesForCurrentUserStrict(state.cases||[]).filter(isRequirementVisibleForUser).sort(function(a,b){return new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt);});
 }
 function renderRequirements(){
   var title=state.user&&normalizeRole(state.user.role)==="ventas"?"Requerimientos de Ventas":"Requerimientos";
