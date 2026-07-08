@@ -67,6 +67,10 @@ function ensureV104UiFixes(){
   st.id="ei-v104-ui-fixes";
   st.textContent='\
 \
+\
+.mini-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;max-width:520px}\
+.mini-gallery-item{display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:1px solid #dbe4f0;border-radius:12px;background:#f8fafc;text-decoration:none;color:#061b46;font-weight:800;font-size:.76rem}\
+.mini-gallery-item span{display:block}.mini-gallery-item small{font-weight:600;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-gallery-item.file{background:#fff7ed;border-color:#fed7aa}\
 .novelty-chat{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px}\
 .chat-bubble{max-width:82%;border:1px solid #dbe4f0;border-radius:16px;padding:10px 12px;background:#fff;box-shadow:0 6px 14px rgba(15,23,42,.05)}\
 .chat-bubble.mine{margin-left:auto;background:#ecfdf5;border-color:#bbf7d0}\
@@ -4028,6 +4032,76 @@ function appendEvidence(c,up,detail){
     uploadedByName:state.user?state.user.name:""
   });
 }
+function selectedUploadFiles(input,label){
+  var files=Array.prototype.slice.call((input&&input.files)||[]).filter(Boolean);
+  label=label||"archivos";
+  if(!files.length){alert("Seleccione mínimo 1 archivo.");return null;}
+  if(files.length>10){alert("Máximo se permiten 10 "+label+". Seleccionó "+files.length+".");return null;}
+  return files;
+}
+function galleryFileFromUpload(up,file){
+  return {
+    id:uid("GF"),
+    fileName:up.fileName||up.name||(file&&file.name)||"",
+    mimeType:up.mimeType||(file&&file.type)||"",
+    driveUrl:up.url||up.driveUrl||"",
+    driveId:up.fileId||"",
+    folder:up.folderPath||up.folder||"",
+    uploadedAt:up.uploadedAt||now(),
+    isImage:/^image\//i.test(String(up.mimeType||(file&&file.type)||""))
+  };
+}
+function appendEvidenceGallery(c,uploads,detail,opts){
+  uploads=uploads||[];opts=opts||{};
+  if(!uploads.length)return;
+  c.evidence=c.evidence||[];
+  var first=uploads[0].upload||uploads[0];
+  var files=uploads.map(function(x){return galleryFileFromUpload(x.upload||x,x.file);});
+  c.evidence.push({
+    id:uid("EVDG"),
+    process:opts.processKey||first.processKey||c.currentProcess,
+    processName:opts.processName||first.processName||processTitle(opts.processKey||first.processKey||c.currentProcess),
+    evidenceType:opts.evidenceType||first.evidenceType||"EVIDENCIA",
+    detail:detail||"",
+    fileName:(files.length===1?files[0].fileName:(files.length+" archivos adjuntos")),
+    mimeType:first.mimeType||"",
+    driveUrl:files[0]&&files[0].driveUrl||"",
+    driveId:files[0]&&files[0].driveId||"",
+    uploadedAt:now(),
+    uploadedByName:state.user?state.user.name:"",
+    gallery:true,
+    files:files
+  });
+}
+function uploadFilesToDriveGallery(files,c,opts,statusEl){
+  opts=opts||{};
+  var out=[],i=0;
+  function step(){
+    if(i>=files.length)return Promise.resolve(out);
+    var file=files[i], idx=i+1;
+    if(statusEl)statusEl.textContent="Subiendo archivo "+idx+" de "+files.length+"...";
+    var extName=(opts.fileNamePrefix||opts.evidenceType||"EVIDENCIA")+"_"+idx+"_"+(file.name||("archivo_"+idx));
+    var uploadOpts=Object.assign({},opts,{fileName:(c.reference||"pedido")+"_"+extName,silentFeedback:files.length>1});
+    return uploadFileToDrive(file,c,uploadOpts).then(function(up){
+      out.push({upload:up,file:file});
+      i++;
+      return step();
+    });
+  }
+  return step();
+}
+function galleryLinksHtml(files){
+  files=files||[];
+  if(!files.length)return "";
+  return '<div class="mini-gallery">'+files.map(function(f,idx){
+    var href=f.driveUrl||f.url||"";
+    var name=f.fileName||("Archivo "+(idx+1));
+    if(!href)return '<span class="chip warning">'+esc(name)+'</span>';
+    if(f.isImage||/^image\//i.test(String(f.mimeType||"")))return '<a class="mini-gallery-item" href="'+esc(href)+'" target="_blank" rel="noopener"><span>Imagen '+(idx+1)+'</span><small>'+esc(name)+'</small></a>';
+    return '<a class="mini-gallery-item file" href="'+esc(href)+'" target="_blank" rel="noopener"><span>Archivo '+(idx+1)+'</span><small>'+esc(name)+'</small></a>';
+  }).join("")+'</div>';
+}
+
 
 function readPdf(file){
   if(!file)return;
@@ -5334,8 +5408,9 @@ function deliveryEvidencePanel(c){
   var canUpload=canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica();
   var cards=deliveryEvidenceDefinitions(c.currentProcess).map(function(d){
     var item=ev[d.key]||{};
-    var done=!!item.driveUrl;
-    return '<article class="evidence-required-card '+(done?'done':'pending')+'"><div><strong>'+esc(d.title)+'</strong><p>'+esc(d.hint)+'</p>'+(done?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>':(d.required===false?'<small>Opcional para trazabilidad documental.</small>':'<small>Pendiente obligatorio para cerrar el despacho.</small>'))+'</div><div class="evidence-required-actions">'+(done?'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver archivo</a>':'')+(canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(d.key)+'">'+(done?'Reemplazar':'Subir')+'</button>':'')+'</div></article>';
+    var done=!!(item.driveUrl||(item.galleryFiles&&item.galleryFiles.length));
+    var view=done?(item.galleryFiles&&item.galleryFiles.length?galleryLinksHtml(item.galleryFiles):'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver archivo</a>'):'';
+    return '<article class="evidence-required-card '+(done?'done':'pending')+'"><div><strong>'+esc(d.title)+'</strong><p>'+esc(d.hint)+'</p>'+(done?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>':(d.required===false?'<small>Opcional para trazabilidad documental.</small>':'<small>Pendiente obligatorio para cerrar el despacho.</small>'))+'</div><div class="evidence-required-actions">'+view+(canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(d.key)+'">'+(done?'Reemplazar':'Subir')+'</button>':'')+'</div></article>';
   }).join('');
   var status=deliveryEvidenceComplete(c)?'<span class="chip success">Evidencias completas</span>':'<span class="chip warning">Faltan evidencias obligatorias</span>';
   return '<section class="card delivery-evidence-panel" style="margin-top:16px"><div class="section-title"><div><h3>Evidencias obligatorias de entrega</h3><p>Después del chequeo, debe quedar trazabilidad documental y fotográfica: PDF/soporte opcional, foto de mercancía rotulada y guía/soporte final obligatorio.</p></div>'+status+'</div><div class="notice"><strong>Guía:</strong> la foto de mercancía rotulada marca el fin operativo de logística y deja el caso en espera de transportadora/entrega; la guía de transportadora o soporte final es obligatoria para cerrar.</div><div class="delivery-evidence-grid">'+cards+'</div></section>';
@@ -5345,12 +5420,12 @@ function evidencePanel(c){
   var list=c.evidence||[];
   if(!list.length)return "";
   function evLink(e){
+    if(e.gallery&&Array.isArray(e.files)&&e.files.length)return galleryLinksHtml(e.files);
     var href=e.driveUrl||e.inlineUrl||e.dataUrl||"";
     return href?'<a href="'+esc(href)+'" target="_blank" rel="noopener">Abrir</a>':'Sin URL';
   }
   return '<section class="card" style="margin-top:16px"><h3>Evidencias del proceso</h3><div class="table-wrap"><table><thead><tr><th>Proceso</th><th>Archivo</th><th>Descripción</th><th>Responsable</th><th>Fecha</th><th>Soporte</th></tr></thead><tbody>'+list.slice().reverse().map(function(e){return '<tr><td>'+esc(e.processName||processTitle(e.process))+'</td><td>'+esc(e.fileName||'')+'</td><td>'+esc(e.detail||'')+'</td><td>'+esc(e.uploadedByName||'')+'</td><td>'+esc(fmtDate(e.uploadedAt))+'</td><td>'+evLink(e)+'</td></tr>';}).join('')+'</tbody></table></div></section>';
 }
-
 
 function blankPdfValue(value){
   return value === undefined || value === null || String(value).trim() === "";
@@ -8611,20 +8686,20 @@ function openEvidence(id){
   var c=caseById(id);if(!c)return;
   if(!canUploadEvidenceForCase(c)){alert("Este usuario no tiene permiso para anexar evidencias en este caso.");return;}
   var current=c.currentProcess||"recepcion_pedidos";
-  drawer(modal("Subir evidencia a Drive",'<form class="form" id="evidenceForm"><div class="notice">La evidencia se guarda en Google Drive con la misma cuenta autorizada por Google Cloud. La carpeta se crea por año, mes, proceso, responsable, pedido, caso y tipo de evidencia.</div><section class="grid grid-2"><label class="field"><span>Proceso / módulo de la evidencia</span><select class="select" name="processKey" id="evidenceProcessSelect">'+evidenceProcessOptions(current)+'</select></label><label class="field"><span>Tipo de evidencia</span><select class="select" name="evidenceType" id="evidenceTypeSelect">'+evidenceTypeOptions()+'</select></label></section><label class="field"><span>Archivo o foto</span><input class="input" type="file" name="evidence" id="evidenceInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv" required></label><label class="field"><span>Descripción</span><textarea class="textarea" name="detail" placeholder="Ej.: PDF del pedido, foto del carro, soporte de despacho, guía, novedad, evidencia de alistamiento, soporte de caja o auditoría."></textarea></label><div class="notice" id="evidenceStatus">Seleccione el archivo y guarde. No se registra en el caso hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia en Drive</button></form>'));
+  drawer(modal("Subir evidencia a Drive",'<form class="form" id="evidenceForm"><div class="notice">La evidencia se guarda en Google Drive. Puede seleccionar mínimo 1 y máximo 10 archivos; si son imágenes, se verán como mini galería.</div><section class="grid grid-2"><label class="field"><span>Proceso / módulo de la evidencia</span><select class="select" name="processKey" id="evidenceProcessSelect">'+evidenceProcessOptions(current)+'</select></label><label class="field"><span>Tipo de evidencia</span><select class="select" name="evidenceType" id="evidenceTypeSelect">'+evidenceTypeOptions()+'</select></label></section><label class="field"><span>Archivos o fotos</span><input class="input" type="file" name="evidence" id="evidenceInput" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv" multiple required><small class="muted">Mínimo 1 y máximo 10 archivos.</small></label><label class="field"><span>Descripción</span><textarea class="textarea" name="detail" placeholder="Ej.: PDF del pedido, foto del carro, soporte de despacho, guía, novedad, evidencia de alistamiento, soporte de caja o auditoría."></textarea></label><div class="notice" id="evidenceStatus">Seleccione archivo(s) y guarde. No se registra en el caso hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia en Drive</button></form>'));
   var processSelect=qs("#evidenceProcessSelect"), typeSelect=qs("#evidenceTypeSelect");
   if(typeSelect)typeSelect.value=defaultEvidenceTypeForProcess(current);
   if(processSelect && typeSelect){processSelect.onchange=function(){typeSelect.value=defaultEvidenceTypeForProcess(processSelect.value);};}
   qs("#evidenceForm").onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target), file=qs("#evidenceInput").files&&qs("#evidenceInput").files[0];
-    if(!file){alert("Seleccione una evidencia.");return;}
+    var fd=new FormData(e.target), files=selectedUploadFiles(qs("#evidenceInput"),"archivos");
+    if(!files)return;
     var processKey=fd.get("processKey")||c.currentProcess;
     var evidenceType=fd.get("evidenceType")||defaultEvidenceTypeForProcess(processKey);
     var statusEl=qs("#evidenceStatus");if(statusEl)statusEl.textContent="Subiendo evidencia a Drive...";
-    uploadFileToDrive(file,c,{processName:processTitle(processKey),processKey:processKey,fileName:file.name,evidenceType:evidenceType}).then(function(up){
-      appendEvidence(c,up,fd.get("detail")||"");
-      return persistCase(c,{type:"PROCESS_EVIDENCE_UPLOADED",process:processKey,detail:(fd.get("detail")||file.name)+" · "+processTitle(processKey)+" · "+evidenceType}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||"");});
+    uploadFilesToDriveGallery(files,c,{processName:processTitle(processKey),processKey:processKey,evidenceType:evidenceType,fileNamePrefix:evidenceType},statusEl).then(function(uploads){
+      appendEvidenceGallery(c,uploads,fd.get("detail")||"",{processKey:processKey,processName:processTitle(processKey),evidenceType:evidenceType});
+      return persistCase(c,{type:"PROCESS_EVIDENCE_UPLOADED",process:processKey,detail:(fd.get("detail")||(files.length+" archivo(s)"))+" · "+processTitle(processKey)+" · "+evidenceType}).then(function(){return Promise.all(uploads.map(function(x){return persistEvidenceDocument(c,x.upload,fd.get("detail")||"");}));});
     }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
@@ -8724,38 +8799,23 @@ function openDeliveryEvidence(id,key){
   if(!(canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica())){alert("No tiene permiso para anexar evidencias en este proceso.");return;}
   var defs=deliveryEvidenceDefinitions(c.currentProcess);
   var def=defs.filter(function(x){return x.key===key;})[0]||defs[0];
-  drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice"><strong>'+(def.required===false?'Opcional:':'Control obligatorio:')+'</strong> '+esc(def.hint)+' El archivo quedará en Drive con fecha, hora, usuario, pedido y proceso.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="'+esc(def.accept||'image/*,application/pdf')+'" required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail" placeholder="Ej.: mercancía rotulada con sticker visible, guía de transportadora, soporte PDF o entrega final."></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione el archivo y guarde. No se marca conforme hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia</button></form>'));
+  drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice"><strong>'+(def.required===false?'Opcional:':'Control obligatorio:')+'</strong> '+esc(def.hint)+' Puede seleccionar mínimo 1 y máximo 10 archivos. Las imágenes se mostrarán como galería.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="'+esc(def.accept||'image/*,application/pdf')+'" multiple required><small class="muted">Mínimo 1 y máximo 10 archivos.</small></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail" placeholder="Ej.: mercancía rotulada con sticker visible, guía de transportadora, soporte PDF o entrega final."></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione archivo(s) y guarde. No se marca conforme hasta que Drive confirme el cargue.</div><button class="btn btn-primary" type="submit">Guardar evidencia</button></form>'));
   qs("#deliveryEvidenceForm").onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target), file=e.target.photo.files&&e.target.photo.files[0];
-    if(!file){alert("Seleccione el archivo o evidencia requerida.");return;}
+    var fd=new FormData(e.target), files=selectedUploadFiles(e.target.photo,"archivos");
+    if(!files)return;
     c.deliveryEvidence=c.deliveryEvidence||{};
-    if(def.key==="guiaTransportadora" && !(c.deliveryEvidence.mercanciaRotulada&&c.deliveryEvidence.mercanciaRotulada.driveUrl)){alert("Primero debe subir la foto de mercancía rotulada. Esa evidencia marca el cierre operativo de logística y la espera de transportadora/entrega.");return;}
+    if(def.key==="guiaTransportadora" && !(c.deliveryEvidence.mercanciaRotulada&&(c.deliveryEvidence.mercanciaRotulada.driveUrl||(c.deliveryEvidence.mercanciaRotulada.galleryFiles&&c.deliveryEvidence.mercanciaRotulada.galleryFiles.length)))){alert("Primero debe subir la foto de mercancía rotulada. Esa evidencia marca el cierre operativo de logística y la espera de transportadora/entrega.");return;}
     var statusEl=qs("#deliveryEvidenceStatus");if(statusEl)statusEl.textContent="Preparando evidencia...";
-    var stampInfo=null;
-    buildStampedDispatchSupportFile(file,c,def,statusEl).then(function(info){
-      stampInfo=info||{file:file,stamped:false};
-      var uploadFile=stampInfo.file||file;
-      if(statusEl)statusEl.textContent=(stampInfo.stamped?"PDF sellado generado. Subiendo a Drive...":"Subiendo evidencia a Drive...");
-      var safeName=(c.reference||"pedido")+"_"+def.type+"_"+(uploadFile.name||file.name);
-      return uploadFileToDrive(uploadFile,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,fileName:safeName,evidenceType:def.type});
-    }).then(function(up){
-      if(stampInfo && stampInfo.stamped){
-        up.stamped=true;
-        up.originalFileName=stampInfo.originalName||file.name;
-        setTimeout(function(){downloadBlobFile(stampInfo.file,stampInfo.downloadName||stampInfo.file.name);},350);
-      }
+    uploadFilesToDriveGallery(files,c,{processName:processTitle(c.currentProcess),processKey:c.currentProcess,evidenceType:def.type,fileNamePrefix:def.type},statusEl).then(function(uploads){
+      var up=uploads[0].upload, file=uploads[0].file, gallery=uploads.map(function(x){return galleryFileFromUpload(x.upload,x.file);});
       c.deliveryEvidence=c.deliveryEvidence||{};
-      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:up.fileName||up.name||(stampInfo&&stampInfo.file&&stampInfo.file.name)||file.name,fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint,stamped:!!(stampInfo&&stampInfo.stamped),stampLabels:(stampInfo&&stampInfo.stamped)?["FACTURADO","ENTREGADO"]:[],stampStyle:(stampInfo&&stampInfo.stamped)?"marca_agua":"",originalFileName:(stampInfo&&stampInfo.originalName)||file.name};
+      c.deliveryEvidence[def.key]={driveUrl:up.url||up.driveUrl||"",fileName:(uploads.length===1?(up.fileName||up.name||file.name):(uploads.length+" archivos")),fileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:fd.get("detail")||def.hint,stamped:false,stampLabels:[],stampStyle:"",originalFileName:file.name,galleryFiles:gallery};
       c.checklist=c.checklist||{};
       c.checklist[def.checklist]="ok";
       c.deliveryFlow=c.deliveryFlow||{};
       var eventType="DELIVERY_EVIDENCE_UPLOADED";
       var eventDetail=def.title+" · "+(fd.get("detail")||"");
-      if(stampInfo && stampInfo.stamped){
-        eventType="DISPATCH_SUPPORT_STAMPED";
-        eventDetail=def.title+" marcado automáticamente con FACTURADO y ENTREGADO. Se descargó copia sellada.";
-      }
       if(def.key==="mercanciaRotulada"){
         stopActive(c);
         if(!c.waitStartedAt)c.waitStartedAt=now();
@@ -8783,8 +8843,8 @@ function openDeliveryEvidence(id,key){
         eventType="CASE_CLOSED";
         eventDetail="Despacho cerrado con guía/soporte final obligatorio.";
       }
-      appendEvidence(c,up,fd.get("detail")||((stampInfo&&stampInfo.stamped)?(def.title+" con marca de agua FACTURADO + ENTREGADO"):def.title));
-      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return persistEvidenceDocument(c,up,fd.get("detail")||((stampInfo&&stampInfo.stamped)?(def.title+" con marca de agua FACTURADO + ENTREGADO"):def.title));});
+      appendEvidenceGallery(c,uploads,fd.get("detail")||def.title,{processKey:c.currentProcess,processName:processTitle(c.currentProcess),evidenceType:def.type});
+      return persistCase(c,{type:eventType,process:c.currentProcess,detail:eventDetail}).then(function(){return Promise.all(uploads.map(function(x){return persistEvidenceDocument(c,x.upload,fd.get("detail")||def.title);}));});
     }).then(function(){closeDrawer();renderDetail(c.id);}).catch(function(err){if(statusEl)statusEl.textContent="No fue posible cargar la evidencia: "+(err.message||err);showError(err.message||err);});
   };
 }
@@ -8793,39 +8853,29 @@ function openCashInvoiceBox(id){
   var c=caseById(id);if(!c)return;
   if(c.currentProcess!=="caja"){alert("La factura de contado se carga únicamente desde Caja.");return;}
   if(!(canOperateCurrentProcess(c)||canSeeAll()||isAdminRoleValue(state.user.role))){alert("No tiene permiso para cargar la factura de este pedido contado.");return;}
-  drawer(modal("Factura de pedido contado",'<form class="form" id="cashInvoiceForm"><div class="notice"><strong>Pedido al contado:</strong> cargue la factura desde Caja. El archivo se marcará automáticamente con FACTURADO y ENTREGADO, se subirá a Drive, se descargará una copia y luego el pedido volverá a Logística con la factura disponible.</div><label class="field"><span>Factura / soporte de Caja *</span><input class="input" type="file" name="invoice" accept="application/pdf,image/*" required></label><label class="field"><span>Observación de Caja</span><textarea class="textarea" name="detail" placeholder="Ej.: factura cargada, pago confirmado, soporte validado."></textarea></label><div class="notice" id="cashInvoiceStatus">Seleccione el archivo y guarde. Si Drive se demora, la app cortará la espera y le permitirá intentar nuevamente sin salirse.</div><button class="btn btn-primary" id="cashInvoiceSubmitBtn" type="submit">Subir factura y devolver a logística</button></form>'));
+  drawer(modal("Factura de pedido contado",'<form class="form" id="cashInvoiceForm"><div class="notice"><strong>Pedido al contado:</strong> cargue mínimo 1 y máximo 10 facturas o soportes. Las imágenes quedarán agrupadas como mini galería para que los demás módulos puedan pasarlas una a una.</div><label class="field"><span>Factura / soporte de Caja *</span><input class="input" type="file" name="invoice" accept="application/pdf,image/*" multiple required><small class="muted">Mínimo 1 y máximo 10 archivos.</small></label><label class="field"><span>Observación de Caja</span><textarea class="textarea" name="detail" placeholder="Ej.: factura cargada, pago confirmado, soporte validado."></textarea></label><div class="notice" id="cashInvoiceStatus">Seleccione archivo(s) y guarde. Si Drive se demora, la app cortará la espera y le permitirá intentar nuevamente sin salirse.</div><button class="btn btn-primary" id="cashInvoiceSubmitBtn" type="submit">Subir factura y devolver a logística</button></form>'));
   qs("#cashInvoiceForm").onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target), file=e.target.invoice.files&&e.target.invoice.files[0];
-    if(!file){alert("Seleccione la factura o soporte de Caja.");return;}
+    var fd=new FormData(e.target), files=selectedUploadFiles(e.target.invoice,"facturas o soportes");
+    if(!files)return;
     var statusEl=qs("#cashInvoiceStatus"), submitBtn=qs("#cashInvoiceSubmitBtn");if(submitBtn){submitBtn.disabled=true;submitBtn.textContent="Procesando factura...";}if(statusEl)statusEl.textContent="Preparando factura de contado...";
-    var stampInfo=null;
-    promiseWithTimeout(buildStampedDispatchSupportFile(file,c,{key:"supportPdf",type:"FACTURA_CAJA_CONTADO",title:"Factura de Caja pedido contado"},statusEl),25000,"El sellado de la factura tardó demasiado. Se intentará subir el archivo original para no bloquear Caja.").catch(function(err){if(statusEl)statusEl.textContent="No se pudo marcar la factura a tiempo; se subirá el archivo original. "+(err.message||err);return {file:file,stamped:false,stampError:(err&&err.message)||String(err)};}).then(function(info){
-      stampInfo=info||{file:file,stamped:false};
-      var uploadFile=stampInfo.file||file;
-      if(statusEl)statusEl.textContent=(stampInfo.stamped?"Factura marcada. Subiendo a Drive...":"Subiendo factura a Drive...");
-      var safeName=(c.reference||"pedido")+"_FACTURA_CAJA_CONTADO_"+(uploadFile.name||file.name);
-      return uploadFileToDrive(uploadFile,c,{processName:"Caja - pedido contado",processKey:"caja",fileName:safeName,evidenceType:"FACTURA_CAJA_CONTADO",fastCashUpload:true,timeoutMs:45000,folderTimeoutMs:25000,uploadTimeoutMs:45000,feedbackMessage:"Subiendo factura de Caja a Drive. Si se demora, la app permitirá reintentar sin quedarse pegada."});
-    }).then(function(up){
-      if(stampInfo && stampInfo.stamped){
-        up.stamped=true;
-        up.originalFileName=stampInfo.originalName||file.name;
-        setTimeout(function(){downloadBlobFile(stampInfo.file,stampInfo.downloadName||stampInfo.file.name);},350);
-      }
-      c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"cargada",invoiceUrl:up.url||up.driveUrl||"",invoiceFileName:up.fileName||up.name||file.name,invoiceFileId:up.fileId||"",uploadedAt:up.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,returnedToLogisticsAt:now()});
+    uploadFilesToDriveGallery(files,c,{processName:"Caja - pedido contado",processKey:"caja",evidenceType:"FACTURA_CAJA_CONTADO",fileNamePrefix:"FACTURA_CAJA_CONTADO",fastCashUpload:true,timeoutMs:45000,folderTimeoutMs:25000,uploadTimeoutMs:45000,feedbackMessage:"Subiendo factura(s) de Caja a Drive. Si se demora, la app permitirá reintentar sin quedarse pegada."},statusEl).then(function(uploads){
+      var first=uploads[0].upload, firstFile=uploads[0].file, gallery=uploads.map(function(x){return galleryFileFromUpload(x.upload,x.file);});
+      c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"cargada",invoiceUrl:first.url||first.driveUrl||"",invoiceFileName:(uploads.length===1?(first.fileName||first.name||firstFile.name):(uploads.length+" archivos de factura")),invoiceFileId:first.fileId||"",invoiceGallery:gallery,uploadedAt:first.uploadedAt||now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,returnedToLogisticsAt:now()});
       c.checklist=c.checklist||{};
-      appendEvidence(c,up,fd.get("detail")||"Factura de Caja pedido contado con marca de agua FACTURADO + ENTREGADO");
+      appendEvidenceGallery(c,uploads,fd.get("detail")||"Factura de Caja pedido contado",{processKey:"caja",processName:"Caja - pedido contado",evidenceType:"FACTURA_CAJA_CONTADO"});
       var next=normalizedDeliveryRoute(c.pendingDeliveryType||c.deliveryType||c.requestedDelivery)||"despacho_nacional";
       c.cashBilling.nextProcess=next;
       c.cashBilling.returnedToProcess=next;
       c.deliveryType=next;
       c.pendingDeliveryType="";
-      return assignToProcess(c,next,fd.get("detail")||"Caja cargó factura de pedido contado y devuelve a logística.").then(function(){
-        return persistEvidenceDocument(c,up,fd.get("detail")||"Factura de Caja pedido contado con marca de agua FACTURADO + ENTREGADO");
+      return assignToProcess(c,next,fd.get("detail")||"Caja cargó factura/soportes de pedido contado y devuelve a logística.").then(function(){
+        return Promise.all(uploads.map(function(x){return persistEvidenceDocument(c,x.upload,fd.get("detail")||"Factura de Caja pedido contado");}));
       });
     }).then(function(){closeDrawer();renderDetail(id);}).catch(function(err){if(submitBtn){submitBtn.disabled=false;submitBtn.textContent="Reintentar subir factura";}if(statusEl)statusEl.textContent="No fue posible cargar la factura. La app no quedó bloqueada; puede reintentar desde este mismo formulario. Detalle: "+(err.message||err);showError(err.message||err);});
   };
 }
+
 function openSeparationPaymentRelease(id){
   var c=caseById(id);if(!c)return;
   if(!separationPaymentPending(c)){alert("Este pedido no tiene una separación activa pendiente de pago.");return;}
@@ -9421,9 +9471,20 @@ function fileDownloadLink(url,label){return url?'<a class="btn btn-small btn-pri
 function caseAllAttachments(c){
   var out=[]; if(!c)return out;
   if(casePdfUrl(c))out.push({tipo:'PDF pedido',nombre:'PDF oficial pedido',url:casePdfUrl(c)});
-  if(c.cashBilling&&c.cashBilling.invoiceUrl)out.push({tipo:'FACTURA_CAJA_CONTADO',nombre:c.cashBilling.invoiceFileName||'Factura Caja contado',url:c.cashBilling.invoiceUrl,fecha:c.cashBilling.uploadedAt,responsable:c.cashBilling.uploadedByName});
-  (c.evidence||[]).forEach(function(e){if(e.driveUrl)out.push({tipo:e.evidenceType||'Evidencia',nombre:e.fileName||e.detail||'Archivo',url:e.driveUrl,fecha:e.uploadedAt,responsable:e.uploadedByName});});
-  Object.keys(c.deliveryEvidence||{}).forEach(function(k){var e=c.deliveryEvidence[k];if(e&&e.driveUrl)out.push({tipo:k,nombre:e.fileName||k,url:e.driveUrl,fecha:e.uploadedAt,responsable:e.uploadedByName});});
+  if(c.cashBilling&&Array.isArray(c.cashBilling.invoiceGallery)){
+    c.cashBilling.invoiceGallery.forEach(function(f,i){if(f.driveUrl)out.push({tipo:'FACTURA_CAJA_CONTADO',nombre:f.fileName||('Factura '+(i+1)),url:f.driveUrl,fecha:f.uploadedAt||c.cashBilling.uploadedAt,responsable:c.cashBilling.uploadedByName});});
+  }else if(c.cashBilling&&c.cashBilling.invoiceUrl){
+    out.push({tipo:'FACTURA_CAJA_CONTADO',nombre:c.cashBilling.invoiceFileName||'Factura Caja contado',url:c.cashBilling.invoiceUrl,fecha:c.cashBilling.uploadedAt,responsable:c.cashBilling.uploadedByName});
+  }
+  (c.evidence||[]).forEach(function(e){
+    if(e.gallery&&Array.isArray(e.files)){e.files.forEach(function(f,i){if(f.driveUrl)out.push({tipo:e.evidenceType||'Evidencia',nombre:f.fileName||((e.fileName||'Archivo')+' '+(i+1)),url:f.driveUrl,fecha:f.uploadedAt||e.uploadedAt,responsable:e.uploadedByName});});}
+    else if(e.driveUrl)out.push({tipo:e.evidenceType||'Evidencia',nombre:e.fileName||e.detail||'Archivo',url:e.driveUrl,fecha:e.uploadedAt,responsable:e.uploadedByName});
+  });
+  Object.keys(c.deliveryEvidence||{}).forEach(function(k){
+    var e=c.deliveryEvidence[k];
+    if(e&&Array.isArray(e.galleryFiles)){e.galleryFiles.forEach(function(f,i){if(f.driveUrl)out.push({tipo:k,nombre:f.fileName||k+' '+(i+1),url:f.driveUrl,fecha:f.uploadedAt||e.uploadedAt,responsable:e.uploadedByName});});}
+    else if(e&&e.driveUrl)out.push({tipo:k,nombre:e.fileName||k,url:e.driveUrl,fecha:e.uploadedAt,responsable:e.uploadedByName});
+  });
   return out;
 }
 
@@ -9503,7 +9564,7 @@ function openSalesSeparation(id){
 
 function openSalesNoDelivery(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal('Novedad de no entrega a logística','<form class="form" id="noDeliveryForm"><div class="notice danger"><strong>Estado no entregado:</strong> registre la novedad cuando el cliente informe que no recibió el producto. El pedido pasará al estado <strong>No entregado</strong> y quedará en Requerimientos visible para Logística/Líder/Jefe/Gerencia/Super Admin.</div><label class="field"><span>Detalle de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Cliente, factura/guía, transportadora, fecha esperada, contacto y qué solicita el cliente."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"></label><button class="btn btn-primary" type="submit">Marcar como no entregado y enviar a requerimientos</button></form>'));
+  drawer(modal('Novedad de no entrega a logística','<form class="form" id="noDeliveryForm"><div class="notice danger"><strong>Estado no entregado:</strong> registre la novedad cuando el cliente informe que no recibió el producto. El pedido pasará al estado <strong>No entregado</strong> y quedará en Requerimientos visible para Logística/Líder/Jefe/Gerencia/Super Admin.</div><label class="field"><span>Detalle de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Cliente, factura/guía, transportadora, fecha esperada, contacto y qué solicita el cliente."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple></label><small class="muted">Puede adjuntar hasta 10 archivos; el soporte principal se tomará del primero si este flujo aún no requiere galería.</small><button class="btn btn-primary" type="submit">Marcar como no entregado y enviar a requerimientos</button></form>'));
   qs('#noDeliveryForm').onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target),file=fd.get('file'),detail=String(fd.get('detail')||'');
@@ -9542,7 +9603,7 @@ function openNoDeliveryManagement(id){
   if(!canManageNoDelivery(c)){alert('No tiene permiso para gestionar esta no entrega.');return;}
   var cajaOnly=c.status==='devolucion_caja' && normalizeRole(state.user.role)==='caja';
   var options=cajaOnly?'<option value="close_solution">Caja resuelve devolución y cierra gestión</option>':'<option value="logistics_solution">Gestionar entrega / reprogramar despacho</option><option value="close_solution">Cerrar no entrega solucionada</option><option value="refund_box">Solicitar devolución de dinero a Caja</option>';
-  drawer(modal('Gestionar pedido no entregado','<form class="form" id="manageNoDeliveryForm"><div class="notice danger"><strong>'+esc(c.reference||c.id)+'</strong><br>Este pedido está marcado como no entregado. Registre la decisión tomada y deje soporte si aplica.</div><label class="field"><span>Decisión</span><select class="select" name="decision">'+options+'</select></label><label class="field"><span>Solución / detalle *</span><textarea class="textarea" name="detail" required placeholder="Ej.: se reprograma entrega con transportadora, se confirma entrega, se autoriza devolución de dinero a Caja, etc."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"></label><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
+  drawer(modal('Gestionar pedido no entregado','<form class="form" id="manageNoDeliveryForm"><div class="notice danger"><strong>'+esc(c.reference||c.id)+'</strong><br>Este pedido está marcado como no entregado. Registre la decisión tomada y deje soporte si aplica.</div><label class="field"><span>Decisión</span><select class="select" name="decision">'+options+'</select></label><label class="field"><span>Solución / detalle *</span><textarea class="textarea" name="detail" required placeholder="Ej.: se reprograma entrega con transportadora, se confirma entrega, se autoriza devolución de dinero a Caja, etc."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple></label><small class="muted">Puede adjuntar hasta 10 archivos; el soporte principal se tomará del primero si este flujo aún no requiere galería.</small><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
   qs('#manageNoDeliveryForm').onsubmit=function(e){
     e.preventDefault();
     var fd=new FormData(e.target),decision=String(fd.get('decision')||''),detail=String(fd.get('detail')||''),file=fd.get('file');
