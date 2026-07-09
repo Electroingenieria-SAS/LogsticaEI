@@ -407,7 +407,7 @@ function ensureDeliveryChecklistDefinitions(){
 ensureDeliveryChecklistDefinitions();
 
 var routeInfo = {
-  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], compras:["Compras","CO"], sales_reports:["Registro de ventas","RV"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"], inventario:["Inventario","IV"],
+  dashboard:["Inicio","IN"], cases:["Casos","CS"], create:["Crear pedido","CR"], compras:["Compras","CO"], sales_reports:["Registro de ventas","RV"], projects:["Proyectos","PR"], reception_goods:["Recepción mercancía","RM"], reports:["Reportes","RP"], requirements:["Requerimientos","RQ"], inventario:["Inventario","IV"], cut_diag:["Diagnóstico","DG"],
   approvals:["Aprobaciones","AU"], corte_cable:["Cortes","CT"], indicators:["VSM","VS"], users:["Usuarios","US"], admin:["Admin","AD"]
 };
 
@@ -509,6 +509,36 @@ function isKnownSuperAdminUser(u){
 function isKnownCutUser(u){
   var raw=knownSuperAdminIdentityText(u);
   return raw.indexOf("f.duque@ei.com.co")>=0 || raw.indexOf("f.duque")>=0 || raw.indexOf("fabian duque")>=0 || raw.indexOf("fabian")>=0;
+}
+function isFabianDuqueAuthUser(u){
+  var raw=knownSuperAdminIdentityText(u);
+  return raw.indexOf("f.duque@ei.com.co")>=0 || raw.indexOf("f.duque")>=0 || raw.indexOf("fabian duque")>=0;
+}
+function ensureKnownCutProfile(fbUser){
+  if(!fbUser || !db || !isFabianDuqueAuthUser(fbUser))return Promise.resolve(false);
+  var payload={
+    uid:fbUser.uid,
+    authUid:fbUser.uid,
+    email:"f.duque@ei.com.co",
+    name:"Fabian Duque",
+    displayName:"Fabian Duque",
+    role:"auxiliar_corte",
+    isActive:true,
+    updatedAt:now(),
+    selfRepairedAt:now(),
+    selfRepairedBy:"system_fabian_cut"
+  };
+  return db.collection("users").doc(fbUser.uid).set(payload,{merge:true}).then(function(){return true;}).catch(function(e){
+    console.warn("No se pudo auto-reparar perfil de Fabián Duque. Verificar rules/users.",e);
+    state.loadWarnings=state.loadWarnings||[];
+    state.loadWarnings.push("Perfil Fabián: no se pudo auto-reparar users/"+(fbUser.uid||"")+" · "+(((e&&e.message)||e)||"permiso"));
+    return false;
+  });
+}
+
+
+function isFabianCutRuntimeUser(){
+  return !!(state.user && (isFabianDuqueAuthUser(state.user) || String(state.user.email||"").toLowerCase()==="f.duque@ei.com.co"));
 }
 
 function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser)));}
@@ -1568,9 +1598,13 @@ function deadMs(c){return normalizedTimeParts(c).dead;}
 function progress(c){var def=processes[c.currentProcess];var list=def?def.checklist:[];var total=list.length||1;var done=0;for(var k in c.checklist){if(c.checklist[k]==="ok"||c.checklist[k]==="na")done++;}return clamp(Math.round(done/total*100),0,100);}
 function showError(msg){
   var text=String(msg||"");
-  if(state.user && /permission|permissions|Missing or insufficient/i.test(text)){
+  var fb=(auth&&auth.currentUser)||null;
+  if((state.user || isFabianDuqueAuthUser(fb)) && /permission|permissions|Missing or insufficient/i.test(text)){
+    if(!state.user && fb)temporaryProfileFromAuth(fb,text);
+    if(state.user && isFabianDuqueAuthUser(state.user)){state.user.role="auxiliar_corte";state.user.rawRole="auxiliar_corte";state.route="corte_cable";}
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push("Permisos limitados: "+text);
+    state.dataLoading=false;
     try{render();return;}catch(e){}
   }
   appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo. Si el problema es caché o carga externa de Firebase, use limpiar caché y recargar.</p><pre>'+esc(msg)+'</pre><div class="top-actions"><button class="btn btn-primary" onclick="location.reload()">Recargar</button><button class="btn" onclick="clearPwaCachesAndReload()">Limpiar caché y recargar</button></div></section></main>';
@@ -2084,15 +2118,16 @@ function safeLoadBlock(label, loader){
 function loadData(){
   if(!firebaseReady || !db || !state.user){return Promise.resolve();}
   state.loadWarnings=[];
+  var cutOnly=isFabianCutRuntimeUser() || normalizeRole(state.user&&state.user.role)==="auxiliar_corte";
   return Promise.all([
     safeLoadBlock("Casos", loadCasesForRole),
-    safeLoadBlock("Eventos", loadEventsForRole),
-    safeLoadBlock("Usuarios", loadUsersForRole),
-    safeLoadBlock("Recepción de mercancía", loadReceptionGoodsForRole),
-    safeLoadBlock("Stickers de separación", loadReceptionStickersForRole),
-    safeLoadBlock("Proyectos", loadProjectOrdersForRole),
-    safeLoadBlock("Reportes/Novedades", loadReportsForRole),
-    safeLoadBlock("Inventario de chipas", loadInventoryChipsForRole)
+    cutOnly?Promise.resolve([]):safeLoadBlock("Eventos", loadEventsForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Usuarios", loadUsersForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Recepción de mercancía", loadReceptionGoodsForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Stickers de separación", loadReceptionStickersForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Proyectos", loadProjectOrdersForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Reportes/Novedades", loadReportsForRole),
+    cutOnly?Promise.resolve([]):safeLoadBlock("Inventario de chipas", loadInventoryChipsForRole)
   ]).then(function(res){
     state.cases=filterCasesForCurrentUserStrict(res[0]||[]);
     state.events=res[1]||[];
@@ -2902,6 +2937,20 @@ function startRealtimeSync(){
   stopRealtimeSync();
   state.realtime.startedAt=Date.now();
   var nr=normalizeRole(state.user.role);
+  if(isFabianCutRuntimeUser() || nr==="auxiliar_corte"){
+    addCaseRealtimeListener("cuts",db.collection("cases").where("hasCuts","==",true));
+    state.realtime.pollTimer=setInterval(function(){
+      if(!state.user || !firebaseReady || !db)return;
+      loadData().then(function(){
+        var h=caseLiveHash(state.cases);
+        if(h!==state.realtime.lastHash){
+          state.realtime.lastHash=h;
+          renderAfterLiveChange();
+        }
+      }).catch(function(e){console.warn("Refresco silencioso corte falló",e);});
+    },25000);
+    return;
+  }
   if(canSeeAll()||canAuditViewAll()){
     addCaseRealtimeListener("all",db.collection("cases").orderBy("updatedAt","desc"));
   }else{
@@ -3049,7 +3098,7 @@ function routes(){
   var r=normalizeRole(state.user.role);
   if(currentUserIsAdminOrSuper()||currentUserIsSuperAdmin()||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser))return{main:["dashboard","create","sales_reports","projects","reception_goods","inventario","reports","cases","requirements","approvals","indicators","users","admin"],processes:activeProcessKeys()};
   if(r==="auditoria")return{main:["dashboard","sales_reports","projects","reception_goods","inventario","reports","cases","requirements","approvals","indicators","users"],processes:activeProcessKeys()};
-  if(r==="auxiliar_corte")return{main:["corte_cable","inventario","reports"],processes:[]};
+  if(r==="auxiliar_corte")return{main:["corte_cable","cut_diag","inventario","reports"],processes:[]};
   if(r==="lider_recepcion")return{main:["dashboard","reception_goods","inventario","reports"],processes:[]};
   if(r==="proyectos")return{main:["projects","inventario","reports"],processes:[]};
   if(r==="compras")return{main:["compras","requirements","inventario","reports"],processes:[]};
@@ -3364,9 +3413,14 @@ function loadProfileAndRender(fbUser){
         temporaryProfileFromAuth(fbUser,profileErr);
       }
     }
+    if(isFabianDuqueAuthUser(fbUser)){
+      state.user.role="auxiliar_corte";
+      state.user.rawRole="auxiliar_corte";
+      state.route="corte_cable";
+    }
     state.dataLoading=true;
     render();
-    return loadData();
+    return ensureKnownCutProfile(fbUser).then(function(){return loadData();});
   }).then(function(){
     startRealtimeSync();
     render();
@@ -9976,6 +10030,22 @@ function protectedRenderBlocked(reason){
   else showLiveToast("Edición protegida","Hubo una actualización, pero la app no interrumpió lo que estás escribiendo. Cuando termines, pulsa Actualizar vista.",true);
 }
 
+
+function renderCutDiagnostics(){
+  var u=state.user||{};
+  var rows=[
+    ["Correo",u.email||""],
+    ["Nombre",u.name||""],
+    ["Rol normalizado",normalizeRole(u.role||"")],
+    ["Ruta",state.route||""],
+    ["Es Fabián Corte",isFabianCutRuntimeUser()?"Sí":"No"],
+    ["Casos cargados",(state.cases||[]).length],
+    ["Warnings",(state.loadWarnings||[]).join(" || ")]
+  ];
+  layout(header("Diagnóstico Corte","Verificación rápida de perfil, permisos y carga para el usuario de Corte.",'<button class="btn btn-gold" data-action="forceRefreshCases">Probar carga de pedidos</button>')+
+    '<section class="card"><h3>Perfil detectado</h3><div class="table-wrap"><table><tbody>'+rows.map(function(r){return '<tr><th>'+esc(r[0])+'</th><td>'+esc(r[1])+'</td></tr>';}).join("")+'</tbody></table></div></section>'+
+    '<section class="notice"><strong>Uso:</strong> si aquí el rol no sale como auxiliar_corte o no cargan casos, debe publicarse firestore.rules V176 y verificar el documento users del UID real.</section>');
+}
 function render(){
   var force=state.__forceRenderOnce===true;
   state.__forceRenderOnce=false;
@@ -9989,7 +10059,7 @@ function render(){
   startReminderLoop();
   if(normalizeRole(state.user.role)==="proyectos" && state.route!=="projects")state.route="projects";
   if(normalizeRole(state.user.role)==="compras" && ["compras","requirements","reports"].indexOf(state.route)<0)state.route="compras";
-  if(state.route==="corte_cable"){renderCutsQueue();return;}
+  if(state.route==="corte_cable"){renderCutsQueue();return;} if(state.route==="cut_diag"){renderCutDiagnostics();return;}
   if(processes[state.route]){state.filters.process=state.route;renderCases();return;}
   if(state.route==="dashboard")renderDashboard();
   else if(state.route==="cases")renderCases();
