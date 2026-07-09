@@ -68,6 +68,8 @@ function ensureV104UiFixes(){
   st.textContent='\
 \
 \
+\
+@media(max-width:820px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
 .mini-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;max-width:520px}\
 .mini-gallery-item{display:flex;flex-direction:column;gap:3px;padding:8px 9px;border:1px solid #dbe4f0;border-radius:12px;background:#f8fafc;text-decoration:none;color:#061b46;font-weight:800;font-size:.76rem}\
 .mini-gallery-item span{display:block}.mini-gallery-item small{font-weight:600;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-gallery-item.file{background:#fff7ed;border-color:#fed7aa}\
@@ -3221,12 +3223,13 @@ function mobileFullMenuHtml(){
     groups[item.group]=groups[item.group]||[];
     groups[item.group].push(item);
   });
-  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú operativo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div>'+
+  return '<section class="mobile-menu-panel"><div class="mobile-menu-head"><div><strong>Menú operativo</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><div class="top-actions"><button class="btn btn-small btn-danger" data-action="logout">Cerrar sesión</button><button class="btn btn-small" data-action="closeMobileMenu">Cerrar</button></div></div>'+
     Object.keys(groups).map(function(group){
       return '<div class="mobile-menu-group"><h3>'+esc(group)+'</h3><div class="mobile-menu-grid">'+groups[group].map(function(item){
         return '<button class="'+(state.route===item.route?'active':'')+'" data-route="'+item.route+'"><b>'+esc(item.icon)+'</b><span>'+esc(item.label)+'</span></button>';
       }).join("")+'</div></div>';
     }).join("")+
+    '<div class="mobile-menu-group mobile-session-box"><h3>Sesión</h3><button class="btn btn-danger" data-action="logout">Cerrar sesión</button><small>'+esc((state.user&&state.user.email)||((state.user&&state.user.name)||""))+'</small></div>'+
   '</section>';
 }
 
@@ -3359,7 +3362,7 @@ function layout(content){
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
   var rs=routes();
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button></header><main class="main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top"><img class="mobile-logo" src="'+logoPath+'"><strong>'+esc(roleTitle(state.user.role))+'</strong><button class="btn btn-small" data-action="openMobileMenu">Menú</button><button class="btn btn-small btn-danger mobile-logout-btn" data-action="logout">Salir</button></header><main class="main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav">'+mobileItems().map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'<button data-action="openMobileMenu"><b>☰</b><span>Todo</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
@@ -9973,7 +9976,7 @@ function bindActions(){
       var allowedAuditActions=["logout","open","openReport","openReceptionGoods","salesCaseInfo","certificate","printCertificate","openMobileMenu","closeMobileMenu","forceRefreshCases","refreshSalesReports","refreshReceptionGoods","exportSalesReport","exportReceptionStickers","clearPwa"];
       if(allowedAuditActions.indexOf(a)<0){alert("Modo auditoría: este usuario solo puede visualizar movimientos. No puede crear, editar, aprobar, cerrar, eliminar ni cambiar estados.");return;}
     }
-    if(a==="logout"){stopRealtimeSync();sessionStorage.removeItem(storageKey+"_session");if(auth)auth.signOut().catch(function(){});state.user=null;renderLogin();}
+    if(a==="logout"){closeMobileMenu();closeDrawer();stopRealtimeSync();sessionStorage.removeItem(storageKey+"_session");state.user=null;if(auth)auth.signOut().catch(function(){});renderLogin();}
     if(a==="migrateLegacy")migrateLegacyProcessesNow();
     if(a==="forcePvePurchases")forceExistingPveToPurchasesNow();
     if(a==="open")renderDetail(id);
