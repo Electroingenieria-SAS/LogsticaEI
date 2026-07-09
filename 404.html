@@ -16,16 +16,17 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v188-qa-fix-corte-movil">
-  <link rel="stylesheet" href="./mobile-v188.css?v=v188-qa-fix-corte-movil">
+  <link rel="stylesheet" href="./styles.css?v=v190-responsive-790-barra-corregida">
+  <link rel="stylesheet" href="./mobile-v190.css?v=v190-responsive-790-barra-corregida">
+
 
   <script>
     (function(){
-      var V="v188-qa-fix-corte-movil";
+      var V="v190-responsive-790-barra-corregida";
       try{
         window.EI_REQUIRED_VERSION=V;
         localStorage.setItem("EI_REQUIRED_VERSION",V);
-        window.__EI_V188_CLEAN_PROMISE=(function(){
+        window.__EI_V190_CLEAN_PROMISE=(function(){
           var tasks=[];
           if("serviceWorker" in navigator){
             tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){
@@ -39,7 +40,7 @@
           }
           return Promise.all(tasks).catch(function(){});
         })();
-      }catch(e){window.__EI_V188_CLEAN_PROMISE=Promise.resolve();}
+      }catch(e){window.__EI_V190_CLEAN_PROMISE=Promise.resolve();}
     })();
   </script>
 
@@ -63,13 +64,15 @@
   <script defer src="https://accounts.google.com/gsi/client"></script>
   <script defer src="./firebase-config.js?v=unificado-firebase-principal-v50-pdf-universal-cortes-m"></script>
 
+
   <script>
     window.addEventListener("load", function(){
-      Promise.resolve(window.__EI_V188_CLEAN_PROMISE).finally(function(){
-        var old=document.querySelectorAll('script[src*="app-v18"],script[src*="app.js"]');
-        old.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
+      Promise.resolve(window.__EI_V190_CLEAN_PROMISE).finally(function(){
+        var existing=document.querySelectorAll('script[data-ei-main-app="true"]');
+        existing.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
         var s=document.createElement("script");
-        s.src="./app.js?v=v188-qa-fix-corte-movil&t="+Date.now();
+        s.setAttribute("data-ei-main-app","true");
+        s.src="./app.js?v=v190-responsive-790-barra-corregida&t="+Date.now();
         s.async=false;
         document.body.appendChild(s);
       });
