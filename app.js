@@ -1719,6 +1719,19 @@ function clearPwaCachesAndReload(){
   try{if(navigator.serviceWorker)tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){return Promise.all(regs.map(function(r){return r.unregister();}));}));}catch(e){}
   Promise.all(tasks).then(function(){location.reload(true);}).catch(function(){location.reload(true);});
 }
+function ensureMobileFreshVersion(){
+  try{
+    var version="v177-mobile-refresh-corte";
+    var key="ei_mobile_app_version";
+    var old=localStorage.getItem(key)||"";
+    localStorage.setItem(key,version);
+    if(old && old!==version && !sessionStorage.getItem("ei_mobile_version_reload_"+version)){
+      sessionStorage.setItem("ei_mobile_version_reload_"+version,"1");
+      if(window.caches)caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return /ei-trazabilidad/i.test(k)?caches.delete(k):Promise.resolve();}));}).finally(function(){location.reload();});
+    }
+  }catch(e){}
+}
+
 
 function docsToList(snap){
   var out=[];
@@ -1983,7 +1996,11 @@ function refreshRegistroVentas(silent){
 }
 function forceRefreshCurrentUserCases(){
   if(!db||!state.user){alert("No hay conexión activa para actualizar pedidos.");return;}
+  closeDrawer();
+  closeMobileMenu();
+  state.detailId=null;
   var previousRoute=state.route;
+  if(normalizeRole(state.user.role)==="auxiliar_corte" || isFabianCutRuntimeUser())previousRoute="corte_cable";
   state.dataLoading=true;
   showLiveToast("Actualizando pedidos","Forzando nueva lectura de Firebase para este usuario. No cierre la ventana.",false);
   var p=(normalizeRole(state.user.role)==="ventas")
@@ -1997,7 +2014,10 @@ function forceRefreshCurrentUserCases(){
     showLiveToast("Pedidos actualizados","La bandeja fue cargada nuevamente para el usuario actual.",false);
   }).catch(function(e){
     state.dataLoading=false;
-    showError("No fue posible actualizar pedidos: "+((e&&e.message)||e));
+    state.loadWarnings=state.loadWarnings||[];
+    state.loadWarnings.push("Actualización pedidos: "+(((e&&e.message)||e)||"error"));
+    try{render();}catch(renderErr){}
+    showLiveToast("Actualización parcial","La app abrió la bandeja, pero una consulta respondió con permisos limitados.",false);
   });
 }
 function loadingPedidosPanel(text){
@@ -2525,36 +2545,68 @@ function renderAfterLiveChange(){
   if(state.detailId){
     var still=caseById(state.detailId);
     if(still)cacheDetailCase(still);
-    protectedNotice("Actualización disponible","El pedido tuvo movimiento. La app mantendrá abierta la ventana de Ver pedido; presiona Actualizar vista cuando termines.");
+    protectedNotice("Actualización disponible","Pulsa Actualizar vista para cerrar el cuadro anterior y sincronizar la bandeja.");
     return;
   }
   if(!shouldAutoRenderNow()){
-    protectedNotice("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.");
+    protectedNotice("Formulario protegido","Pulsa Actualizar vista para cerrar el cuadro anterior y cargar la última información.");
     return;
   }
   if(state.realtime.renderTimer)clearTimeout(state.realtime.renderTimer);
   state.realtime.renderTimer=setTimeout(function(){
     state.realtime.renderTimer=null;
     if(!shouldAutoRenderNow()){
-      protectedNotice("Actualización disponible","Hubo movimiento en el sistema. Cuando termines el formulario, presiona Actualizar vista.");
+      protectedNotice("Formulario protegido","Pulsa Actualizar vista para cerrar el cuadro anterior y cargar la última información.");
       return;
     }
     try{render();}catch(e){console.warn("No se pudo repintar en vivo",e);}
   },260);
 }
 
+function forceProtectedViewRefresh(){
+  try{
+    state.realtime.pendingRender=false;
+    state.__forceRenderOnce=true;
+    state.detailId=null;
+    var box=document.getElementById("ei-live-toast");
+    if(box)box.style.display="none";
+    closeDrawer();
+    closeMobileMenu();
+    state.dataLoading=true;
+    var route=state.route||defaultRoute(state.user&&state.user.role);
+    if(normalizeRole(state.user&&state.user.role)==="auxiliar_corte" || isFabianCutRuntimeUser())route="corte_cable";
+    state.route=route;
+    showLiveToast("Actualizando vista","Recargando la bandeja del usuario. Espere un momento.",false);
+    return loadData().then(function(){
+      state.dataLoading=false;
+      state.__forceRenderOnce=true;
+      render();
+      showLiveToast("Vista actualizada","La pantalla quedó sincronizada con la última versión.",false);
+    }).catch(function(e){
+      state.dataLoading=false;
+      state.loadWarnings=state.loadWarnings||[];
+      state.loadWarnings.push("Actualización manual: "+(((e&&e.message)||e)||"error"));
+      try{render();}catch(renderErr){}
+      showLiveToast("Vista actualizada con advertencia","La app abrió la bandeja, pero una consulta respondió con permisos limitados.",false);
+    });
+  }catch(e){
+    console.warn("No se pudo actualizar vista protegida",e);
+    try{closeDrawer();state.detailId=null;render();}catch(err){location.reload();}
+    return Promise.resolve();
+  }
+}
 function showLiveToast(title,msg,withButton){
   var box=document.getElementById("ei-live-toast");
   if(!box){
     box=document.createElement("div");
     box.id="ei-live-toast";
-    box.style.cssText="position:fixed;right:18px;bottom:18px;z-index:9999;max-width:390px;background:#061b46;color:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(6,27,70,.32);padding:14px 14px 12px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:none";
+    box.style.cssText="position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483647;max-width:520px;margin:auto;background:#061b46;color:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(6,27,70,.32);padding:14px 14px 12px;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:none;pointer-events:auto";
     document.body.appendChild(box);
   }
-  box.innerHTML='<div style="font-weight:900;font-size:14px;margin-bottom:4px">'+esc(title||"Movimiento detectado")+'</div><div style="font-size:12px;line-height:1.35;opacity:.9">'+esc(msg||"")+'</div>'+(withButton?'<button id="ei-live-refresh-btn" style="margin-top:10px;border:0;background:#ffda37;color:#061b46;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer">Actualizar vista</button>':'');
+  box.innerHTML='<div style="font-weight:900;font-size:14px;margin-bottom:4px">'+esc(title||"Movimiento detectado")+'</div><div style="font-size:12px;line-height:1.35;opacity:.9">'+esc(msg||"")+'</div>'+(withButton?'<button id="ei-live-refresh-btn" type="button" style="margin-top:10px;border:0;background:#ffda37;color:#061b46;border-radius:12px;padding:10px 14px;font-weight:900;cursor:pointer;min-height:42px;touch-action:manipulation">Actualizar vista</button>':'');
   box.style.display="block";
   var btn=document.getElementById("ei-live-refresh-btn");
-  if(btn){btn.onclick=function(){state.realtime.pendingRender=false;box.style.display="none";state.__forceRenderOnce=true;try{if(state.detailId)renderDetail(state.detailId);else render();}catch(e){location.reload();}};}
+  if(btn){btn.onclick=function(ev){if(ev)ev.preventDefault();forceProtectedViewRefresh();};}
   clearTimeout(box.__hideTimer);
   box.__hideTimer=setTimeout(function(){if(!withButton)box.style.display="none";},6500);
 }
@@ -3316,6 +3368,7 @@ function header(t,sub,actions){return '<div class="topbar"><div class="page-titl
 
 function renderLogin(){
   ensureLowResolutionResponsiveCss();
+  ensureMobileFreshVersion();
   var firebaseMsg=firebaseReady?'Conexión Firebase activa.':'Firebase no conectó: '+esc(firebaseInitError||"revisa conexión");
   var helper=firebaseReady?'':'<div class="alert warning"><strong>Conexión pendiente.</strong><br>En celular normalmente se corrige limpiando caché/PWA o reintentando la carga del SDK. No borra datos de Firebase.</div>';
   appEl.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-panel"><div><div class="logo-box"><img src="'+logoPath+'" alt="Electroingeniería"></div><h1>Trazabilidad secuencial.</h1><p>Ventas inicia, logística valida, aux logística alista, corte opera con evidencias y los estados se actualizan en tiempo real.</p></div><div class="brand-metrics"><div class="metric"><strong>Secuencia</strong><span>Sin procesos sueltos</span></div><div class="metric"><strong>Tiempo</strong><span>Macroproceso y espera</span></div><div class="metric"><strong>VSM</strong><span>Indicadores por área</span></div></div></div><form class="login-panel" id="loginForm"><h2>Ingreso operativo</h2><p>'+firebaseMsg+'</p>'+helper+'<div class="form"><label class="field"><span>Correo</span><input class="input" name="email" type="email" required placeholder="usuario@empresa.com"></label><label class="field"><span>Contraseña</span><input class="input" name="password" type="password" required placeholder="Contraseña"></label><button class="btn btn-primary" type="submit">Ingresar</button><button class="btn" type="button" id="retryFirebaseBtn">Reintentar conexión</button><button class="btn btn-gold" type="button" id="clearPwaBtn">Limpiar caché del celular</button></div></form></section></main>';
@@ -6733,7 +6786,7 @@ function renderCutsQueue(){
     var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join('');
     return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y luego despliegue pedido por pedido. Así corte funciona como subárea y se reducen búsquedas repetidas.</div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
   }).join('');
-  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Simple</strong><small>Sin animación innecesaria</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
+  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista móvil</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Simple</strong><small>Sin animación innecesaria</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
 }
 
 
@@ -9943,6 +9996,7 @@ function bindActions(){
     if(a==="exportSalesReport")safeExportExcel("Registro de Ventas",exportSalesReport);
     if(a==="refreshSalesReports"){refreshRegistroVentas(false);}
     if(a==="forceRefreshCases")forceRefreshCurrentUserCases();
+    if(a==="forceProtectedRefresh")forceProtectedViewRefresh();
     if(a==="refreshInventory"){loadInventoryChipsForRole().then(function(list){state.inventoryChips=list||[];renderInventory();}).catch(function(e){showError((e&&e.message)||e||"No se pudo actualizar inventario.");});}
     if(a==="forceCajaPvcPveToCartera")forceCajaPvcPveToCarteraNow();
     if(a==="forceReleaseSalesBlocks")forceReleaseResolvedSalesBlocksNow();
@@ -10799,6 +10853,7 @@ extractPedido = function(text){
 
 function boot(){
   try{
+    ensureMobileFreshVersion();
     showLoading("Conectando Firebase y verificando sesión...");
     initFirebaseAsync().then(function(){
       if(!firebaseReady || !auth){renderLogin();return;}
