@@ -19,16 +19,32 @@ service cloud.firestore {
       return get(userPath()).data;
     }
 
+    function isKnownFabianCutAuth() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in [
+          'f.duque@ei.com.co',
+          'F.Duque@ei.com.co',
+          'F.DUQUE@EI.COM.CO'
+        ];
+    }
+
     function role() {
-      return userDoc().role;
+      return isKnownFabianCutAuth() ? 'auxiliar_corte' : userDoc().role;
     }
 
     function activeUser() {
-      return userExists() && userDoc().isActive == true;
+      return (userExists() && userDoc().isActive == true) || isKnownFabianCutAuth();
     }
 
     function isAdmin() {
-      return activeUser() && role() in ['admin', 'administrador', 'Admin', 'Administrador', 'ADMIN'];
+      return activeUser() && role() in [
+        'admin',
+        'administrador',
+        'Admin',
+        'Administrador',
+        'ADMIN'
+      ];
     }
 
     function isSuperAdmin() {
@@ -45,8 +61,7 @@ service cloud.firestore {
         'SUPER ADMIN',
         'super administrador',
         'super_administracion',
-        'superadministrador',
-        'super_administrador'
+        'superadministrador'
       ];
     }
 
@@ -55,11 +70,171 @@ service cloud.firestore {
     }
 
     function isManager() {
-      return activeUser() && role() in ['gerencia', 'gerente', 'Gerencia', 'Gerente'];
+      return activeUser() && role() in [
+        'gerencia',
+        'gerente',
+        'Gerencia',
+        'Gerente'
+      ];
     }
 
     function isChiefLogistics() {
-      return activeUser() && role() in ['jefe_logistica', 'jefe_logistico', 'Jefe logística', 'Jefe logistica'];
+      return activeUser() && role() in [
+        'jefe_logistica',
+        'jefe_logistico',
+        'Jefe logística',
+        'Jefe de logística',
+        'Jefe logistico',
+        'Jefe de logistica'
+      ];
+    }
+
+    function isReceptionLeader() {
+      return activeUser() && role() in [
+        'lider_recepcion',
+        'lider_de_recepcion',
+        'Líder recepción',
+        'Lider recepcion',
+        'Líder de recepción',
+        'Lider de recepcion'
+      ];
+    }
+
+    function isProjectsRole() {
+      return activeUser() && role() in [
+        'proyectos',
+        'proyecto',
+        'rol_proyectos',
+        'Proyectos'
+      ];
+    }
+
+    function isAuditRole() {
+      return activeUser() && role() in [
+        'auditoria',
+        'auditor',
+        'Auditoría',
+        'Auditoria',
+        'consulta',
+        'solo_lectura'
+      ];
+    }
+
+    function isSalesRole() {
+      return activeUser() && role() in [
+        'ventas',
+        'asesor_ventas',
+        'asesor',
+        'Ventas',
+        'Asesor',
+        'Asesor ventas',
+        'Asesor de ventas'
+      ];
+    }
+
+    function isCashRole() {
+      return activeUser() && role() in [
+        'caja',
+        'Caja',
+        'cartera',
+        'Cartera'
+      ];
+    }
+
+    function isAuxLogisticsRoleValue(value) {
+      return value in [
+        'aux_logistica',
+        'auxiliar_logistica',
+        'auxiliar_de_logistica',
+        'aux_logistico',
+        'auxiliar_despacho',
+        'Auxiliar logística',
+        'Auxiliar logistica',
+        'Auxiliar de logística',
+        'Auxiliar de logistica',
+        'Aux logística',
+        'Aux logistica',
+        'Aux. logística',
+        'Aux. logistica',
+        'Auxiliar despacho',
+        'Auxiliar de despacho'
+      ];
+    }
+
+    function isAuxLogisticsRole() {
+      return activeUser() && isAuxLogisticsRoleValue(role());
+    }
+
+    function isCutRoleValue(value) {
+      return value in [
+        'auxiliar_corte',
+        'auxiliar_de_corte',
+        'operario_corte',
+        'operario_de_corte',
+        'corte',
+        'cortes',
+        'area_corte',
+        'modulo_corte',
+        'cortador',
+        'aux_corte',
+        'Corte',
+        'Cortes',
+        'Aux corte',
+        'Aux. corte',
+        'Auxiliar corte',
+        'Auxiliar de corte',
+        'Operario corte',
+        'Operario de corte'
+      ];
+    }
+
+    function isCutRole() {
+      return activeUser() && (isCutRoleValue(role()) || isKnownFabianCutAuth());
+    }
+
+    function isUnifiedLogisticsRoleValue(value) {
+      return value in [
+        'lider_logistico',
+        'lider_logistica',
+        'coordinador_logistico',
+        'coordinador_logistica',
+        'logistica_despacho_unificado',
+        'logistica_despacho_unificada',
+        'logistica_despacho',
+        'logistica_y_despacho',
+        'despacho_logistica',
+        'despacho_logistico',
+        'logistica',
+        'despacho',
+        'Logística / despacho (unificado)',
+        'Logistica / despacho (unificado)',
+        'Logística/despacho unificado',
+        'Logistica/despacho unificado',
+        'Logística / despacho',
+        'Logistica / despacho',
+        'Logística',
+        'Logistica',
+        'Despacho',
+        'Líder logístico',
+        'Lider logistico',
+        'Líder logística',
+        'Lider logistica',
+        'Coordinador logístico',
+        'Coordinador logistico',
+        'Coordinador logística',
+        'Coordinador logistica'
+      ];
+    }
+
+    function isUnifiedLogisticsRole() {
+      return activeUser() && isUnifiedLogisticsRoleValue(role());
+    }
+
+    function sameOperationalRole(a, b) {
+      return a == b
+        || (isUnifiedLogisticsRoleValue(a) && isUnifiedLogisticsRoleValue(b))
+        || (isAuxLogisticsRoleValue(a) && isAuxLogisticsRoleValue(b))
+        || (isCutRoleValue(a) && isCutRoleValue(b));
     }
 
     function canSeeAll() {
@@ -68,6 +243,151 @@ service cloud.firestore {
 
     function canManageUsers() {
       return isAdminOrSuper() || isManager();
+    }
+
+    function canManageReports() {
+      return isAdminOrSuper() || isManager() || isChiefLogistics();
+    }
+
+    function validRoleValue(value) {
+      return value in [
+        'admin',
+        'administrador',
+        'Admin',
+        'Administrador',
+        'ADMIN',
+
+        'super_admin',
+        'super_administrador',
+        'super admin',
+        'superadmin',
+        'super-administrador',
+        'Super Admin',
+        'Super administrador',
+        'Super Administrador',
+        'SUPER_ADMIN',
+        'SUPER ADMIN',
+        'super administrador',
+        'super_administracion',
+        'superadministrador',
+
+        'gerencia',
+        'gerente',
+        'Gerencia',
+        'Gerente',
+
+        'ventas',
+        'asesor_ventas',
+        'asesor',
+        'Ventas',
+        'Asesor',
+        'Asesor ventas',
+        'Asesor de ventas',
+
+        'proyectos',
+        'proyecto',
+        'rol_proyectos',
+        'Proyectos',
+
+        'jefe_logistica',
+        'jefe_logistico',
+        'Jefe logística',
+        'Jefe de logística',
+        'Jefe logistico',
+        'Jefe de logistica',
+
+        'lider_logistico',
+        'lider_logistica',
+        'coordinador_logistico',
+        'coordinador_logistica',
+        'logistica_despacho_unificado',
+        'logistica_despacho_unificada',
+        'logistica_despacho',
+        'logistica_y_despacho',
+        'despacho_logistica',
+        'despacho_logistico',
+        'logistica',
+        'despacho',
+        'Logística / despacho (unificado)',
+        'Logistica / despacho (unificado)',
+        'Logística/despacho unificado',
+        'Logistica/despacho unificado',
+        'Logística / despacho',
+        'Logistica / despacho',
+        'Logística',
+        'Logistica',
+        'Despacho',
+        'Líder logístico',
+        'Lider logistico',
+        'Líder logística',
+        'Lider logistica',
+        'Coordinador logístico',
+        'Coordinador logistico',
+        'Coordinador logística',
+        'Coordinador logistica',
+
+        'aux_logistica',
+        'auxiliar_logistica',
+        'auxiliar_de_logistica',
+        'aux_logistico',
+        'auxiliar_despacho',
+        'Auxiliar logística',
+        'Auxiliar logistica',
+        'Auxiliar de logística',
+        'Auxiliar de logistica',
+        'Aux logística',
+        'Aux logistica',
+        'Aux. logística',
+        'Aux. logistica',
+        'Auxiliar despacho',
+        'Auxiliar de despacho',
+
+        'auxiliar_corte',
+        'auxiliar_de_corte',
+        'operario_corte',
+        'operario_de_corte',
+        'corte',
+        'cortes',
+        'area_corte',
+        'modulo_corte',
+        'cortador',
+        'aux_corte',
+        'Corte',
+        'Cortes',
+        'Aux corte',
+        'Aux. corte',
+        'Auxiliar corte',
+        'Auxiliar de corte',
+        'Operario corte',
+        'Operario de corte',
+
+        'caja',
+        'Caja',
+        'cartera',
+        'Cartera',
+
+        'inventarios',
+        'Inventarios',
+
+        'lider_recepcion',
+        'lider_de_recepcion',
+        'Líder recepción',
+        'Lider recepcion',
+        'Líder de recepción',
+        'Lider de recepcion',
+
+        'auditoria',
+        'Auditoría',
+        'Auditoria'
+      ];
+    }
+
+    function validUserPayload() {
+      return request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.role is string
+        && request.resource.data.isActive is bool
+        && validRoleValue(request.resource.data.role);
     }
 
     function validCasePayload() {
@@ -84,30 +404,57 @@ service cloud.firestore {
         'status',
         'createdAt',
         'updatedAt',
+
         'requirementType',
+        'requirements',
+        'openRequirement',
+        'totalRequirements',
+
         'noDelivery',
         'noDeliveryStatus',
         'returnToCash',
+
         'history',
         'flowTrace',
-        'requirements',
-        'openRequirement',
+        'evidence',
+        'evidences',
+        'deliveryEvidence',
+
         'closedAt',
         'closedBy',
         'closedByName',
         'lastAction',
         'lastActionBy',
         'lastActionByName',
-        'documentFlow',
-        'checklist'
-      ]);
-    }
 
-    function validUserPayload() {
-      return request.resource.data.name is string
-        && request.resource.data.email is string
-        && request.resource.data.role is string
-        && request.resource.data.isActive is bool;
+        'separationRequest',
+        'separationStatus',
+        'separationOnly',
+        'separationActive',
+
+        'cashBilling',
+        'paymentCondition',
+        'paymentStatus',
+        'pendingPayment',
+
+        'deliveryRoute',
+        'deliveryType',
+        'requestedDelivery',
+        'deliveryRouteOwner',
+        'deliveryRouteOwnerId',
+        'routeOwner',
+        'routeOwnerUid',
+
+        'cutRequests',
+        'cutReturnAlerts',
+        'hasCuts',
+
+        'checklist',
+        'processStats',
+        'activeStartedAt',
+        'deadStartedAt',
+        'waitStartedAt'
+      ]);
     }
 
     function validRequirementPayload() {
@@ -163,70 +510,433 @@ service cloud.firestore {
       ]);
     }
 
+    function isOwnCase() {
+      return resource.data.createdBy == request.auth.uid
+        || resource.data.createdByUid == request.auth.uid
+        || resource.data.createdByEmail == request.auth.token.email;
+    }
+
+    function isAssignedRoleCase() {
+      return sameOperationalRole(resource.data.assignedRole, role());
+    }
+
+    function isAssignedUidCase() {
+      return resource.data.assignedUid == request.auth.uid
+        || resource.data.assignedTo == request.auth.uid
+        || (
+          resource.data.assignedUserIds is list
+          && request.auth.uid in resource.data.assignedUserIds
+        );
+    }
+
+    function isVisibleRoleCase() {
+      return resource.data.visibleRoles is list
+        && (
+          role() in resource.data.visibleRoles
+          || (
+            isUnifiedLogisticsRole()
+            && resource.data.visibleRoles.hasAny([
+              'lider_logistico',
+              'lider_logistica',
+              'coordinador_logistico',
+              'coordinador_logistica',
+              'logistica_despacho_unificado',
+              'logistica_despacho',
+              'logistica',
+              'despacho'
+            ])
+          )
+          || (
+            isAuxLogisticsRole()
+            && resource.data.visibleRoles.hasAny([
+              'aux_logistica',
+              'auxiliar_logistica',
+              'auxiliar_de_logistica',
+              'aux_logistico',
+              'auxiliar_despacho'
+            ])
+          )
+        );
+    }
+
+    function isTargetRoleCase() {
+      return resource.data.targetRoles is list
+        && (
+          role() in resource.data.targetRoles
+          || (
+            isUnifiedLogisticsRole()
+            && resource.data.targetRoles.hasAny([
+              'lider_logistico',
+              'lider_logistica',
+              'coordinador_logistico',
+              'coordinador_logistica',
+              'logistica_despacho_unificado',
+              'logistica_despacho',
+              'logistica',
+              'despacho'
+            ])
+          )
+          || (
+            isAuxLogisticsRole()
+            && resource.data.targetRoles.hasAny([
+              'aux_logistica',
+              'auxiliar_logistica',
+              'auxiliar_de_logistica',
+              'aux_logistico',
+              'auxiliar_despacho'
+            ])
+          )
+        );
+    }
+
+    function isCutCase() {
+      return isCutRole() && resource.data.hasCuts == true;
+    }
+
+    function isCutWorkCase() {
+      return isCutRole()
+        && (
+          resource.data.hasCuts == true
+          || request.resource.data.hasCuts == true
+          || resource.data.currentProcess == 'corte_cable'
+          || request.resource.data.currentProcess == 'corte_cable'
+          || (
+            resource.data.cutRequests is list
+            && resource.data.cutRequests.size() > 0
+          )
+          || (
+            request.resource.data.cutRequests is list
+            && request.resource.data.cutRequests.size() > 0
+          )
+          || sameOperationalRole(resource.data.assignedRole, role())
+          || sameOperationalRole(request.resource.data.assignedRole, role())
+        );
+    }
+
+    function isNoDeliveryStatus(value) {
+      return value in [
+        'No entregado',
+        'no_entregado',
+        'NO_ENTREGADO',
+        'No Entregado',
+        'pedido_no_entregado'
+      ];
+    }
+
+    function isNoDeliveryPayload() {
+      return isNoDeliveryStatus(request.resource.data.status)
+        || request.resource.data.noDelivery == true
+        || request.resource.data.noDeliveryStatus == true
+        || request.resource.data.requirementType in [
+          'no_entrega',
+          'no_entregado',
+          'pedido_no_entregado'
+        ]
+        || request.resource.data.type in [
+          'no_entrega',
+          'no_entregado',
+          'pedido_no_entregado'
+        ]
+        || request.resource.data.category in [
+          'no_entrega',
+          'no_entregado',
+          'pedido_no_entregado'
+        ];
+    }
+
+    function noDeliveryTargetedToAllowedRole() {
+      return request.resource.data.targetRole in [
+        'lider_logistico',
+        'lider_logistica',
+        'coordinador_logistico',
+        'coordinador_logistica',
+        'logistica_despacho_unificado',
+        'logistica_despacho',
+        'logistica',
+        'despacho',
+        'jefe_logistica',
+        'jefe_logistico',
+        'gerencia',
+        'gerente',
+        'caja',
+        'cartera',
+        'admin',
+        'super_admin'
+      ]
+      || (
+        request.resource.data.visibleRoles is list
+        && request.resource.data.visibleRoles.hasAny([
+          'lider_logistico',
+          'lider_logistica',
+          'coordinador_logistico',
+          'coordinador_logistica',
+          'logistica_despacho_unificado',
+          'logistica_despacho',
+          'logistica',
+          'despacho',
+          'jefe_logistica',
+          'jefe_logistico',
+          'gerencia',
+          'gerente',
+          'caja',
+          'cartera',
+          'admin',
+          'super_admin'
+        ])
+      )
+      || (
+        request.resource.data.targetRoles is list
+        && request.resource.data.targetRoles.hasAny([
+          'lider_logistico',
+          'lider_logistica',
+          'coordinador_logistico',
+          'coordinador_logistica',
+          'logistica_despacho_unificado',
+          'logistica_despacho',
+          'logistica',
+          'despacho',
+          'jefe_logistica',
+          'jefe_logistico',
+          'gerencia',
+          'gerente',
+          'caja',
+          'cartera',
+          'admin',
+          'super_admin'
+        ])
+      );
+    }
+
+    function isOwnCaseNoDeliveryUpdate() {
+      return isSalesRole()
+        && isOwnCase()
+        && isNoDeliveryPayload();
+    }
+
+    function isSalesOwnCaseUpdate() {
+      return isSalesRole()
+        && isOwnCase();
+    }
+
+    function isNoDeliveryRequirementCreate() {
+      return isSalesRole()
+        && isNoDeliveryPayload()
+        && noDeliveryTargetedToAllowedRole();
+    }
+
+    function isLogisticsNoDeliveryToCashRequirementCreate() {
+      return activeUser()
+        && isUnifiedLogisticsRole()
+        && isNoDeliveryPayload()
+        && request.resource.data.targetRole in ['caja', 'cartera'];
+    }
+
+    function canReadCase() {
+      return activeUser() && (
+        canSeeAll()
+        || isOwnCase()
+        || isAssignedRoleCase()
+        || isAssignedUidCase()
+        || isVisibleRoleCase()
+        || isTargetRoleCase()
+        || isCutCase()
+        || isCutWorkCase()
+        || isSalesRole()
+      );
+    }
+
+    function canOperateCase() {
+      return activeUser() && (
+        canSeeAll()
+        || isAssignedRoleCase()
+        || isAssignedUidCase()
+        || isVisibleRoleCase()
+        || isTargetRoleCase()
+        || isCutCase()
+        || isCutWorkCase()
+        || isCutRole()
+        || isKnownFabianCutAuth()
+        || isOwnCaseNoDeliveryUpdate()
+        || isSalesOwnCaseUpdate()
+        || isCashRole()
+        || isReceptionLeader()
+        || isUnifiedLogisticsRole()
+        || isAuxLogisticsRole()
+      );
+    }
+
     match /users/{userId} {
-      allow read: if activeUser();
-      allow create: if canManageUsers() && validUserPayload();
-      allow update: if canManageUsers() && validUserPayload();
+      allow read: if activeUser()
+        || (signedIn() && request.auth.uid == userId);
+
+      allow create: if (
+          canManageUsers()
+          || (
+            isKnownFabianCutAuth()
+            && request.auth.uid == userId
+            && request.resource.data.email == 'f.duque@ei.com.co'
+            && request.resource.data.role == 'auxiliar_corte'
+            && request.resource.data.isActive == true
+          )
+        )
+        && validUserPayload();
+
+      allow update: if (
+          canManageUsers()
+          || (
+            isKnownFabianCutAuth()
+            && request.auth.uid == userId
+            && request.resource.data.email == 'f.duque@ei.com.co'
+            && request.resource.data.role == 'auxiliar_corte'
+            && request.resource.data.isActive == true
+          )
+        )
+        && validUserPayload();
+
       allow delete: if isAdminOrSuper();
     }
 
     match /cases/{caseId} {
       allow read: if activeUser();
-      allow create: if activeUser() && validCasePayload();
-      allow update: if activeUser() && validCasePayload();
+
+      allow create: if activeUser() && !isAuditRole()
+        && validCasePayload();
+
+      allow update: if !isAuditRole() && canOperateCase()
+        && validCasePayload();
+
       allow delete: if isAdminOrSuper();
     }
 
     match /case_events/{eventId} {
       allow read: if activeUser();
-      allow create: if activeUser();
+      allow create: if activeUser() && !isAuditRole();
       allow update: if false;
       allow delete: if isAdminOrSuper();
     }
 
     match /requirements/{requirementId} {
       allow read: if activeUser();
-      allow create: if activeUser() && validRequirementPayload();
-      allow update: if activeUser() && validRequirementPayload();
+
+      allow create: if activeUser() && !isAuditRole()
+        && validRequirementPayload()
+        && (
+          canSeeAll()
+          || isNoDeliveryRequirementCreate()
+          || isLogisticsNoDeliveryToCashRequirementCreate()
+          || (
+            request.resource.data.targetRole == 'ventas'
+            && request.resource.data.sourceProcess == 'corte_cable'
+          )
+          || (
+            request.resource.data.targetRole == 'proyectos'
+            && request.resource.data.sourceProcess == 'proyectos'
+          )
+          || isUnifiedLogisticsRole()
+          || isAuxLogisticsRole()
+          || isSalesRole()
+          || isCashRole()
+          || isReceptionLeader()
+        );
+
+      allow update: if activeUser() && (
+        canSeeAll()
+        || sameOperationalRole(resource.data.targetRole, role())
+        || resource.data.assignedUid == request.auth.uid
+        || resource.data.assignedTo == request.auth.uid
+        || (
+          resource.data.visibleRoles is list
+          && role() in resource.data.visibleRoles
+        )
+        || (
+          resource.data.targetRoles is list
+          && role() in resource.data.targetRoles
+        )
+        || isUnifiedLogisticsRole()
+        || isAuxLogisticsRole()
+        || isSalesRole()
+        || isCashRole()
+        || isReceptionLeader()
+      );
+
       allow delete: if isAdminOrSuper();
     }
 
     match /evidences/{evidenceId} {
       allow read: if activeUser();
-      allow create: if activeUser();
+      allow create: if activeUser() && !isAuditRole();
       allow update: if false;
       allow delete: if isAdminOrSuper();
     }
 
     match /kpis/{kpiId} {
-      allow read: if canSeeAll();
+      allow read: if activeUser();
       allow create, update, delete: if isAdminOrSuper();
     }
 
     match /siesa_exports/{exportId} {
       allow read: if activeUser();
-      allow create: if activeUser();
+      allow create: if canSeeAll() || isCutRole();
       allow update, delete: if isAdminOrSuper();
+    }
+
+
+    match /inventario_chipas/{chipId} {
+      allow read: if activeUser();
+      allow create: if activeUser() && !isAuditRole() && (canSeeAll() || isCutRole());
+      allow update: if activeUser() && !isAuditRole() && (canSeeAll() || isCutRole());
+      allow delete: if isAdminOrSuper();
     }
 
     match /proyectos_pedidos/{projectId} {
       allow read: if activeUser();
-      allow create: if activeUser();
-      allow update: if activeUser();
+
+      allow create: if activeUser() && (
+        isAdminOrSuper()
+        || isProjectsRole()
+      );
+
+      allow update: if activeUser() && (
+        isAdminOrSuper()
+        || isProjectsRole()
+      );
+
       allow delete: if isAdminOrSuper();
     }
 
     match /recepciones_mercancia/{receptionId} {
       allow read: if activeUser();
-      allow create: if activeUser() && validReceptionPayload();
-      allow update: if activeUser() && validReceptionPayload();
+
+      allow create: if activeUser()
+        && (
+          isAdminOrSuper()
+          || isReceptionLeader()
+        )
+        && validReceptionPayload();
+
+      allow update: if activeUser()
+        && (
+          isAdminOrSuper()
+          || isReceptionLeader()
+        )
+        && validReceptionPayload();
+
       allow delete: if isSuperAdmin();
     }
 
     match /reportes_novedad/{reportId} {
       allow read: if activeUser();
-      allow create: if activeUser() && validReportPayload();
-      allow update: if activeUser() && validReportPayload();
+
+      allow create: if activeUser() && !isAuditRole()
+        && validReportPayload();
+
+      allow update: if activeUser() && !isAuditRole()
+        && (
+          canManageReports()
+          || isReceptionLeader()
+        )
+        && validReportPayload();
+
       allow delete: if isSuperAdmin();
     }
 
@@ -241,8 +951,8 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read: if false;
-      allow write: if false;
+      allow read: if activeUser();
+      allow create, update: if activeUser() && !isAuditRole();
       allow delete: if isAdminOrSuper();
     }
   }
