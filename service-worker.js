@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v190-disabled";
+var CACHE_VERSION = "ei-trazabilidad-v191-disabled";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){
