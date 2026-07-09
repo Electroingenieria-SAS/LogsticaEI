@@ -70,7 +70,34 @@ function ensureV104UiFixes(){
 \
 \
 @media(max-width:820px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
-/* V181_MOBILE_CUT_SIMPLE */\
+/* V182_MOBILE_GROUPED_CUTS */\
+@media(max-width:820px){\
+  .bottom-nav.clean{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:auto!important;max-width:calc(100vw - 22px)!important;margin:0 auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;grid-template-columns:none!important;padding:7px 10px!important;}\
+  .bottom-nav.clean button{width:74px!important;max-width:76px!important;flex:0 0 74px!important;text-align:center!important;}\
+  .bottom-nav.clean button b,.bottom-nav.clean button span{text-align:center!important;width:100%!important;}\
+  .mobile-cut-groups{display:grid!important;gap:11px!important;margin-top:12px!important;}\
+  .mobile-cut-group{padding:0!important;overflow:hidden!important;border-radius:18px!important;}\
+  .mobile-cut-group summary{list-style:none!important;cursor:pointer!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:13px 13px!important;background:linear-gradient(135deg,#061b46,#123d86)!important;color:#fff!important;}\
+  .mobile-cut-group summary::-webkit-details-marker{display:none!important;}\
+  .mobile-cut-group summary strong{display:block!important;color:#fff!important;font-size:.98rem!important;line-height:1.15!important;}\
+  .mobile-cut-group summary small{display:block!important;color:rgba(255,255,255,.78)!important;font-size:.70rem!important;margin-top:4px!important;}\
+  .mobile-cut-group summary .chip{background:rgba(255,255,255,.18)!important;color:#fff!important;border-color:rgba(255,255,255,.20)!important;}\
+  .mobile-cut-group>.notice{margin:10px!important;}\
+  .mobile-cut-list.grouped{display:grid!important;gap:9px!important;padding:0 10px 12px!important;}\
+  .mobile-cut-row{display:grid!important;gap:8px!important;border:1px solid #e2e8f0!important;background:#fff!important;border-radius:16px!important;padding:11px!important;box-shadow:0 8px 22px rgba(15,23,42,.055)!important;}\
+  .mobile-cut-row-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:8px!important;}\
+  .mobile-cut-row-head strong{display:block!important;color:#061b46!important;font-size:.95rem!important;line-height:1.1!important;}\
+  .mobile-cut-row-head small{display:block!important;color:#64748b!important;font-size:.70rem!important;margin-top:3px!important;line-height:1.2!important;}\
+  .mobile-cut-row-body{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;}\
+  .mobile-cut-row-body div{background:#f8fafc!important;border:1px solid #e2e8f0!important;border-radius:12px!important;padding:8px!important;}\
+  .mobile-cut-row-body span,.mobile-cut-row-ref span{display:block!important;color:#64748b!important;font-size:.66rem!important;text-transform:uppercase!important;letter-spacing:.06em!important;font-weight:900!important;}\
+  .mobile-cut-row-body b{display:block!important;color:#061b46!important;font-size:.88rem!important;margin-top:2px!important;}\
+  .mobile-cut-row-ref{border-top:1px dashed #e2e8f0!important;padding-top:8px!important;}\
+  .mobile-cut-row-ref small{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:3px!important;line-height:1.25!important;}\
+  .mobile-cut-row .btn{width:100%!important;justify-content:center!important;min-height:42px!important;}\
+  .mobile-cut-summary{margin-bottom:4px!important;}\
+}\
+/* V182_MOBILE_CUT_SIMPLE */\
 @media(max-width:820px){\
   .mobile-cut-list{display:grid!important;gap:10px!important;margin-top:12px!important;}\
   .mobile-cut-row{display:grid!important;gap:8px!important;}\
@@ -6970,21 +6997,46 @@ function cutGroupKey(cut){return normalizeRefText(cut.referencia||cut.descripcio
 function cutGroupTitle(cut){return (cut.referencia||"Sin referencia")+(cut.descripcion?" · "+cut.descripcion:"");}
 function cutPendingStatus(cut){return !cutIsOperationallyDone(cut);}
 
+
 function renderCutsQueue(){
   cleanupProtectedToast();
   var rows=[];
   state.cases.forEach(function(c){(c.cutRequests||[]).forEach(function(cut){if(!cutPendingStatus(cut))return;rows.push({c:c,cut:cut});});});
+  var groups={};
+  rows.forEach(function(r){
+    var k=cutGroupKey(r.cut);
+    if(!groups[k])groups[k]={key:k,title:cutGroupTitle(r.cut),items:[],meters:0};
+    groups[k].items.push(r);
+    var m=cutParseDecimal(r.cut.metrosSolicitados||r.cut.metrajeFinal);
+    if(Number.isFinite(m))groups[k].meters+=m;
+  });
+
   if(isMobileRuntime()||isCutRuntimeUser()){
-    var cards=rows.map(function(r){
-      return '<article class="card mobile-cut-row"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div><div><span>'+esc(r.cut.referencia||r.cut.descripcion||"Corte")+'</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div><div class="case-meta">'+cutStatusChip(r.cut.status)+'</div><button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></article>';
+    var groupKeys=Object.keys(groups).sort(function(a,b){
+      return groups[b].meters-groups[a].meters || groups[a].title.localeCompare(groups[b].title);
+    });
+    var groupHtml=groupKeys.map(function(k){
+      var g=groups[k];
+      var body=g.items.map(function(r){
+        return '<article class="mobile-cut-row">'+
+          '<div class="mobile-cut-row-head"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div>'+cutStatusChip(r.cut.status)+'</div>'+
+          '<div class="mobile-cut-row-body"><div><span>Corte</span><b>'+esc(r.cut.code||r.cut.id||"")+'</b></div><div><span>Metros</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div></div>'+
+          '<div class="mobile-cut-row-ref"><span>'+esc(r.cut.referencia||"Referencia")+'</span><small>'+esc(r.cut.descripcion||"")+'</small></div>'+
+          '<button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button>'+
+        '</article>';
+      }).join("");
+      return '<details class="card mobile-cut-group" open>'+
+        '<summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) · '+esc(cutNormalizeDecimal(g.meters))+' m por prealistar</small></div><span class="chip primary">'+esc(g.key)+'</span></summary>'+
+        '<div class="notice"><strong>Prealistamiento:</strong> agrupe físicamente este cable/referencia y luego abra cada pedido para registrar el corte.</div>'+
+        '<div class="mobile-cut-list grouped">'+body+'</div>'+
+      '</details>';
     }).join("");
-    layout(header("Cortes","Flujo móvil simple para iniciar, finalizar, subir foto final y pasar a Alistamiento.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="grid grid-2"><article class="card kpi"><span>Pendientes</span><strong>'+rows.length+'</strong><small>Cortes por operar</small></article><article class="card kpi"><span>Versión</span><strong>V181</strong><small>Móvil actualizado</small></article></section>'+
-      '<section class="mobile-cut-list">'+(cards||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
+    layout(header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento. Abra cada grupo y opere pedido por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
+      '<section class="grid grid-3 mobile-cut-summary"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por operar</small></article><article class="card kpi"><span>Grupos de cable</span><strong>'+groupKeys.length+'</strong><small>Prealistamiento</small></article><article class="card kpi"><span>Versión</span><strong>V182</strong><small>Móvil agrupado</small></article></section>'+
+      '<section class="mobile-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
     return;
   }
-  var groups={};
-  rows.forEach(function(r){var k=cutGroupKey(r.cut);if(!groups[k])groups[k]={key:k,title:cutGroupTitle(r.cut),items:[],meters:0};groups[k].items.push(r);var m=cutParseDecimal(r.cut.metrosSolicitados);if(Number.isFinite(m))groups[k].meters+=m;});
+
   var groupHtml=Object.keys(groups).sort(function(a,b){return groups[b].meters-groups[a].meters;}).map(function(k){
     var g=groups[k];
     var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join('');
@@ -6992,6 +7044,7 @@ function renderCutsQueue(){
   }).join('');
   layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Simple</strong><small>Sin animación innecesaria</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
 }
+
 
 
 

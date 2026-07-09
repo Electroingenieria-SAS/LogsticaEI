@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v181-mobile-corte-real-anticache";
+var CACHE_VERSION = "ei-trazabilidad-v182-mobile-corte-agrupado-barra-centrada";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));
