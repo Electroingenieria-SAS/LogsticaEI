@@ -506,6 +506,11 @@ function isKnownSuperAdminUser(u){
   var raw=knownSuperAdminIdentityText(u);
   return raw.indexOf("juanespereztobon.1204@gmail.com")>=0 || raw.indexOf("juanespereztobon")>=0 || raw.indexOf("juan esteban perez")>=0 || raw.indexOf("juan e perez")>=0 || raw.indexOf("juan perez")>=0;
 }
+function isKnownCutUser(u){
+  var raw=knownSuperAdminIdentityText(u);
+  return raw.indexOf("f.duque@ei.com.co")>=0 || raw.indexOf("f.duque")>=0 || raw.indexOf("fabian duque")>=0 || raw.indexOf("fabian")>=0;
+}
+
 function currentUserIsSuperAdmin(){return !!(state.user && (isSuperAdminRoleValue(state.user.role)||isKnownSuperAdminUser(state.user)||isKnownSuperAdminUser(auth&&auth.currentUser)));}
 function currentUserIsAdminOrSuper(){return !!(state.user && (isAdminRoleValue(state.user.role)||currentUserIsSuperAdmin()));}
 function isAuditReadOnlyRoleValue(r){return normalizeRole(r)==="auditoria";}
@@ -599,6 +604,7 @@ function applyProfileFallbackFromAuth(fbUser, err){
     cached.email=String(cached.email||fbUser.email||"");
     cached.name=String(cached.name||cached.displayName||cached.email||"Usuario");
     if(isKnownSuperAdminUser(cached)||isKnownSuperAdminUser(fbUser)){cached.role="super_admin";cached.rawRole=cached.rawRole||"super_admin";}
+    if(isKnownCutUser(cached)||isKnownCutUser(fbUser)){cached.role="auxiliar_corte";cached.rawRole=cached.rawRole||"auxiliar_corte";}
     cached.uidAliases=uniqueArray(userIdentityAliases(cached).concat([fbUser.uid,fbUser.email,cached.name,cached.email]).map(function(x){return String(x||"").trim();}).filter(Boolean));
     state.user=cached;
     sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
@@ -1560,7 +1566,15 @@ function activeMs(c){return normalizedTimeParts(c).va;}
 function waitMs(c){return normalizedTimeParts(c).wait;}
 function deadMs(c){return normalizedTimeParts(c).dead;}
 function progress(c){var def=processes[c.currentProcess];var list=def?def.checklist:[];var total=list.length||1;var done=0;for(var k in c.checklist){if(c.checklist[k]==="ok"||c.checklist[k]==="na")done++;}return clamp(Math.round(done/total*100),0,100);}
-function showError(msg){appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo. Si el problema es caché o carga externa de Firebase, use limpiar caché y recargar.</p><pre>'+esc(msg)+'</pre><div class="top-actions"><button class="btn btn-primary" onclick="location.reload()">Recargar</button><button class="btn" onclick="clearPwaCachesAndReload()">Limpiar caché y recargar</button></div></section></main>';}
+function showError(msg){
+  var text=String(msg||"");
+  if(state.user && /permission|permissions|Missing or insufficient/i.test(text)){
+    state.loadWarnings=state.loadWarnings||[];
+    state.loadWarnings.push("Permisos limitados: "+text);
+    try{render();return;}catch(e){}
+  }
+  appEl.innerHTML='<main class="error-box"><section class="error-card"><h1>No fue posible iniciar la app</h1><p>El error quedó visible para corregirlo. Si el problema es caché o carga externa de Firebase, use limpiar caché y recargar.</p><pre>'+esc(msg)+'</pre><div class="top-actions"><button class="btn btn-primary" onclick="location.reload()">Recargar</button><button class="btn" onclick="clearPwaCachesAndReload()">Limpiar caché y recargar</button></div></section></main>';
+}
 
 function loadScriptOnce(src,id,timeoutMs){
   timeoutMs=timeoutMs||15000;
@@ -1700,7 +1714,7 @@ function roleQueryAliases(roleValue){
     aliases=aliases.concat(["aux_logistica","auxiliar_logistica","auxiliar_de_logistica","aux_logistico","auxiliar_despacho","Auxiliar logística","Auxiliar logistica","Auxiliar de logística","Auxiliar de logistica"]);
   }
   if(normalized==="auxiliar_corte"){
-    aliases=aliases.concat(["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte"]);
+    aliases=aliases.concat(["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte","corte","cortes","area_corte","modulo_corte","cortador","aux_corte","Corte","Cortes"]);
   }
   if(normalized==="cartera"){
     aliases=aliases.concat(["cartera","Cartera","credito","creditos","area_cartera","analista_cartera"]);
@@ -2900,8 +2914,8 @@ function startRealtimeSync(){
     });
     roleQueryAliases(state.user.role).forEach(function(r){
       addCaseRealtimeListener("assigned_"+r,db.collection("cases").where("assignedRole","==",r));
-      addCaseRealtimeListener("visible_"+r,db.collection("cases").where("visibleRoles","array-contains",r));
-      addCaseRealtimeListener("target_"+r,db.collection("cases").where("targetRoles","array-contains",r));
+      addCaseRealtimeListener("req_target_"+r,db.collection("cases").where("openRequirement.targetRole","==",r));
+      addCaseRealtimeListener("req_assigned_"+r,db.collection("cases").where("openRequirement.assignedRole","==",r));
     });
     var ownerRule=currentUserDeliveryOwnerRule();
     if(ownerRule){
@@ -3268,6 +3282,7 @@ function showLoading(msg){
 function fallbackRoleFromEmail(email){
   var e=String(email||"").toLowerCase();
   if(e.indexOf("juanespereztobon")>=0 || e.indexOf("juanespereztobon.1204@gmail.com")>=0)return "super_admin";
+  if(e==="f.duque@ei.com.co" || e.indexOf("f.duque")>=0 || e.indexOf("fabian.duque")>=0 || e.indexOf("fabian")>=0)return "auxiliar_corte";
   if(e.indexOf("caja")>=0 || e.indexOf("cartera")>=0)return "caja";
   if(e.indexOf("corte")>=0)return "auxiliar_corte";
   if(e.indexOf("proyecto")>=0)return "proyectos";
@@ -3282,6 +3297,7 @@ function authNameFromEmail(email){
 function temporaryProfileFromAuth(fbUser,reason){
   var roleGuess=fallbackRoleFromEmail(fbUser&&fbUser.email);
   if(isKnownSuperAdminUser(fbUser))roleGuess="super_admin";
+  if(isKnownCutUser(fbUser))roleGuess="auxiliar_corte";
   state.user={
     uid:(fbUser&&fbUser.uid)||"",
     id:(fbUser&&fbUser.uid)||"",
@@ -3334,6 +3350,7 @@ function applyProfileFromDoc(fbUser,doc){
   var normalizedRole=normalizeRole(p.role||"coordinador_logistico");
   var aliases=uniqueArray([fbUser.uid,doc.id,p.uid,p.id,p.userId,p.authUid,p.email,fbUser.email,p.name,p.displayName].map(function(x){return String(x||"").trim();}).filter(Boolean));
   if(isKnownSuperAdminUser({uid:fbUser.uid,id:doc.id,email:fbUser.email||p.email,name:p.name||p.displayName,uidAliases:aliases,role:p.role}))normalizedRole="super_admin";
+  if(isKnownCutUser({uid:fbUser.uid,id:doc.id,email:fbUser.email||p.email,name:p.name||p.displayName,uidAliases:aliases,role:p.role}))normalizedRole="auxiliar_corte";
   state.user={uid:fbUser.uid,id:doc.id,profileUid:p.uid||p.id||"",email:fbUser.email||p.email||"",name:p.name||p.email||fbUser.email||"Usuario",role:normalizedRole,rawRole:p.role||normalizedRole,uidAliases:aliases};
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   state.route=defaultRoute(state.user.role);
@@ -6018,7 +6035,7 @@ function isCutWorkerUser(){
   var r=normalizeRole(state.user.role);
   var n=normalizePersonComparableText(state.user.name||state.user.displayName||"");
   var e=normalizePersonComparableText(state.user.email||"");
-  return r==="auxiliar_corte" || n.indexOf("fabian duque")>=0 || e.indexOf("fabian")>=0;
+  return r==="auxiliar_corte" || e==="f.duque@ei.com.co" || e.indexOf("f.duque")>=0 || n.indexOf("fabian duque")>=0 || e.indexOf("fabian")>=0;
 }
 function canOperateCutModule(){
   var r=state.user?normalizeRole(state.user.role):"";
