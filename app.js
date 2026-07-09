@@ -70,7 +70,55 @@ function ensureV104UiFixes(){
 \
 \
 @media(max-width:820px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
-/* V182_MOBILE_GROUPED_CUTS */\
+/* V183_MOBILE_PREMIUM_CUTS */\
+@media(max-width:820px){\
+  .mobile-top.premium{height:82px!important;display:grid!important;grid-template-columns:48px 1fr 48px!important;align-items:center!important;padding:10px 12px calc(10px + env(safe-area-inset-top,0px))!important;background:linear-gradient(135deg,#071b44 0%,#0f2f70 55%,#143b87 100%)!important;box-shadow:0 10px 28px rgba(7,27,68,.26)!important;}\
+  .mobile-top-center{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:0!important;padding:0 6px!important;}\
+  .mobile-top-brand{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;line-height:1.05!important;}\
+  .mobile-top-brand strong{font-size:.84rem!important;color:#fff!important;font-weight:900!important;letter-spacing:.01em!important;}\
+  .mobile-top-brand span{font-size:.66rem!important;color:rgba(255,255,255,.74)!important;font-weight:700!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:180px!important;}\
+  .mobile-top-switcher{display:flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;flex-wrap:nowrap!important;}\
+  .mobile-pill-route{border:1px solid rgba(255,255,255,.20)!important;background:rgba(255,255,255,.10)!important;color:#fff!important;border-radius:999px!important;padding:7px 14px!important;min-height:32px!important;font-size:.72rem!important;font-weight:900!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)!important;backdrop-filter:blur(10px)!important;}\
+  .mobile-pill-route.active{background:#fff!important;color:#0f2f70!important;border-color:#fff!important;box-shadow:0 6px 16px rgba(255,255,255,.18)!important;}\
+  .mobile-top-spacer{width:48px!important;height:48px!important;}\
+  .mobile-menu-btn.premium{width:42px!important;height:42px!important;border:1px solid rgba(255,255,255,.15)!important;border-radius:14px!important;background:rgba(255,255,255,.12)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;padding:0!important;box-shadow:0 8px 18px rgba(0,0,0,.12)!important;}\
+  .mobile-menu-btn.premium span{display:block!important;width:18px!important;height:2px!important;border-radius:999px!important;background:#fff!important;opacity:.96!important;}\
+  .bottom-nav.clean{bottom:10px!important;background:rgba(255,255,255,.98)!important;border:1px solid rgba(15,23,42,.06)!important;border-radius:24px!important;box-shadow:0 18px 40px rgba(15,23,42,.18)!important;padding:8px 10px!important;}\
+  .bottom-nav.clean button{min-height:50px!important;border-radius:16px!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;}\
+  .bottom-nav.clean button b{font-size:.84rem!important;}\
+  .bottom-nav.clean button span{font-size:.67rem!important;font-weight:900!important;}\
+  .bottom-nav.clean button.active{background:linear-gradient(135deg,#071b44,#123d86)!important;color:#fff!important;box-shadow:0 10px 20px rgba(18,61,134,.24)!important;}\
+  .mobile-cut-summary .card.kpi{border-radius:18px!important;box-shadow:0 10px 24px rgba(15,23,42,.07)!important;padding:14px!important;}\
+  .mobile-cut-groups{gap:14px!important;}\
+  .mobile-cut-group.aesthetic{border-radius:22px!important;border:1px solid rgba(15,23,42,.06)!important;background:linear-gradient(180deg,#ffffff 0%,#f9fbff 100%)!important;box-shadow:0 14px 32px rgba(15,23,42,.08)!important;overflow:hidden!important;}\
+  .mobile-cut-group.aesthetic summary{padding:14px 14px!important;background:linear-gradient(135deg,#071b44 0%,#123d86 100%)!important;color:#fff!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;list-style:none!important;}\
+  .mobile-cut-group.aesthetic summary::-webkit-details-marker{display:none!important;}\
+  .mobile-cut-group-main{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;flex:1!important;min-width:0!important;}\
+  .mobile-cut-group-title strong{display:block!important;color:#fff!important;font-size:1rem!important;line-height:1.1!important;}\
+  .mobile-cut-group-title small{display:block!important;color:rgba(255,255,255,.74)!important;font-size:.71rem!important;margin-top:4px!important;}\
+  .mobile-cut-group-stats{display:flex!important;flex-direction:column!important;align-items:flex-end!important;justify-content:center!important;text-align:right!important;}\
+  .mobile-cut-group-stats span{font-size:.94rem!important;font-weight:900!important;color:#fff!important;line-height:1!important;}\
+  .mobile-cut-group-stats small{font-size:.68rem!important;color:rgba(255,255,255,.74)!important;margin-top:4px!important;}\
+  .mobile-cut-group.aesthetic summary .chip{background:rgba(255,255,255,.14)!important;color:#fff!important;border-color:rgba(255,255,255,.18)!important;box-shadow:none!important;}\
+  .mobile-cut-info-strip{display:flex!important;align-items:flex-start!important;gap:8px!important;padding:12px 14px 8px!important;color:#475569!important;font-size:.74rem!important;line-height:1.35!important;}\
+  .mobile-cut-info-strip b{color:#0f2f70!important;white-space:nowrap!important;}\
+  .mobile-cut-list.grouped{padding:0 12px 14px!important;gap:11px!important;}\
+  .mobile-cut-row.aesthetic{border:1px solid rgba(15,23,42,.06)!important;background:#fff!important;border-radius:18px!important;padding:12px!important;box-shadow:0 10px 24px rgba(15,23,42,.055)!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-head{align-items:flex-start!important;margin-bottom:4px!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-head strong{font-size:.96rem!important;color:#071b44!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-head small{font-size:.71rem!important;color:#64748b!important;}\
+  .mobile-cut-chip-wrap .chip{border-radius:999px!important;padding:5px 9px!important;font-size:.67rem!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-body{margin:4px 0 2px!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-body div{border-radius:14px!important;background:#f7faff!important;border-color:#e2ebfb!important;padding:9px!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-body span{font-size:.64rem!important;color:#6b7280!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-body b{font-size:.90rem!important;color:#0f2f70!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-ref{padding-top:9px!important;margin-top:2px!important;border-top:1px dashed #e6edf7!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-ref span{font-size:.66rem!important;color:#64748b!important;}\
+  .mobile-cut-row.aesthetic .mobile-cut-row-ref small{font-size:.73rem!important;color:#475569!important;line-height:1.3!important;}\
+  .mobile-cut-row-footer{margin-top:8px!important;}\
+  .mobile-cut-row-footer .btn{width:100%!important;min-height:42px!important;border-radius:14px!important;font-weight:900!important;box-shadow:0 8px 18px rgba(18,61,134,.14)!important;}\
+}\
+/* V183_MOBILE_GROUPED_CUTS */\
 @media(max-width:820px){\
   .bottom-nav.clean{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:auto!important;max-width:calc(100vw - 22px)!important;margin:0 auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;grid-template-columns:none!important;padding:7px 10px!important;}\
   .bottom-nav.clean button{width:74px!important;max-width:76px!important;flex:0 0 74px!important;text-align:center!important;}\
@@ -97,7 +145,7 @@ function ensureV104UiFixes(){
   .mobile-cut-row .btn{width:100%!important;justify-content:center!important;min-height:42px!important;}\
   .mobile-cut-summary{margin-bottom:4px!important;}\
 }\
-/* V182_MOBILE_CUT_SIMPLE */\
+/* V183_MOBILE_CUT_SIMPLE */\
 @media(max-width:820px){\
   .mobile-cut-list{display:grid!important;gap:10px!important;margin-top:12px!important;}\
   .mobile-cut-row{display:grid!important;gap:8px!important;}\
@@ -3511,8 +3559,11 @@ function layout(content){
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
   var rs=routes();
+  var mobileRoutes=allMobileRoutes();
   var bottom=mobileItems().slice(0,4);
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top clean"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title"><strong>'+esc(roleTitle(state.user.role))+'</strong><span>'+esc(state.user.name||"")+'</span></div><button class="mobile-menu-btn" data-action="openMobileMenu" aria-label="Abrir menú">☰</button></header><main class="main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav clean">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+x[2]+'</b><span>'+x[1]+'</span></button>';}).join("")+'</nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
+  var cutRoute=mobileRoutes.find(function(x){return x.route==="corte_cable";});
+  var quickCutBtn=cutRoute?('<button class="mobile-pill-route '+(state.route==="corte_cable"?'active':'')+'" data-route="corte_cable">CT Cortes</button>'):'';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(state.user.email||"")+'</div></div><button class="btn btn-danger" data-action="logout">Cerrar sesión</button></div></aside><main class="main"><header class="mobile-top premium"><button class="mobile-menu-btn premium" data-action="openMobileMenu" aria-label="Abrir menú"><span></span><span></span><span></span></button><div class="mobile-top-center"><div class="mobile-top-brand"><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><div class="mobile-top-switcher"><button class="mobile-pill-route '+(state.route==="home"?'active':'')+'" data-route="home">Inicio</button>'+quickCutBtn+'</div></div><div class="mobile-top-spacer"></div></header>'+content+'<nav class="bottom-nav clean">'+bottom.map(function(item){return '<button class="'+(state.route===item.route?'active':'')+'" data-route="'+item.route+'"><b>'+esc(item.icon)+'</b><span>'+esc(item.label)+'</span></button>';}).join("")+'</nav></main><div class="mobile-menu-overlay'+(state.mobileMenuOpen?' open':'')+'" id="mobileMenuOverlay"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div></div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
@@ -7018,35 +7069,42 @@ function renderCutsQueue(){
     var groupHtml=groupKeys.map(function(k){
       var g=groups[k];
       var body=g.items.map(function(r){
-        return '<article class="mobile-cut-row">'+
-          '<div class="mobile-cut-row-head"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div>'+cutStatusChip(r.cut.status)+'</div>'+
+        return '<article class="mobile-cut-row aesthetic">'+
+          '<div class="mobile-cut-row-head"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div><div class="mobile-cut-chip-wrap">'+cutStatusChip(r.cut.status)+'</div></div>'+
           '<div class="mobile-cut-row-body"><div><span>Corte</span><b>'+esc(r.cut.code||r.cut.id||"")+'</b></div><div><span>Metros</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div></div>'+
           '<div class="mobile-cut-row-ref"><span>'+esc(r.cut.referencia||"Referencia")+'</span><small>'+esc(r.cut.descripcion||"")+'</small></div>'+
-          '<button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button>'+
+          '<div class="mobile-cut-row-footer"><button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></div>'+
         '</article>';
       }).join("");
-      return '<details class="card mobile-cut-group" open>'+
-        '<summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) · '+esc(cutNormalizeDecimal(g.meters))+' m por prealistar</small></div><span class="chip primary">'+esc(g.key)+'</span></summary>'+
-        '<div class="notice"><strong>Prealistamiento:</strong> agrupe físicamente este cable/referencia y luego abra cada pedido para registrar el corte.</div>'+
+      return '<details class="card mobile-cut-group aesthetic" open>'+
+        '<summary><div class="mobile-cut-group-main"><div class="mobile-cut-group-title"><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendientes</small></div><div class="mobile-cut-group-stats"><span>'+esc(cutNormalizeDecimal(g.meters))+' m</span><small>por prealistar</small></div></div><span class="chip primary">'+esc(g.key)+'</span></summary>'+
+        '<div class="mobile-cut-info-strip"><b>Prealistamiento</b><span>agrupa este cable y luego abre cada pedido para registrar el corte.</span></div>'+
         '<div class="mobile-cut-list grouped">'+body+'</div>'+
       '</details>';
     }).join("");
-    layout(header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento. Abra cada grupo y opere pedido por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="grid grid-3 mobile-cut-summary"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por operar</small></article><article class="card kpi"><span>Grupos de cable</span><strong>'+groupKeys.length+'</strong><small>Prealistamiento</small></article><article class="card kpi"><span>Versión</span><strong>V182</strong><small>Móvil agrupado</small></article></section>'+
-      '<section class="mobile-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
+    layout(
+      header(
+        "Cortes agrupados",
+        "Bandeja organizada por referencia y tipo de cable, con visual limpia para prealistamiento.",
+        '<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>'
+      )+
+      '<section class="grid grid-3 mobile-cut-summary">'+
+        '<article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por operar</small></article>'+
+        '<article class="card kpi"><span>Grupos de cable</span><strong>'+groupKeys.length+'</strong><small>Organización</small></article>'+
+        '<article class="card kpi"><span>Versión</span><strong>V183</strong><small>Diseño móvil</small></article>'+
+      '</section>'+
+      '<section class="mobile-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
+    );
     return;
   }
 
   var groupHtml=Object.keys(groups).sort(function(a,b){return groups[b].meters-groups[a].meters;}).map(function(k){
     var g=groups[k];
     var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join('');
-    return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y luego despliegue pedido por pedido. Así corte funciona como subárea y se reducen búsquedas repetidas.</div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
+    return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y luego despliegue pedido por pedido. Así corte funciona como subárea y se reducen búsquedas repetidas.</div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Código corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
   }).join('');
-  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Simple</strong><small>Sin animación innecesaria</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
+  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-4"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Solicitudes activas</small></article><article class="card kpi"><span>Grupos</span><strong>'+Object.keys(groups).length+'</strong><small>Referencias consolidadas</small></article><article class="card kpi"><span>Metros prealistados</span><strong>'+esc(cutNormalizeDecimal(Object.keys(groups).reduce(function(acc,key){return acc+(groups[key].meters||0);},0)))+' m</strong><small>Volumen sugerido</small></article><article class="card kpi"><span>Operación</span><strong>Subárea de corte</strong><small>Gestiona y retorna a Alistamiento</small></article></section>'+(groupHtml||empty("No hay cortes pendientes.")));
 }
-
-
-
 
 function requirementIsPending(req){
   if(!req)return false;
