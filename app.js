@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v194-mobile-popup-viewport-fix";
+var EI_CANONICAL_APP_VERSION = "v195-viewport-final-priority";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -3536,10 +3536,142 @@ function openRouteSafely(route){
   try{render();}
   catch(e){showError("Error al abrir el módulo "+route+": "+((e&&e.message)||e));}
 }
+
+function ensureV195ViewportFinalFix(){
+  try{
+    var st=document.getElementById("ei195-viewport-final-fix");
+    if(!st){
+      st=document.createElement("style");
+      st.id="ei195-viewport-final-fix";
+      document.head.appendChild(st);
+    }
+    st.textContent=`
+@media(max-width:790px){
+  html,body{overflow-x:hidden!important;background:#f4f7fb!important;}
+
+  /* Quitar definitivamente cualquier elemento/barra superior móvil */
+  body .mobile-top,
+  body .mobile-top.ei191-top,
+  body .mobile-top.ei191-top.ei193-top-clean,
+  body header.mobile-top{
+    display:none!important;
+    visibility:hidden!important;
+    opacity:0!important;
+    pointer-events:none!important;
+    position:absolute!important;
+    top:-9999px!important;
+    left:-9999px!important;
+    width:0!important;
+    height:0!important;
+    min-height:0!important;
+    max-height:0!important;
+    padding:0!important;
+    margin:0!important;
+    overflow:hidden!important;
+  }
+
+  /* El contenido empieza arriba, pero respetando la barra de estado del teléfono */
+  body .main,
+  body .ei191-main{
+    padding-top:calc(12px + env(safe-area-inset-top,0px))!important;
+    padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important;
+    max-width:100vw!important;
+    overflow-x:hidden!important;
+  }
+
+  /* Overlay ocupa TODA la pantalla del celular */
+  body #mobileMenu.mobile-menu-overlay,
+  body #mobileMenu.mobile-menu-overlay.open{
+    position:fixed!important;
+    inset:0!important;
+    left:0!important;
+    top:0!important;
+    right:0!important;
+    bottom:0!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    z-index:2147483000!important;
+    box-sizing:border-box!important;
+    padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(108px + env(safe-area-inset-bottom,0px))!important;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+
+  body #mobileMenu.mobile-menu-overlay{display:none!important;pointer-events:none!important;}
+  body #mobileMenu.mobile-menu-overlay.open{display:flex!important;pointer-events:auto!important;}
+
+  body #mobileMenu .mobile-menu-backdrop{
+    position:fixed!important;
+    inset:0!important;
+    width:100vw!important;
+    height:100dvh!important;
+    background:rgba(2,8,23,.56)!important;
+    backdrop-filter:blur(4px)!important;
+    z-index:0!important;
+  }
+
+  /* Panel centrado: nunca lateral, nunca detrás de la barra azul */
+  body #mobileMenu .mobile-menu-panel,
+  body #mobileMenu .mobile-menu-panel.clean,
+  body #mobileMenu .mobile-menu-panel.clean.ei193-menu-popup{
+    position:relative!important;
+    inset:auto!important;
+    top:auto!important;
+    left:auto!important;
+    right:auto!important;
+    bottom:auto!important;
+    transform:none!important;
+    width:min(92vw,390px)!important;
+    min-width:0!important;
+    max-width:min(92vw,390px)!important;
+    height:auto!important;
+    max-height:calc(100dvh - 152px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px))!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    border-radius:24px!important;
+    padding:14px!important;
+    margin:auto!important;
+    background:#fff!important;
+    box-shadow:0 28px 80px rgba(2,8,23,.40)!important;
+    z-index:2!important;
+  }
+
+  body #mobileMenu .mobile-menu-head.clean{
+    position:sticky!important;
+    top:0!important;
+    background:#fff!important;
+    z-index:3!important;
+    padding:4px 2px 12px!important;
+    border-bottom:1px solid #e2e8f0!important;
+  }
+
+  body #mobileMenu .mobile-menu-grid{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:8px!important;
+  }
+
+  body #mobileMenu .mobile-menu-group{margin:12px 0!important;}
+  body #mobileMenu .mobile-session-box{margin-bottom:4px!important;}
+
+  body .bottom-nav.ei191-bottom{
+    z-index:12000!important;
+  }
+
+  body .drawer.open{
+    z-index:16000!important;
+  }
+}`;
+  }catch(e){console.warn("No se pudo aplicar V195 viewport fix",e);}
+}
+
 function layout(content){
   cleanupProtectedToast();
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
+  ensureV195ViewportFinalFix();
   var rs=routes();
   var bottom=mobileItems().slice(0,4);
   appEl.innerHTML='<div class="app-layout ei191-shell"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top ei191-top ei193-top-clean"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title mobile-title-hidden" aria-hidden="true"></div><button class="mobile-menu-btn ei191-menu" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header><main class="main ei191-main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav ei191-bottom">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'<button class="ei192-bottom-menu" data-action="openMobileMenu" aria-label="Abrir menú"><b><i></i><i></i><i></i></b><span>Menú</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
@@ -7018,7 +7150,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V194</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V195</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
