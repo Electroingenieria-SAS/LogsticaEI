@@ -16,7 +16,31 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v179-mobile-visual-limpia">
+  <link rel="stylesheet" href="./styles.css?v=v181-mobile-corte-real-anticache">
+
+  <script>
+    (function(){
+      var V="v181-mobile-corte-real-anticache";
+      try{
+        var key="EI_LOGISTICA_HARD_VERSION";
+        var old=localStorage.getItem(key);
+        if(old!==V){
+          localStorage.setItem(key,V);
+          sessionStorage.setItem("EI_SKIP_BOOT_ONCE",V);
+          var done=function(){ location.replace(location.pathname+"?v="+V+"&t="+Date.now()); };
+          var tasks=[];
+          if("serviceWorker" in navigator){
+            tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){return Promise.all(regs.map(function(r){return r.unregister();}));}));
+          }
+          if(window.caches){
+            tasks.push(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));
+          }
+          Promise.all(tasks).then(done).catch(done);
+        }
+      }catch(e){}
+    })();
+  </script>
+
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -36,11 +60,11 @@
   <script defer data-ei-pdf-lib="true" src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script defer src="https://accounts.google.com/gsi/client"></script>
   <script defer src="./firebase-config.js?v=unificado-firebase-principal-v50-pdf-universal-cortes-m"></script>
-  <script defer src="./app.js?v=v179-mobile-visual-limpia"></script>
+  <script defer src="./app-v181.js?v=v181-mobile-corte-real-anticache"></script>
   <script>
     window.addEventListener("load", function () {
       if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./service-worker.js?v=v179-mobile-visual-limpia", { scope: "./" }).then(function(reg){
+      navigator.serviceWorker.register("./service-worker.js?v=v181-mobile-corte-real-anticache", { scope: "./" }).then(function(reg){
         reg.update();
         if (reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
         if (reg.active) reg.active.postMessage({type:"CLEAR_CACHE"});
