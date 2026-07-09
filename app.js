@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v195-viewport-final-priority";
+var EI_CANONICAL_APP_VERSION = "v197-pdf-recepcion-no-colapsar-lineas";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -3537,7 +3537,7 @@ function openRouteSafely(route){
   catch(e){showError("Error al abrir el módulo "+route+": "+((e&&e.message)||e));}
 }
 
-function ensureV195ViewportFinalFix(){
+function ensureV197ViewportFinalFix(){
   try{
     var st=document.getElementById("ei195-viewport-final-fix");
     if(!st){
@@ -3664,14 +3664,14 @@ function ensureV195ViewportFinalFix(){
     z-index:16000!important;
   }
 }`;
-  }catch(e){console.warn("No se pudo aplicar V195 viewport fix",e);}
+  }catch(e){console.warn("No se pudo aplicar V197 viewport fix",e);}
 }
 
 function layout(content){
   cleanupProtectedToast();
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
-  ensureV195ViewportFinalFix();
+  ensureV197ViewportFinalFix();
   var rs=routes();
   var bottom=mobileItems().slice(0,4);
   appEl.innerHTML='<div class="app-layout ei191-shell"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top ei191-top ei193-top-clean"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title mobile-title-hidden" aria-hidden="true"></div><button class="mobile-menu-btn ei191-menu" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header><main class="main ei191-main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav ei191-bottom">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'<button class="ei192-bottom-menu" data-action="openMobileMenu" aria-label="Abrir menú"><b><i></i><i></i><i></i></b><span>Menú</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
@@ -7150,7 +7150,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V195</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V197</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -12288,7 +12288,7 @@ extractPedido = function(text){
   parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || parsed.pages || 1;
   var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V92_AUDIT__')===0;});
   if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V92_AUDIT__'.length));}catch(e){}}
-  parsed.extractionMode='PDFJS_V92_EXHAUSTIVO_FILAS_COLUMNAS';
+  parsed.extractionMode='PDFJS_V197_SIESA_COORDENADAS_ESTRICTO';
   return parsed;
 };
 
@@ -12330,7 +12330,7 @@ renderReceptionItemsEditor = function(parsed,c){
   var items=(parsed.items||[]);
   var auto=items.filter(function(x){return recalcReceptionItemFlags(Object.assign({},x)).requiereCorte;}).length;
   var rows=items.map(function(it,idx){return receptionItemRowHtml(it,idx);}).join('');
-  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura reforzada V92:</strong> se valida <strong>Referencia, Descripción completa, Cantidad, U.M. y Ubicación</strong>. Puede editar, guardar la edición, agregar líneas manuales o eliminar materiales repetidos antes de subir el PDF.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Líneas / cortes</small><strong>'+items.length+' / '+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table clean-lines-table"><thead><tr><th>#</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th><th>Acción</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="9">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px" class="row-actions"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
+  return '<section class="card pdf-lines-editor" style="margin-top:12px"><h3>Validación simple de líneas del pedido</h3><div class="notice"><strong>Lectura reforzada V197:</strong> se valida <strong>Referencia, Descripción completa, Cantidad, U.M. y Ubicación</strong>. Puede editar, guardar la edición, agregar líneas manuales o eliminar materiales repetidos antes de subir el PDF.</div><div class="grid grid-3"><div><small>Pedido</small><strong>'+esc(parsed.orderNumber||c.reference||"—")+'</strong></div><div><small>Cliente</small><strong>'+esc(parsed.client||c.client||"—")+'</strong></div><div><small>Líneas / cortes</small><strong>'+items.length+' / '+auto+'</strong></div></div><input type="hidden" name="itemCount" id="itemCount" value="'+items.length+'"><div class="table-wrap" style="margin-top:12px"><table class="compact-lines-table clean-lines-table"><thead><tr><th>#</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión corte</th><th>Observación</th><th>Acción</th></tr></thead><tbody id="receptionItemsBody">'+(rows||'<tr><td colspan="9">No se detectaron líneas. Use “Agregar línea manual” para registrar el pedido.</td></tr>')+'</tbody></table></div><div style="margin-top:12px" class="row-actions"><button class="btn btn-secondary" type="button" id="addReceptionItemBtn">Agregar línea manual</button></div></section>';
 };
 bindReceptionItemsEditor = function(parsed,c){
   function reloadWith(items){parsed.items=items;qs('#pdfExtractPreview').innerHTML=renderReceptionItemsEditor(parsed,c);bindReceptionItemsEditor(parsed,c);}
@@ -12534,6 +12534,269 @@ readPdfFile = function(file){
 };
 
 
+
+/* ============================================================
+   V197 - Lector PDF Recepción SIESA estricto por coordenadas
+   Objetivo:
+   - Leer pedidos SIESA complejos de varias páginas.
+   - Preservar filas repetidas reales.
+   - No colapsar duplicados iguales: cada fila física del PDF es una línea operativa.
+   - Bloquear con auditoría si detecta referencias pero no puede extraer filas.
+   - No toca UI móvil, Corte, facturas, evidencias ni PC.
+============================================================ */
+var eiV197LegacyReadPdfFile = readPdfFile;
+var eiV197LegacyExtractPedido = extractPedido;
+var eiV197LegacyExtractPedidoItems = extractPedidoItems;
+
+function eiV197Clean(v){
+  return cleanPdfValue(String(v||'').normalize('NFKC').replace(/\s+/g,' '));
+}
+function eiV197WordText(item){
+  return eiV197Clean(item && item.str != null ? item.str : '');
+}
+function eiV197WordsFromItems(items,pageHeight){
+  var words=[];
+  (items||[]).forEach(function(item){
+    var text=eiV197WordText(item);
+    if(!text)return;
+    var tr=item.transform || [0,0,0,0,0,0];
+    var x0=Number(tr[4]||0), y=Number(tr[5]||0);
+    var width=Math.abs(Number(item.width||0)) || Math.max(text.length*4,4);
+    var height=Math.abs(Number(item.height||8)) || 8;
+    var top=pageHeight-y-height;
+    var parts=text.split(/\s+/).filter(Boolean);
+    if(parts.length<=1){
+      words.push({text:text,x0:x0,x1:x0+width,top:top,bottom:top+height});
+      return;
+    }
+    var charW=width/Math.max(text.length,1), cursor=x0;
+    parts.forEach(function(part,idx){
+      var w=Math.max(part.length*charW,1);
+      words.push({text:part,x0:cursor,x1:cursor+w,top:top,bottom:top+height});
+      cursor += w + charW;
+    });
+  });
+  return words.sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+}
+function eiV197GroupLines(words,tol){
+  tol=tol||4;
+  var lines=[];
+  words.slice().sort(function(a,b){return a.top-b.top || a.x0-b.x0;}).forEach(function(w){
+    var line=lines[lines.length-1];
+    if(!line || Math.abs(line.top-w.top)>tol){
+      lines.push({top:w.top,words:[w]});
+    }else{
+      line.words.push(w);
+      line.top=line.words.reduce(function(s,x){return s+x.top;},0)/line.words.length;
+    }
+  });
+  return lines.map(function(l){
+    l.words.sort(function(a,b){return a.x0-b.x0;});
+    l.text=eiV197Clean(l.words.map(function(w){return w.text;}).join(' '));
+    return l;
+  });
+}
+function eiV197FindWord(line,rx){
+  return (line.words||[]).find(function(w){return rx.test(w.text);}) || null;
+}
+function eiV197FindAfter(line,rx,xMin){
+  return (line.words||[]).find(function(w){return rx.test(w.text) && w.x0>xMin;}) || null;
+}
+function eiV197IsRef(text){
+  var t=eiV197Clean(text).replace(/\D/g,'');
+  return /^\d{5,10}$/.test(t);
+}
+function eiV197IsQty(text){
+  var t=eiV197Clean(text);
+  return /^\d{1,6}(?:[.,]\d{1,3})?$/.test(t) && !/^\d{5,}$/.test(t);
+}
+function eiV197IsMoney(text){
+  return /^\$/.test(eiV197Clean(text)) || /^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(eiV197Clean(text));
+}
+function eiV197TextInRange(words,xMin,xMax){
+  var selected=(words||[]).filter(function(w){
+    return w.x0>=xMin && w.x0<xMax && !eiV197IsMoney(w.text);
+  }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+  var lines=eiV197GroupLines(selected,4);
+  return eiV197Clean(lines.map(function(l){return l.words.map(function(w){return w.text;}).join(' ');}).join(' '));
+}
+function eiV197CleanDesc(desc){
+  desc=eiV197Clean(desc);
+  desc=desc.replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ');
+  desc=desc.replace(/\b(?:D|C)\d{4,6}\b/ig,' ');
+  desc=desc.replace(/\s+/g,' ').trim();
+  return desc;
+}
+function eiV197NormalizeQty(v){
+  return normalizePdfNumber ? normalizePdfNumber(v) : String(v||'').replace(',','.');
+}
+function eiV197NormalizeUnit(v){
+  return normalizePdfUnit ? normalizePdfUnit(v) : String(v||'').toUpperCase().replace(/\./g,'').trim();
+}
+function eiV197ExtractRowsFromPage(words,pageNum,pageWidth,pageHeight){
+  var lines=eiV197GroupLines(words,4);
+  var header=lines.find(function(l){
+    return /refer/i.test(l.text) && /descrip/i.test(l.text) && /cant/i.test(l.text) && /u\.?m\.?/i.test(l.text);
+  });
+  if(!header){
+    return {rows:[],audit:{pagina:pageNum,estado:'SIN_ENCABEZADO',referenciasDetectadas:0,filasExtraidas:0}};
+  }
+  var colRef=eiV197FindWord(header,/refer/i) || {x0:20,x1:60};
+  var colDesc=eiV197FindWord(header,/descrip/i) || {x0:70,x1:220};
+  var colBodega=eiV197FindWord(header,/bodega/i) || {x0:pageWidth*0.53,x1:pageWidth*0.61};
+  var colUbic=eiV197FindWord(header,/ubic/i) || {x0:pageWidth*0.62,x1:pageWidth*0.70};
+  var colCant=eiV197FindWord(header,/cant/i) || {x0:pageWidth*0.70,x1:pageWidth*0.76};
+  var colUM=eiV197FindWord(header,/u\.?m\.?/i) || {x0:pageWidth*0.77,x1:pageWidth*0.83};
+  var colValor=eiV197FindAfter(header,/valor/i,colUM.x0) || {x0:pageWidth*0.82,x1:pageWidth*0.95};
+  var bodyTop=header.top+8;
+  var footer=lines.filter(function(l){
+    return l.top>bodyTop+25 && /\b(?:notas|totales|subtotal|iva|total|elaborado|aprobado|recibido)\b/i.test(l.text);
+  }).sort(function(a,b){return a.top-b.top;})[0];
+  var bodyBottom=footer ? footer.top-2 : pageHeight-30;
+  var body=words.filter(function(w){return w.top>bodyTop && w.top<bodyBottom;});
+  var refMax=Math.max(70, colDesc.x0-35);
+  var refWords=body.filter(function(w){
+    return w.x0>=Math.max(0,colRef.x0-20) && w.x0<=refMax && eiV197IsRef(w.text);
+  }).sort(function(a,b){return a.top-b.top || a.x0-b.x0;});
+  // Solo quitar el mismo token duplicado en la misma línea visual, nunca líneas repetidas reales.
+  refWords=refWords.filter(function(w,idx,arr){
+    return idx===0 || !(w.text===arr[idx-1].text && Math.abs(w.top-arr[idx-1].top)<=3);
+  });
+  var rows=[];
+  var cols={
+    desc:[Math.max(colRef.x1+2, pageWidth*0.08), colBodega.x0-7],
+    ubic:[Math.max(colUbic.x0-10, colBodega.x1+2), colCant.x0-5],
+    qty:[colCant.x0-10, colUM.x0-5],
+    unit:[colUM.x0-5, colValor.x0-6]
+  };
+  refWords.forEach(function(ref,idx){
+    var rowTop=ref.top-3;
+    var rowBottom=refWords[idx+1] ? refWords[idx+1].top-3 : bodyBottom;
+    var rowWords=body.filter(function(w){return w.top>=rowTop && w.top<rowBottom;});
+    var qtyWord=rowWords.filter(function(w){return w.x0>=cols.qty[0] && w.x0<=cols.qty[1] && eiV197IsQty(w.text);}).sort(function(a,b){return a.x0-b.x0;})[0];
+    var unitWord=rowWords.filter(function(w){return w.x0>=cols.unit[0] && w.x0<=cols.unit[1] && new RegExp('^(?:'+orderUnitPattern()+')$','i').test(eiV197Clean(w.text));}).sort(function(a,b){return a.x0-b.x0;})[0];
+    var desc=eiV197CleanDesc(eiV197TextInRange(rowWords,cols.desc[0],cols.desc[1]));
+    var ubic=eiV197Clean(eiV197TextInRange(rowWords,cols.ubic[0],cols.ubic[1]));
+    var qty=qtyWord ? eiV197NormalizeQty(qtyWord.text) : '';
+    var unit=unitWord ? eiV197NormalizeUnit(unitWord.text) : '';
+    if(!unit && qty){unit='M';}
+    if(eiV197IsRef(ref.text) && desc && qty && unit){
+      rows.push({
+        referencia:eiV197Clean(ref.text),
+        descripcion:desc,
+        cantidad:qty,
+        unidad:unit,
+        ubicacion:ubic,
+        pagina:pageNum,
+        filaPagina:idx+1,
+        generatedBy:'PDF_SIESA_V197',
+        detectionReason:'Fila física PDF SIESA leída por coordenadas V197'
+      });
+    }
+  });
+  return {rows:rows,audit:{pagina:pageNum,estado:rows.length===refWords.length?'OK':'REVISAR',referenciasDetectadas:refWords.length,filasExtraidas:rows.length}};
+}
+function eiV197PlainText(words){
+  return eiV197GroupLines(words,4).map(function(l){return l.text;}).join('\n');
+}
+function eiV197MaterialToApp(row,globalIndex){
+  return recalcReceptionItemFlags({
+    id:'PDF-'+String(row.pagina).padStart(2,'0')+'-'+String(row.filaPagina).padStart(3,'0')+'-'+String(globalIndex+1).padStart(4,'0'),
+    referencia:row.referencia,
+    descripcion:row.descripcion,
+    cantidad:row.cantidad,
+    unidad:row.unidad,
+    ubicacion:row.ubicacion,
+    sourcePage:row.pagina,
+    sourceRowIndex:row.filaPagina,
+    pdfPhysicalRowNumber:globalIndex+1,
+    generatedBy:row.generatedBy||'PDF_SIESA_V197',
+    detectionReason:row.detectionReason||'Fila física PDF SIESA leída por coordenadas V197'
+  });
+}
+function eiV197ReadRows(file){
+  if(!file || !window.pdfjsLib)return Promise.resolve({items:[],audit:[],plain:''});
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      var arr=new Uint8Array(reader.result);
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      pdfjsLib.getDocument({data:arr,isEvalSupported:false}).promise.then(function(pdf){
+        var all=[], audit=[], plainPages=[], chain=Promise.resolve();
+        for(var i=1;i<=pdf.numPages;i++)(function(pageNum){
+          chain=chain.then(function(){return pdf.getPage(pageNum);}).then(function(page){
+            var viewport=page.getViewport({scale:1});
+            return page.getTextContent({includeMarkedContent:false,disableNormalization:false}).then(function(content){
+              var words=eiV197WordsFromItems(content.items,viewport.height);
+              var result=eiV197ExtractRowsFromPage(words,pageNum,viewport.width,viewport.height);
+              all=all.concat(result.rows);
+              audit.push(result.audit);
+              plainPages.push('--- PAGINA '+pageNum+' ---\n'+eiV197PlainText(words));
+            });
+          });
+        })(i);
+        chain.then(function(){
+          var detected=audit.reduce(function(s,a){return s+Number(a.referenciasDetectadas||0);},0);
+          var extracted=audit.reduce(function(s,a){return s+Number(a.filasExtraidas||0);},0);
+          resolve({items:all.map(function(r,idx){return eiV197MaterialToApp(r,idx);}),audit:audit,plain:plainPages.join('\n'),detected:detected,extracted:extracted,pages:pdf.numPages});
+        }).catch(reject);
+      }).catch(reject);
+    };
+    reader.onerror=function(){reject(new Error('No fue posible leer el PDF en modo V197.'));};
+    reader.readAsArrayBuffer(file);
+  });
+}
+readPdfFile = function(file){
+  var legacyPromise=eiV197LegacyReadPdfFile(file).catch(function(e){return '';});
+  var v196Promise=eiV197ReadRows(file).catch(function(e){return {items:[],audit:[{estado:'ERROR',detalle:(e&&e.message)||String(e)}],plain:'',detected:0,extracted:0,pages:0};});
+  return Promise.all([legacyPromise,v196Promise]).then(function(parts){
+    var legacyText=String(parts[0]||'');
+    var v196=parts[1]||{items:[],audit:[],plain:'',detected:0,extracted:0,pages:0};
+    if(v196.detected && v196.extracted!==v196.detected){
+      throw new Error('Lectura PDF V197 bloqueada: se detectaron '+v196.detected+' referencia(s), pero solo se pudieron extraer '+v196.extracted+' fila(s). Revise el PDF o registre edición manual.');
+    }
+    if(v196.items && v196.items.length){
+      var markers=v196.items.map(function(it){
+        return '__EI_V197_ROW__'+JSON.stringify(it);
+      }).join('\n');
+      var audit='__EI_V197_AUDIT__'+JSON.stringify({version:'V197',paginas:v196.pages,filasExtraidas:v196.items.length,referenciasDetectadas:v196.detected,auditoria:v196.audit,nota:'Preserva filas físicas repetidas; no colapsa duplicados reales.'});
+      var cleanLegacy=legacyText.replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
+      return markers+'\n'+audit+'\n'+(cleanLegacy||v196.plain||'');
+    }
+    if(legacyText)return legacyText;
+    throw new Error('No se detectaron líneas de pedido. El PDF puede ser escaneado o tener una plantilla no compatible.');
+  });
+};
+extractPedidoItems = function(text){
+  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV197Clean(x);}).filter(Boolean);
+  var items=[];
+  lines.forEach(function(line){
+    if(line.indexOf('__EI_V197_ROW__')===0){
+      try{
+        var it=JSON.parse(line.slice('__EI_V197_ROW__'.length));
+        if(it && it.referencia && it.descripcion && it.cantidad && it.unidad)items.push(recalcReceptionItemFlags(it));
+      }catch(e){console.warn('No se pudo interpretar fila V197',e,line);}
+    }
+  });
+  // En V197 NO deduplicamos: cada marcador corresponde a una fila física del PDF.
+  if(items.length)return items.map(function(it){return recalcReceptionItemFlags(it);});
+  try{return eiV197LegacyExtractPedidoItems(text)||[];}catch(e){return [];}
+};
+extractPedido = function(text){
+  var raw=String(text||'');
+  var cleanText=raw.replace(/^__EI_V197_ROW__.*$/gm,'').replace(/^__EI_V197_AUDIT__.*$/gm,'');
+  var parsed={};
+  try{parsed=eiV197LegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
+  parsed.items=extractPedidoItems(raw);
+  parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
+  parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || parsed.pages || 1;
+  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V197_AUDIT__')===0;});
+  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V197_AUDIT__'.length));}catch(e){}}
+  parsed.extractionMode='PDFJS_V197_SIESA_COORDENADAS_ESTRICTO';
+  return parsed;
+};
+
+
 /* V117 QA ERP final: refuerzo conservador sin cambiar flujo.
    - El planificador de cortes reutiliza la sincronización robusta de Recepción.
    - No necesita corte / Medida completa no quedan pendientes en SIESA.
@@ -12596,3 +12859,197 @@ try{eiV117OperationalHealthCheck();}catch(e){console.warn("QA ERP V117 no pudo e
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 
 })();
+
+
+
+/* ============================================================
+   V197 FINAL - Recepción PDF SIESA sin colapsar líneas
+   Este bloque va al final a propósito para ganar sobre lectores previos.
+   Corrige el caso PVC 4641: debe leer 73 filas físicas, no 22.
+============================================================ */
+var eiV197FinalLegacyReadPdfFile = readPdfFile;
+var eiV197FinalLegacyExtractPedido = extractPedido;
+var eiV197FinalLegacyExtractPedidoItems = extractPedidoItems;
+
+function eiV197FinalClean(v){
+  return String(v||'').normalize('NFKC').replace(/\r/g,'\n').replace(/[ \t]+/g,' ').trim();
+}
+function eiV197FinalOneLine(v){
+  return String(v||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+}
+function eiV197FinalUnit(v){
+  try{return normalizePdfUnit(v);}catch(e){return String(v||'').replace(/\./g,'').trim().toUpperCase();}
+}
+function eiV197FinalQty(v){
+  try{return normalizePdfNumber(v);}catch(e){return String(v||'').replace(',','.').trim();}
+}
+function eiV197FinalDesc(v){
+  v=eiV197FinalOneLine(v);
+  v=v.replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ');
+  v=v.replace(/\bBODEGA\b/ig,' ');
+  v=v.replace(/\s+/g,' ').trim();
+  return v;
+}
+function eiV197FinalParseRawRows(rawText){
+  var text=eiV197FinalClean(rawText);
+  var rows=[];
+  /*
+    Patrón SIESA bruto:
+    M
+    $4.907
+    $ 436.723
+    2395013
+    PARQUE
+    INDUSTRIAL
+    C. AL ...
+    NEGRO
+    C2000
+    89,00
+    D10707
+
+    Importante:
+    - permite salto entre cantidad y ubicación.
+    - no deduplica.
+    - cada coincidencia es una fila física.
+  */
+  var rx=/\b(M|UND|UN|KG|GL|ML|MT|MTS)\s+\$?\s*[\d.]+(?:,\d+)?\s+\$?\s*[\d.]+\s*(\d{5,10})\s+(.+?)\s+(\d{1,6}(?:[.,]\d{1,3})?)\s*([A-Z]\d{4,8})\b/gi;
+  var m, guard=0;
+  while((m=rx.exec(text)) && guard++<2000){
+    var unit=m[1]||'';
+    var ref=m[2]||'';
+    var middle=eiV197FinalOneLine(m[3]||'');
+    var qty=m[4]||'';
+    var ubic=m[5]||'';
+    var bodega='';
+    var desc=middle;
+    var bodegaMatch=middle.match(/^(.*?\b(?:PARQUE\s+INDUSTRIAL|PRINCIPAL|TULUA|TULUÁ|BODEGA)\b)\s+(.+)$/i);
+    if(bodegaMatch){
+      bodega=eiV197FinalOneLine(bodegaMatch[1]);
+      desc=eiV197FinalOneLine(bodegaMatch[2]);
+    }
+    desc=eiV197FinalDesc(desc);
+    if(!ref || !desc || !qty || !unit)continue;
+    // Filtro de ruido: no aceptar encabezados ni totales.
+    if(/^(ORDEN|ELECTROINGENIERIA|CLIENTE|DESCRIPCION|REFER|NOTAS|SUBTOTAL|IVA|TOTAL)\b/i.test(desc))continue;
+    rows.push({
+      referencia:ref,
+      descripcion:desc,
+      cantidad:eiV197FinalQty(qty),
+      unidad:eiV197FinalUnit(unit),
+      ubicacion:ubic,
+      bodega:bodega,
+      pagina:1,
+      filaPagina:rows.length+1,
+      generatedBy:'PDF_SIESA_V197_RAW_FINAL',
+      detectionReason:'Fila física SIESA reconstruida por texto bruto V197 final'
+    });
+  }
+  return rows;
+}
+function eiV197FinalItem(row,idx){
+  var it={
+    id:'PDF-V197-'+String(idx+1).padStart(4,'0'),
+    referencia:row.referencia,
+    descripcion:row.descripcion,
+    cantidad:row.cantidad,
+    unidad:row.unidad,
+    ubicacion:row.ubicacion,
+    bodega:row.bodega||'',
+    sourcePage:row.pagina||1,
+    sourceRowIndex:row.filaPagina||idx+1,
+    pdfPhysicalRowNumber:idx+1,
+    generatedBy:row.generatedBy||'PDF_SIESA_V197_RAW_FINAL',
+    detectionReason:row.detectionReason||'Fila física SIESA reconstruida por texto bruto V197 final'
+  };
+  try{return recalcReceptionItemFlags(it);}catch(e){return it;}
+}
+function eiV197FinalRowsToMarkers(rows){
+  return (rows||[]).map(function(r,idx){
+    return '__EI_V197_ROW__'+JSON.stringify(eiV197FinalItem(r,idx));
+  }).join('\n');
+}
+function eiV197FinalReadRawPdfText(file){
+  if(!file || !window.pdfjsLib)return Promise.resolve('');
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{
+        var arr=new Uint8Array(reader.result);
+        pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        pdfjsLib.getDocument({data:arr,isEvalSupported:false}).promise.then(function(pdf){
+          var pages=[], chain=Promise.resolve();
+          for(var i=1;i<=pdf.numPages;i++){(function(pageNo){
+            chain=chain.then(function(){return pdf.getPage(pageNo);}).then(function(page){
+              return page.getTextContent({includeMarkedContent:false,disableNormalization:false}).then(function(tc){
+                var raw=(tc.items||[]).map(function(it){return it && it.str != null ? String(it.str) : '';}).filter(Boolean).join('\n');
+                pages.push('--- PAGINA '+pageNo+' ---\n'+raw);
+              });
+            });
+          })(i);}
+          chain.then(function(){resolve(pages.join('\n'));}).catch(reject);
+        }).catch(reject);
+      }catch(e){reject(e);}
+    };
+    reader.onerror=function(){reject(new Error('No fue posible leer el PDF V197.'));};
+    reader.readAsArrayBuffer(file);
+  });
+}
+readPdfFile = function(file){
+  var legacyPromise=eiV197FinalLegacyReadPdfFile(file).catch(function(e){return '';});
+  var rawPromise=eiV197FinalReadRawPdfText(file).catch(function(e){return '';});
+  return Promise.all([legacyPromise,rawPromise]).then(function(parts){
+    var legacyText=String(parts[0]||'');
+    var rawText=String(parts[1]||'');
+    var legacyItems=[];
+    try{legacyItems=eiV197FinalLegacyExtractPedidoItems(legacyText)||[];}catch(e){legacyItems=[];}
+    var rawRows=eiV197FinalParseRawRows(rawText+'\n'+legacyText);
+    var rawItems=rawRows.map(eiV197FinalItem);
+
+    // Regla de seguridad:
+    // si el texto bruto logra más filas que el lector anterior, se usa texto bruto.
+    // Para PVC 4641 debe superar 22 y llegar a 73.
+    if(rawItems.length && rawItems.length>=legacyItems.length){
+      var cleanLegacy=legacyText.replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
+      var audit='__EI_V197_AUDIT__'+JSON.stringify({
+        version:'V197',
+        filasFinales:rawItems.length,
+        filasTextoBruto:rawItems.length,
+        filasLectorAnterior:legacyItems.length,
+        nota:'Lectura final por texto bruto SIESA. No deduplica filas físicas.'
+      });
+      return eiV197FinalRowsToMarkers(rawRows)+'\n'+audit+'\n'+(cleanLegacy||rawText||'');
+    }
+
+    if(legacyText)return legacyText;
+    throw new Error('No se detectaron líneas de pedido en el PDF.');
+  });
+};
+extractPedidoItems = function(text){
+  var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).map(function(x){return eiV197FinalOneLine(x);}).filter(Boolean);
+  var items=[];
+  lines.forEach(function(line){
+    if(line.indexOf('__EI_V197_ROW__')===0){
+      try{
+        var it=JSON.parse(line.slice('__EI_V197_ROW__'.length));
+        if(it && it.referencia && it.descripcion && it.cantidad && it.unidad)items.push(recalcReceptionItemFlags(it));
+      }catch(e){console.warn('No se pudo interpretar fila V197',e,line);}
+    }
+  });
+  // V197: NO deduplicar. Cada marcador es una fila física del PDF.
+  if(items.length)return items;
+
+  try{return eiV197FinalLegacyExtractPedidoItems(text)||[];}catch(e){return [];}
+};
+extractPedido = function(text){
+  var raw=String(text||'');
+  var cleanText=raw.replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
+  var parsed={};
+  try{parsed=eiV197FinalLegacyExtractPedido(cleanText)||{};}catch(e){parsed={};}
+  parsed.items=extractPedidoItems(raw);
+  parsed.meterItems=parsed.items.filter(function(x){return x.requiereCorte;}).length;
+  parsed.pages=(raw.match(/--- PAGINA \d+ ---/g)||[]).length || parsed.pages || 1;
+  var auditLine=raw.split(/\n+/).find(function(l){return l.indexOf('__EI_V197_AUDIT__')===0;});
+  if(auditLine){try{parsed.audit=JSON.parse(auditLine.slice('__EI_V197_AUDIT__'.length));}catch(e){}}
+  parsed.extractionMode='PDFJS_V197_SIESA_TEXTO_BRUTO_ESTRICTO';
+  return parsed;
+};
