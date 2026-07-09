@@ -16,26 +16,30 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v187-base-limpia-corte-movil-pc">
+  <link rel="stylesheet" href="./styles.css?v=v188-qa-fix-corte-movil">
+  <link rel="stylesheet" href="./mobile-v188.css?v=v188-qa-fix-corte-movil">
 
   <script>
     (function(){
-      var V="v187-base-limpia-corte-movil-pc";
+      var V="v188-qa-fix-corte-movil";
       try{
-        var previous=localStorage.getItem("EI_REQUIRED_VERSION");
+        window.EI_REQUIRED_VERSION=V;
         localStorage.setItem("EI_REQUIRED_VERSION",V);
-        if(previous!==V && !sessionStorage.getItem("EI_V187_CLEANED")){
-          sessionStorage.setItem("EI_V187_CLEANED","1");
+        window.__EI_V188_CLEAN_PROMISE=(function(){
           var tasks=[];
           if("serviceWorker" in navigator){
-            tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){return Promise.all(regs.map(function(r){return r.unregister();}));}));
+            tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){
+              return Promise.all(regs.map(function(r){return r.unregister();}));
+            }));
           }
           if(window.caches){
-            tasks.push(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));
+            tasks.push(caches.keys().then(function(keys){
+              return Promise.all(keys.map(function(k){return caches.delete(k);}));
+            }));
           }
-          Promise.all(tasks).then(function(){location.replace(location.pathname+"?v187="+Date.now());}).catch(function(){location.replace(location.pathname+"?v187="+Date.now());});
-        }
-      }catch(e){}
+          return Promise.all(tasks).catch(function(){});
+        })();
+      }catch(e){window.__EI_V188_CLEAN_PROMISE=Promise.resolve();}
     })();
   </script>
 
@@ -58,22 +62,19 @@
   <script defer data-ei-pdf-lib="true" src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script defer src="https://accounts.google.com/gsi/client"></script>
   <script defer src="./firebase-config.js?v=unificado-firebase-principal-v50-pdf-universal-cortes-m"></script>
-  <script defer src="./app.js?v=v187-base-limpia-corte-movil-pc"></script>
+
   <script>
-    window.addEventListener("load", function () {
-      if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.register("./service-worker.js?v=v187-base-limpia-corte-movil-pc", { scope: "./" }).then(function(reg){
-        reg.update();
-        if (reg.waiting) reg.waiting.postMessage({type:"SKIP_WAITING"});
-        if (reg.active) reg.active.postMessage({type:"CLEAR_CACHE"});
-      }).catch(function(){});
-      var refreshed = false;
-      navigator.serviceWorker.addEventListener("controllerchange", function () {
-        if (refreshed) return;
-        refreshed = true;
-        location.reload();
+    window.addEventListener("load", function(){
+      Promise.resolve(window.__EI_V188_CLEAN_PROMISE).finally(function(){
+        var old=document.querySelectorAll('script[src*="app-v18"],script[src*="app.js"]');
+        old.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
+        var s=document.createElement("script");
+        s.src="./app.js?v=v188-qa-fix-corte-movil&t="+Date.now();
+        s.async=false;
+        document.body.appendChild(s);
       });
     });
   </script>
+
 </body>
 </html>
