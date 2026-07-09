@@ -32,6 +32,12 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
+var EI_CANONICAL_APP_VERSION = "v186-app-unica-limpia";
+try{
+  window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
+  localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
+}catch(e){}
+
 var state = {
   user: null,
   route: "dashboard",
@@ -71,56 +77,56 @@ function ensureV104UiFixes(){
 \
 @media(max-width:820px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
 \
-/* V185_FINAL_MOBILE_VISUAL_FIX */\
+/* V186_FINAL_MOBILE_VISUAL_FIX */\
 @media(max-width:820px){\
-  .v185-shell{padding-top:58px!important;padding-bottom:78px!important;}\
-  .v185-main{padding:12px!important;overflow-x:hidden!important;background:#f3f7fb!important;}\
-  .mobile-top.v185-top{position:fixed!important;top:0!important;left:0!important;right:0!important;height:58px!important;z-index:6000!important;display:flex!important;align-items:center!important;gap:10px!important;padding:8px 12px!important;background:#fff!important;color:#061b46!important;border-bottom:1px solid #e5eaf2!important;box-shadow:0 8px 18px rgba(15,23,42,.08)!important;}\
-  .mobile-top.v185-top .mobile-logo{width:86px!important;height:38px!important;border:1px solid #e5eaf2!important;border-radius:18px!important;object-fit:contain!important;background:#fff!important;padding:5px!important;flex:0 0 auto!important;}\
-  .mobile-top.v185-top .mobile-title{min-width:0!important;flex:1!important;line-height:1.05!important;}\
-  .mobile-top.v185-top .mobile-title strong{display:block!important;color:#061b46!important;font-size:.86rem!important;font-weight:900!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}\
-  .mobile-top.v185-top .mobile-title span{display:block!important;color:#111827!important;font-size:.80rem!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}\
-  .mobile-menu-btn.v185-menu{width:42px!important;height:42px!important;border:1px solid #dbe4f0!important;border-radius:15px!important;background:#f8fafc!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;padding:0!important;box-shadow:none!important;flex:0 0 auto!important;}\
-  .mobile-menu-btn.v185-menu i{display:block!important;width:18px!important;height:2px!important;border-radius:20px!important;background:#061b46!important;}\
-  .bottom-nav.v185-bottom{position:fixed!important;left:50%!important;right:auto!important;bottom:10px!important;transform:translateX(-50%)!important;z-index:5500!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;background:#061b46!important;border-radius:26px!important;padding:8px 12px!important;width:auto!important;max-width:calc(100vw - 24px)!important;box-shadow:0 20px 44px rgba(6,27,70,.34)!important;border:1px solid rgba(255,255,255,.12)!important;}\
-  .bottom-nav.v185-bottom button{width:78px!important;flex:0 0 78px!important;min-height:52px!important;border:0!important;border-radius:18px!important;background:transparent!important;color:rgba(255,255,255,.68)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;text-align:center!important;font-size:.68rem!important;font-weight:900!important;padding:6px 4px!important;}\
-  .bottom-nav.v185-bottom button b{display:block!important;width:100%!important;text-align:center!important;font-size:.86rem!important;line-height:1!important;}\
-  .bottom-nav.v185-bottom button span{display:block!important;width:100%!important;text-align:center!important;line-height:1.05!important;}\
-  .bottom-nav.v185-bottom button.active{background:#ffdd2d!important;color:#061b46!important;box-shadow:0 10px 22px rgba(255,221,45,.28)!important;}\
-  .v185-summary-row{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:8px!important;margin:10px 0 12px!important;}\
-  .v185-summary-row article{background:#fff!important;border:1px solid #e5eaf2!important;border-radius:16px!important;padding:11px 10px!important;box-shadow:0 8px 18px rgba(15,23,42,.055)!important;}\
-  .v185-summary-row span{display:block!important;color:#64748b!important;font-size:.66rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.04em!important;}\
-  .v185-summary-row strong{display:block!important;color:#061b46!important;font-size:1.08rem!important;margin-top:4px!important;}\
-  .v185-cut-groups{display:grid!important;gap:12px!important;}\
-  .v185-cut-group{display:block!important;background:#fff!important;border:1px solid #dbe4f0!important;border-radius:20px!important;overflow:hidden!important;box-shadow:0 10px 28px rgba(15,23,42,.07)!important;margin:0!important;padding:0!important;}\
-  .v185-cut-group summary{list-style:none!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:14px!important;background:#fff!important;border-bottom:1px solid #e5eaf2!important;color:#061b46!important;}\
-  .v185-cut-group summary::-webkit-details-marker{display:none!important;}\
-  .v185-group-title strong{display:block!important;color:#061b46!important;font-size:.98rem!important;line-height:1.15!important;}\
-  .v185-group-title span{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:4px!important;}\
-  .v185-group-meta{text-align:right!important;flex:0 0 auto!important;}\
-  .v185-group-meta strong{display:block!important;color:#061b46!important;font-size:.94rem!important;line-height:1!important;}\
-  .v185-group-meta span{display:block!important;color:#64748b!important;font-size:.66rem!important;margin-top:4px!important;}\
-  .v185-prep-note{margin:10px 12px!important;background:#f8fafc!important;border:1px solid #e5eaf2!important;border-radius:14px!important;color:#334155!important;padding:9px 10px!important;font-size:.74rem!important;line-height:1.3!important;}\
-  .v185-prep-note strong{color:#061b46!important;}\
-  .v185-cut-list{display:grid!important;gap:10px!important;padding:0 12px 12px!important;}\
-  .v185-cut-item{display:grid!important;gap:9px!important;background:#fff!important;border:1px solid #e5eaf2!important;border-radius:16px!important;padding:12px!important;box-shadow:0 6px 16px rgba(15,23,42,.045)!important;}\
-  .v185-cut-item-head{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:10px!important;}\
-  .v185-cut-order strong{display:block!important;color:#061b46!important;font-size:.96rem!important;line-height:1.12!important;}\
-  .v185-cut-order span{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:3px!important;line-height:1.2!important;}\
-  .v185-cut-status{flex:0 0 auto!important;}\
-  .v185-cut-metrics{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;}\
-  .v185-mini-box{display:block!important;background:#f8fafc!important;border:1px solid #e5eaf2!important;border-radius:13px!important;padding:9px!important;min-width:0!important;}\
-  .v185-mini-box span{display:block!important;color:#64748b!important;font-size:.64rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.05em!important;margin:0 0 3px!important;}\
-  .v185-mini-box strong{display:block!important;color:#061b46!important;font-size:.92rem!important;line-height:1.1!important;margin:0!important;}\
-  .v185-cut-reference{display:block!important;border-top:1px dashed #e5eaf2!important;padding-top:9px!important;}\
-  .v185-cut-reference span{display:block!important;color:#64748b!important;font-size:.64rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.05em!important;margin-bottom:3px!important;}\
-  .v185-cut-reference strong{display:block!important;color:#061b46!important;font-size:.86rem!important;line-height:1.2!important;margin-bottom:3px!important;}\
-  .v185-cut-reference p{display:block!important;color:#475569!important;font-size:.74rem!important;line-height:1.28!important;margin:0!important;}\
-  .v185-cut-footer{display:block!important;}\
-  .v185-cut-footer .btn{width:100%!important;justify-content:center!important;min-height:42px!important;border-radius:14px!important;font-size:.86rem!important;font-weight:900!important;}\
+  .v186-app-unica-limpia{padding-top:58px!important;padding-bottom:78px!important;}\
+  .v186-app-unica-limpia{padding:12px!important;overflow-x:hidden!important;background:#f3f7fb!important;}\
+  .mobile-top.v186-app-unica-limpia{position:fixed!important;top:0!important;left:0!important;right:0!important;height:58px!important;z-index:6000!important;display:flex!important;align-items:center!important;gap:10px!important;padding:8px 12px!important;background:#fff!important;color:#061b46!important;border-bottom:1px solid #e5eaf2!important;box-shadow:0 8px 18px rgba(15,23,42,.08)!important;}\
+  .mobile-top.v186-app-unica-limpia .mobile-logo{width:86px!important;height:38px!important;border:1px solid #e5eaf2!important;border-radius:18px!important;object-fit:contain!important;background:#fff!important;padding:5px!important;flex:0 0 auto!important;}\
+  .mobile-top.v186-app-unica-limpia .mobile-title{min-width:0!important;flex:1!important;line-height:1.05!important;}\
+  .mobile-top.v186-app-unica-limpia .mobile-title strong{display:block!important;color:#061b46!important;font-size:.86rem!important;font-weight:900!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}\
+  .mobile-top.v186-app-unica-limpia .mobile-title span{display:block!important;color:#111827!important;font-size:.80rem!important;margin-top:3px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}\
+  .mobile-menu-btn.v186-app-unica-limpia{width:42px!important;height:42px!important;border:1px solid #dbe4f0!important;border-radius:15px!important;background:#f8fafc!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;padding:0!important;box-shadow:none!important;flex:0 0 auto!important;}\
+  .mobile-menu-btn.v186-app-unica-limpia i{display:block!important;width:18px!important;height:2px!important;border-radius:20px!important;background:#061b46!important;}\
+  .bottom-nav.v186-app-unica-limpia{position:fixed!important;left:50%!important;right:auto!important;bottom:10px!important;transform:translateX(-50%)!important;z-index:5500!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;background:#061b46!important;border-radius:26px!important;padding:8px 12px!important;width:auto!important;max-width:calc(100vw - 24px)!important;box-shadow:0 20px 44px rgba(6,27,70,.34)!important;border:1px solid rgba(255,255,255,.12)!important;}\
+  .bottom-nav.v186-app-unica-limpia button{width:78px!important;flex:0 0 78px!important;min-height:52px!important;border:0!important;border-radius:18px!important;background:transparent!important;color:rgba(255,255,255,.68)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;text-align:center!important;font-size:.68rem!important;font-weight:900!important;padding:6px 4px!important;}\
+  .bottom-nav.v186-app-unica-limpia button b{display:block!important;width:100%!important;text-align:center!important;font-size:.86rem!important;line-height:1!important;}\
+  .bottom-nav.v186-app-unica-limpia button span{display:block!important;width:100%!important;text-align:center!important;line-height:1.05!important;}\
+  .bottom-nav.v186-app-unica-limpia button.active{background:#ffdd2d!important;color:#061b46!important;box-shadow:0 10px 22px rgba(255,221,45,.28)!important;}\
+  .v186-app-unica-limpia{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:8px!important;margin:10px 0 12px!important;}\
+  .v186-app-unica-limpia article{background:#fff!important;border:1px solid #e5eaf2!important;border-radius:16px!important;padding:11px 10px!important;box-shadow:0 8px 18px rgba(15,23,42,.055)!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.66rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.04em!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:1.08rem!important;margin-top:4px!important;}\
+  .v186-app-unica-limpia{display:grid!important;gap:12px!important;}\
+  .v186-app-unica-limpia{display:block!important;background:#fff!important;border:1px solid #dbe4f0!important;border-radius:20px!important;overflow:hidden!important;box-shadow:0 10px 28px rgba(15,23,42,.07)!important;margin:0!important;padding:0!important;}\
+  .v186-app-unica-limpia summary{list-style:none!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:14px!important;background:#fff!important;border-bottom:1px solid #e5eaf2!important;color:#061b46!important;}\
+  .v186-app-unica-limpia summary::-webkit-details-marker{display:none!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:.98rem!important;line-height:1.15!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:4px!important;}\
+  .v186-app-unica-limpia{text-align:right!important;flex:0 0 auto!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:.94rem!important;line-height:1!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.66rem!important;margin-top:4px!important;}\
+  .v186-app-unica-limpia{margin:10px 12px!important;background:#f8fafc!important;border:1px solid #e5eaf2!important;border-radius:14px!important;color:#334155!important;padding:9px 10px!important;font-size:.74rem!important;line-height:1.3!important;}\
+  .v186-app-unica-limpia strong{color:#061b46!important;}\
+  .v186-app-unica-limpia{display:grid!important;gap:10px!important;padding:0 12px 12px!important;}\
+  .v186-app-unica-limpia{display:grid!important;gap:9px!important;background:#fff!important;border:1px solid #e5eaf2!important;border-radius:16px!important;padding:12px!important;box-shadow:0 6px 16px rgba(15,23,42,.045)!important;}\
+  .v186-app-unica-limpia{display:flex!important;align-items:flex-start!important;justify-content:space-between!important;gap:10px!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:.96rem!important;line-height:1.12!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:3px!important;line-height:1.2!important;}\
+  .v186-app-unica-limpia{flex:0 0 auto!important;}\
+  .v186-app-unica-limpia{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;}\
+  .v186-app-unica-limpia{display:block!important;background:#f8fafc!important;border:1px solid #e5eaf2!important;border-radius:13px!important;padding:9px!important;min-width:0!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.64rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.05em!important;margin:0 0 3px!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:.92rem!important;line-height:1.1!important;margin:0!important;}\
+  .v186-app-unica-limpia{display:block!important;border-top:1px dashed #e5eaf2!important;padding-top:9px!important;}\
+  .v186-app-unica-limpia span{display:block!important;color:#64748b!important;font-size:.64rem!important;font-weight:900!important;text-transform:uppercase!important;letter-spacing:.05em!important;margin-bottom:3px!important;}\
+  .v186-app-unica-limpia strong{display:block!important;color:#061b46!important;font-size:.86rem!important;line-height:1.2!important;margin-bottom:3px!important;}\
+  .v186-app-unica-limpia p{display:block!important;color:#475569!important;font-size:.74rem!important;line-height:1.28!important;margin:0!important;}\
+  .v186-app-unica-limpia{display:block!important;}\
+  .v186-app-unica-limpia .btn{width:100%!important;justify-content:center!important;min-height:42px!important;border-radius:14px!important;font-size:.86rem!important;font-weight:900!important;}\
   .mobile-carreto-calc{display:grid!important;gap:9px!important;border:1px solid #dbeafe!important;background:#f8fbff!important;border-radius:16px!important;padding:11px!important;margin-bottom:10px!important;}\
 }\
-/* V185_RESTORED_MOBILE_CUT */\
+/* V186_RESTORED_MOBILE_CUT */\
 @media(max-width:820px){\
   .mobile-top.premium,.mobile-top.clean.restored{height:58px!important;display:flex!important;align-items:center!important;gap:10px!important;padding:8px 12px calc(8px + env(safe-area-inset-top,0px))!important;background:#061b46!important;color:#fff!important;box-shadow:0 8px 22px rgba(6,27,70,.18)!important;}\
   .mobile-top-center,.mobile-top-switcher,.mobile-top-brand,.mobile-pill-route,.mobile-top-spacer{display:none!important;}\
@@ -158,7 +164,7 @@ function ensureV104UiFixes(){
   .mobile-cut-form.restored{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:18px!important;padding:12px!important;}\
   .mobile-cut-card.restored{border-radius:18px!important;}\
 }\
-/* V185_MOBILE_PREMIUM_CUTS */\
+/* V186_MOBILE_PREMIUM_CUTS */\
 @media(max-width:820px){\
   .mobile-top.premium{height:82px!important;display:grid!important;grid-template-columns:48px 1fr 48px!important;align-items:center!important;padding:10px 12px calc(10px + env(safe-area-inset-top,0px))!important;background:linear-gradient(135deg,#071b44 0%,#0f2f70 55%,#143b87 100%)!important;box-shadow:0 10px 28px rgba(7,27,68,.26)!important;}\
   .mobile-top-center{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:0!important;padding:0 6px!important;}\
@@ -206,7 +212,7 @@ function ensureV104UiFixes(){
   .mobile-cut-row-footer{margin-top:8px!important;}\
   .mobile-cut-row-footer .btn{width:100%!important;min-height:42px!important;border-radius:14px!important;font-weight:900!important;box-shadow:0 8px 18px rgba(18,61,134,.14)!important;}\
 }\
-/* V185_MOBILE_GROUPED_CUTS */\
+/* V186_MOBILE_GROUPED_CUTS */\
 @media(max-width:820px){\
   .bottom-nav.clean{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:auto!important;max-width:calc(100vw - 22px)!important;margin:0 auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;grid-template-columns:none!important;padding:7px 10px!important;}\
   .bottom-nav.clean button{width:74px!important;max-width:76px!important;flex:0 0 74px!important;text-align:center!important;}\
@@ -233,7 +239,7 @@ function ensureV104UiFixes(){
   .mobile-cut-row .btn{width:100%!important;justify-content:center!important;min-height:42px!important;}\
   .mobile-cut-summary{margin-bottom:4px!important;}\
 }\
-/* V185_MOBILE_CUT_SIMPLE */\
+/* V186_MOBILE_CUT_SIMPLE */\
 @media(max-width:820px){\
   .mobile-cut-list{display:grid!important;gap:10px!important;margin-top:12px!important;}\
   .mobile-cut-row{display:grid!important;gap:8px!important;}\
@@ -3648,7 +3654,7 @@ function layout(content){
   ensureLowResolutionResponsiveCss();
   var rs=routes();
   var bottom=mobileItems().slice(0,4);
-  appEl.innerHTML='<div class="app-layout v185-shell"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(state.user.email||"")+'</div></div><button class="btn btn-danger" data-action="logout">Cerrar sesión</button></div></aside><main class="main v185-main"><header class="mobile-top v185-top"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title"><strong>'+esc(roleTitle(state.user.role))+'</strong><span>'+esc(state.user.name||"")+'</span></div><button class="mobile-menu-btn v185-menu" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header>'+content+'<nav class="bottom-nav v185-bottom">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'</nav></main><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay'+(state.mobileMenuOpen?' open':'')+'" id="mobileMenuOverlay"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div></div>';
+  appEl.innerHTML='<div class="app-layout v186-app-unica-limpia"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(state.user.email||"")+'</div></div><button class="btn btn-danger" data-action="logout">Cerrar sesión</button></div></aside><main class="main v186-app-unica-limpia"><header class="mobile-top v186-app-unica-limpia"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title"><strong>'+esc(roleTitle(state.user.role))+'</strong><span>'+esc(state.user.name||"")+'</span></div><button class="mobile-menu-btn v186-app-unica-limpia" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header>'+content+'<nav class="bottom-nav v186-app-unica-limpia">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'</nav></main><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay'+(state.mobileMenuOpen?' open':'')+'" id="mobileMenuOverlay"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div></div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
@@ -7007,7 +7013,7 @@ function handleCutAction(c,cut,action){
     }).then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){cut.carretoRotuladoPendingUpload=true;cut.carretoRotuladoUploadError=String((e&&e.message)||e||"No fue posible cargar la foto a Drive").slice(0,240);persistCase(c,{type:"CUT_CARRETO_PHOTO_PENDING_UPLOAD",detail:"La foto del carreto sigue pendiente de Drive: "+cut.carretoRotuladoUploadError}).catch(function(){});showError("La foto sigue pendiente de Drive. El corte no se bloquea.");});
     return;
   }
-  // V185_VALIDATE_CARRETO_TOTAL
+  // V186_VALIDATE_CARRETO_TOTAL
   if((action==="startCut" || action==="finishCut" || action==="registerCut") && (isMobileRuntime()||isCutRuntimeUser())){
     var totalCarreto=cutParseDecimal(cut.disponibleAntes);
     var metrosCortar=cutParseDecimal(cut.metrosSolicitados||cut.metrajeFinal);
@@ -7180,40 +7186,40 @@ function renderCutsQueue(){
     var groupHtml=groupKeys.map(function(k){
       var g=groups[k];
       var body=g.items.map(function(r){
-        return '<article class="v185-cut-item">'+
-          '<header class="v185-cut-item-head">'+
-            '<div class="v185-cut-order"><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><span>'+esc(r.c.client||"")+'</span></div>'+
-            '<div class="v185-cut-status">'+cutStatusChip(r.cut.status)+'</div>'+
+        return '<article class="v186-app-unica-limpia">'+
+          '<header class="v186-app-unica-limpia">'+
+            '<div class="v186-app-unica-limpia"><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><span>'+esc(r.c.client||"")+'</span></div>'+
+            '<div class="v186-app-unica-limpia">'+cutStatusChip(r.cut.status)+'</div>'+
           '</header>'+
-          '<section class="v185-cut-metrics">'+
-            '<div class="v185-mini-box"><span>Código corte</span><strong>'+esc(r.cut.code||r.cut.id||"")+'</strong></div>'+
-            '<div class="v185-mini-box"><span>Metros a cortar</span><strong>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</strong></div>'+
+          '<section class="v186-app-unica-limpia">'+
+            '<div class="v186-app-unica-limpia"><span>Código corte</span><strong>'+esc(r.cut.code||r.cut.id||"")+'</strong></div>'+
+            '<div class="v186-app-unica-limpia"><span>Metros a cortar</span><strong>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</strong></div>'+
           '</section>'+
-          '<section class="v185-cut-reference">'+
+          '<section class="v186-app-unica-limpia">'+
             '<span>Referencia</span>'+
             '<strong>'+esc(r.cut.referencia||"Sin referencia")+'</strong>'+
             '<p>'+esc(r.cut.descripcion||"")+'</p>'+
           '</section>'+
-          '<footer class="v185-cut-footer"><button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></footer>'+
+          '<footer class="v186-app-unica-limpia"><button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></footer>'+
         '</article>';
       }).join("");
-      return '<details class="v185-cut-group" open>'+
+      return '<details class="v186-app-unica-limpia" open>'+
         '<summary>'+
-          '<div class="v185-group-title"><strong>'+esc(g.title)+'</strong><span>'+g.items.length+' corte(s) pendiente(s)</span></div>'+
-          '<div class="v185-group-meta"><strong>'+esc(cutNormalizeDecimal(g.meters))+' m</strong><span>prealistamiento</span></div>'+
+          '<div class="v186-app-unica-limpia"><strong>'+esc(g.title)+'</strong><span>'+g.items.length+' corte(s) pendiente(s)</span></div>'+
+          '<div class="v186-app-unica-limpia"><strong>'+esc(cutNormalizeDecimal(g.meters))+' m</strong><span>prealistamiento</span></div>'+
         '</summary>'+
-        '<div class="v185-prep-note"><strong>Prealistamiento:</strong> reúna este cable por referencia y abra cada pedido para registrar su corte.</div>'+
-        '<div class="v185-cut-list">'+body+'</div>'+
+        '<div class="v186-app-unica-limpia"><strong>Prealistamiento:</strong> reúna este cable por referencia y abra cada pedido para registrar su corte.</div>'+
+        '<div class="v186-app-unica-limpia">'+body+'</div>'+
       '</details>';
     }).join("");
     layout(
       header("Cortes agrupados","Agrupado por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="v185-summary-row">'+
+      '<section class="v186-app-unica-limpia">'+
         '<article><span>Pendientes</span><strong>'+rows.length+'</strong></article>'+
         '<article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article>'+
-        '<article><span>Versión</span><strong>V185</strong></article>'+
+        '<article><span>Versión</span><strong>V186</strong></article>'+
       '</section>'+
-      '<section class="v185-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
+      '<section class="v186-app-unica-limpia">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
   }
