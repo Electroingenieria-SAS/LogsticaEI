@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v183-mobile-estetica-cortes";
+var CACHE_VERSION = "ei-trazabilidad-v184-reparar-corte-movil-visual-funcional";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k);}));}));

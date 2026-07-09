@@ -70,7 +70,45 @@ function ensureV104UiFixes(){
 \
 \
 @media(max-width:820px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
-/* V183_MOBILE_PREMIUM_CUTS */\
+/* V184_RESTORED_MOBILE_CUT */\
+@media(max-width:820px){\
+  .mobile-top.premium,.mobile-top.clean.restored{height:58px!important;display:flex!important;align-items:center!important;gap:10px!important;padding:8px 12px calc(8px + env(safe-area-inset-top,0px))!important;background:#061b46!important;color:#fff!important;box-shadow:0 8px 22px rgba(6,27,70,.18)!important;}\
+  .mobile-top-center,.mobile-top-switcher,.mobile-top-brand,.mobile-pill-route,.mobile-top-spacer{display:none!important;}\
+  .mobile-top.clean.restored .mobile-logo{width:34px!important;height:34px!important;border-radius:10px!important;object-fit:contain!important;background:#fff!important;padding:3px!important;flex:0 0 auto!important;}\
+  .mobile-title{min-width:0!important;flex:1!important;display:flex!important;flex-direction:column!important;line-height:1.05!important;}\
+  .mobile-title strong{font-size:.86rem!important;color:#fff!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;}\
+  .mobile-title span{font-size:.70rem!important;color:rgba(255,255,255,.72)!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;margin-top:3px!important;}\
+  .mobile-menu-btn.restored{width:40px!important;height:40px!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:14px!important;background:rgba(255,255,255,.12)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:4px!important;box-shadow:0 8px 18px rgba(0,0,0,.10)!important;flex:0 0 auto!important;}\
+  .mobile-menu-btn.restored span{display:block!important;width:18px!important;height:2px!important;border-radius:999px!important;background:#fff!important;}\
+  .bottom-nav.blue-centered{position:fixed!important;left:50%!important;right:auto!important;bottom:10px!important;transform:translateX(-50%)!important;z-index:4500!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:auto!important;max-width:calc(100vw - 22px)!important;background:#061b46!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:24px!important;padding:8px 11px!important;box-shadow:0 18px 42px rgba(6,27,70,.32)!important;}\
+  .bottom-nav.blue-centered button{width:76px!important;flex:0 0 76px!important;min-height:50px!important;border:0!important;border-radius:16px!important;background:rgba(255,255,255,.08)!important;color:rgba(255,255,255,.72)!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;text-align:center!important;font-size:.67rem!important;font-weight:900!important;}\
+  .bottom-nav.blue-centered button b{display:block!important;width:100%!important;text-align:center!important;font-size:.86rem!important;line-height:1!important;}\
+  .bottom-nav.blue-centered button span{display:block!important;width:100%!important;text-align:center!important;line-height:1.05!important;}\
+  .bottom-nav.blue-centered button.active{background:#fff!important;color:#061b46!important;box-shadow:0 10px 22px rgba(255,255,255,.16)!important;}\
+  .mobile-cut-groups{display:grid!important;gap:12px!important;margin-top:12px!important;}\
+  .mobile-cut-group.clean-group{border-radius:18px!important;padding:0!important;overflow:hidden!important;border:1px solid #dbe4f0!important;background:#fff!important;box-shadow:0 8px 24px rgba(15,23,42,.07)!important;}\
+  .mobile-cut-group.clean-group summary{list-style:none!important;cursor:pointer!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:13px 14px!important;background:#f8fafc!important;color:#061b46!important;border-bottom:1px solid #e2e8f0!important;}\
+  .mobile-cut-group.clean-group summary::-webkit-details-marker{display:none!important;}\
+  .mobile-cut-group.clean-group summary strong{display:block!important;color:#061b46!important;font-size:.98rem!important;line-height:1.14!important;}\
+  .mobile-cut-group.clean-group summary small{display:block!important;color:#64748b!important;font-size:.71rem!important;margin-top:4px!important;}\
+  .mobile-prep-note{margin:10px 12px!important;border-radius:14px!important;background:#eff6ff!important;border:1px solid #bfdbfe!important;color:#1e3a8a!important;padding:9px 10px!important;font-size:.74rem!important;line-height:1.3!important;}\
+  .mobile-cut-lines{display:grid!important;gap:9px!important;padding:0 12px 12px!important;}\
+  .mobile-cut-line{display:grid!important;gap:8px!important;border:1px solid #e2e8f0!important;border-radius:16px!important;background:#fff!important;padding:11px!important;box-shadow:0 6px 18px rgba(15,23,42,.045)!important;}\
+  .mcl-top{display:flex!important;justify-content:space-between!important;align-items:flex-start!important;gap:8px!important;}\
+  .mcl-top strong{display:block!important;color:#061b46!important;font-size:.94rem!important;line-height:1.12!important;}\
+  .mcl-top small{display:block!important;color:#64748b!important;font-size:.70rem!important;margin-top:3px!important;}\
+  .mcl-info{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;}\
+  .mcl-info div{background:#f8fafc!important;border:1px solid #e2e8f0!important;border-radius:12px!important;padding:8px!important;}\
+  .mcl-info span,.mcl-ref span{display:block!important;color:#64748b!important;font-size:.64rem!important;text-transform:uppercase!important;letter-spacing:.06em!important;font-weight:900!important;}\
+  .mcl-info b{display:block!important;color:#061b46!important;font-size:.88rem!important;margin-top:2px!important;}\
+  .mcl-ref{border-top:1px dashed #e2e8f0!important;padding-top:8px!important;}\
+  .mcl-ref small{display:block!important;color:#64748b!important;font-size:.72rem!important;margin-top:3px!important;line-height:1.25!important;}\
+  .mobile-cut-line .btn{width:100%!important;justify-content:center!important;min-height:42px!important;border-radius:14px!important;}\
+  .mobile-carreto-calc{display:grid!important;gap:9px!important;border:1px solid #dbeafe!important;background:#f8fbff!important;border-radius:16px!important;padding:11px!important;margin-bottom:10px!important;}\
+  .mobile-cut-form.restored{background:#fff!important;border:1px solid #e2e8f0!important;border-radius:18px!important;padding:12px!important;}\
+  .mobile-cut-card.restored{border-radius:18px!important;}\
+}\
+/* V184_MOBILE_PREMIUM_CUTS */\
 @media(max-width:820px){\
   .mobile-top.premium{height:82px!important;display:grid!important;grid-template-columns:48px 1fr 48px!important;align-items:center!important;padding:10px 12px calc(10px + env(safe-area-inset-top,0px))!important;background:linear-gradient(135deg,#071b44 0%,#0f2f70 55%,#143b87 100%)!important;box-shadow:0 10px 28px rgba(7,27,68,.26)!important;}\
   .mobile-top-center{display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-width:0!important;padding:0 6px!important;}\
@@ -118,7 +156,7 @@ function ensureV104UiFixes(){
   .mobile-cut-row-footer{margin-top:8px!important;}\
   .mobile-cut-row-footer .btn{width:100%!important;min-height:42px!important;border-radius:14px!important;font-weight:900!important;box-shadow:0 8px 18px rgba(18,61,134,.14)!important;}\
 }\
-/* V183_MOBILE_GROUPED_CUTS */\
+/* V184_MOBILE_GROUPED_CUTS */\
 @media(max-width:820px){\
   .bottom-nav.clean{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:auto!important;max-width:calc(100vw - 22px)!important;margin:0 auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;grid-template-columns:none!important;padding:7px 10px!important;}\
   .bottom-nav.clean button{width:74px!important;max-width:76px!important;flex:0 0 74px!important;text-align:center!important;}\
@@ -145,7 +183,7 @@ function ensureV104UiFixes(){
   .mobile-cut-row .btn{width:100%!important;justify-content:center!important;min-height:42px!important;}\
   .mobile-cut-summary{margin-bottom:4px!important;}\
 }\
-/* V183_MOBILE_CUT_SIMPLE */\
+/* V184_MOBILE_CUT_SIMPLE */\
 @media(max-width:820px){\
   .mobile-cut-list{display:grid!important;gap:10px!important;margin-top:12px!important;}\
   .mobile-cut-row{display:grid!important;gap:8px!important;}\
@@ -3559,11 +3597,8 @@ function layout(content){
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
   var rs=routes();
-  var mobileRoutes=allMobileRoutes();
   var bottom=mobileItems().slice(0,4);
-  var cutRoute=mobileRoutes.find(function(x){return x.route==="corte_cable";});
-  var quickCutBtn=cutRoute?('<button class="mobile-pill-route '+(state.route==="corte_cable"?'active':'')+'" data-route="corte_cable">CT Cortes</button>'):'';
-  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(state.user.email||"")+'</div></div><button class="btn btn-danger" data-action="logout">Cerrar sesión</button></div></aside><main class="main"><header class="mobile-top premium"><button class="mobile-menu-btn premium" data-action="openMobileMenu" aria-label="Abrir menú"><span></span><span></span><span></span></button><div class="mobile-top-center"><div class="mobile-top-brand"><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div><div class="mobile-top-switcher"><button class="mobile-pill-route '+(state.route==="home"?'active':'')+'" data-route="home">Inicio</button>'+quickCutBtn+'</div></div><div class="mobile-top-spacer"></div></header>'+content+'<nav class="bottom-nav clean">'+bottom.map(function(item){return '<button class="'+(state.route===item.route?'active':'')+'" data-route="'+item.route+'"><b>'+esc(item.icon)+'</b><span>'+esc(item.label)+'</span></button>';}).join("")+'</nav></main><div class="mobile-menu-overlay'+(state.mobileMenuOpen?' open':'')+'" id="mobileMenuOverlay"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div></div>';
+  appEl.innerHTML='<div class="app-layout"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(state.user.email||"")+'</div></div><button class="btn btn-danger" data-action="logout">Cerrar sesión</button></div></aside><main class="main"><header class="mobile-top clean restored"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title"><strong>'+esc(roleTitle(state.user.role))+'</strong><span>'+esc(state.user.name||"")+'</span></div><button class="mobile-menu-btn restored" data-action="openMobileMenu" aria-label="Abrir menú"><span></span><span></span><span></span></button></header>'+content+'<nav class="bottom-nav blue-centered">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'</nav></main><div class="mobile-menu-overlay'+(state.mobileMenuOpen?' open':'')+'" id="mobileMenuOverlay"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div></div>';
   qsa("[data-route]").forEach(function(b){b.onclick=function(ev){if(ev)ev.preventDefault();openRouteSafely(b.getAttribute("data-route"));};});
   bindActions();
 }
@@ -6554,51 +6589,72 @@ function openCutModuleMobile(id,cutId){
   cut.corteUniforme=true;
   cut.tramoRotulado=true;
   cut.evidenciaRegistro=true;
-  if(!cut.disponibleAntes)cut.disponibleAntes=cut.metrosSolicitados||cut.metrajeFinal||"";
   if(!cut.metrajeFinal)cut.metrajeFinal=cut.metrosSolicitados||"";
   if(!cut.siesaBodega)cut.siesaBodega=((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"PENDIENTE_VALIDAR");
   var finished=cutIsOperationallyDone(cut), started=!!cut.startedAt || cut.status==="EN_CORTE";
   var timerText=fmt(cutElapsedMs(cut));
   var statusLabel=finished?"Registrado":(cut.finishedAt?"Finalizado · falta foto/registro":(started?"En corte":"Listo para iniciar"));
   var canRegister=!!cut.finishedAt && !finished;
-  var finalPhotoNote=cut.carretoRotuladoUrl?'Foto final cargada en Drive':(cut.carretoRotuladoPendingUpload?'Foto final pendiente de subir a Drive':'Suba una sola foto final del carreto rotulado al registrar.');
+  var sol=cutNormalizeDecimal(cut.metrosSolicitados||cut.metrajeFinal||"");
+  var dis=cutNormalizeDecimal(cut.disponibleAntes||"");
+  var rem="";
+  var disN=cutParseDecimal(dis), solN=cutParseDecimal(sol);
+  if(Number.isFinite(disN)&&Number.isFinite(solN))rem=cutNormalizeDecimal(disN-solN);
+  var finalPhotoNote=cut.carretoRotuladoUrl?'Foto final cargada en Drive':(cut.carretoRotuladoPendingUpload?'Foto final pendiente de subir a Drive':'Al finalizar, suba una sola foto final del carreto rotulado.');
   var body=
-    '<section class="mobile-cut-hero">'+
+    '<section class="mobile-cut-hero restored">'+
       '<div><span>Pedido</span><strong>'+esc(c.reference||cut.pedido||"")+'</strong><small>'+esc(c.client||"")+'</small></div>'+
       '<div><span>Corte</span><strong>'+esc(cut.code||cut.id||"")+'</strong><small>'+esc(statusLabel)+'</small></div>'+
     '</section>'+
-    '<section class="card mobile-cut-card">'+
+    '<section class="card mobile-cut-card restored">'+
       '<h3>'+esc(cut.referencia||"Cable / referencia")+'</h3>'+
       '<p>'+esc(cut.descripcion||"")+'</p>'+
-      '<div class="mobile-cut-data"><span>Metros a cortar</span><strong>'+esc(cut.metrosSolicitados||cut.metrajeFinal||"")+'</strong></div>'+
-      '<div class="mobile-cut-data"><span>Tiempo medido</span><strong>'+esc(timerText)+'</strong></div>'+
-      '<div class="notice success"><strong>Flujo móvil:</strong> Iniciar corte → Finalizar corte → Foto final → Registrar corte. Al registrar, el pedido pasa a Alistamiento.</div>'+
+      '<div class="mobile-cut-data"><span>Metros solicitados a cortar</span><strong>'+esc(sol||"")+' m</strong></div>'+
+      '<div class="mobile-cut-data"><span>Tiempo medido</span><strong id="mobileCutTimer">'+esc(timerText)+'</strong></div>'+
+      '<div class="notice"><strong>Control de chipa:</strong> ingrese el tamaño total del carreto/chipa. El sistema resta lo solicitado y registra la chipa restante en inventario.</div>'+
       pdfDocumentCard(c,true)+
     '</section>'+
-    '<form class="form mobile-cut-form" id="cutFullForm">'+
+    '<form class="form mobile-cut-form restored" id="cutFullForm">'+
       '<input type="hidden" name="tipoPedido" value="'+esc(cut.tipoPedido||"VENTAS")+'">'+
       '<input type="hidden" name="pedido" value="'+esc(cut.pedido||c.reference||"")+'">'+
       '<input type="hidden" name="referencia" value="'+esc(cut.referencia||"")+'">'+
       '<input type="hidden" name="descripcion" value="'+esc(cut.descripcion||"")+'">'+
-      '<input type="hidden" name="metrosSolicitados" value="'+esc(cut.metrosSolicitados||cut.metrajeFinal||"")+'">'+
-      '<input type="hidden" name="disponibleAntes" value="'+esc(cut.disponibleAntes||cut.metrosSolicitados||cut.metrajeFinal||"")+'">'+
       '<input type="hidden" name="siesaBodega" value="'+esc(cut.siesaBodega||"PENDIENTE_VALIDAR")+'">'+
-      '<input type="hidden" name="metrajeFinal" value="'+esc(cut.metrajeFinal||cut.metrosSolicitados||"")+'">'+
       '<input type="hidden" name="motivoVentas" value="">'+
       '<input type="hidden" name="observacion" value="">'+
       '<input type="checkbox" name="corteUniforme" checked style="display:none">'+
       '<input type="checkbox" name="tramoRotulado" checked style="display:none">'+
       '<input type="checkbox" name="evidenciaRegistro" checked style="display:none">'+
+      '<section class="mobile-carreto-calc">'+
+        '<label class="field"><span>Tamaño total del carreto / chipa *</span><input class="input" id="mobileCarretoTotal" name="disponibleAntes" inputmode="decimal" value="'+esc(dis)+'" placeholder="Ej. 100" '+(finished?'readonly':'')+' required><small>Este valor lo ingresa Corte según el carreto físico disponible.</small></label>'+
+        '<label class="field"><span>Metros a cortar</span><input class="input" id="mobileMetrosCortar" name="metrosSolicitados" inputmode="decimal" value="'+esc(sol)+'" readonly></label>'+
+        '<input type="hidden" id="mobileMetrajeFinal" name="metrajeFinal" value="'+esc(cut.metrajeFinal||cut.metrosSolicitados||"")+'">'+
+        '<label class="field"><span>Chipa restante automática</span><input class="input" id="mobileChipaRestante" value="'+esc(rem)+'" readonly><small>Este sobrante queda trazable para inventario de chipas.</small></label>'+
+      '</section>'+
       '<label class="field mobile-photo-field"><span>Foto final del carreto rotulado</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+esc(finalPhotoNote)+'</small></label>'+
       '<div class="mobile-cut-actions">'+
         '<button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button>'+
         '<button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button>'+
-        '<button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!canRegister||finished)?'disabled':'')+'>Registrar y pasar a Alistamiento</button>'+
+        '<button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!canRegister||finished)?'disabled':'')+'>Registrar corte y pasar a Alistamiento</button>'+
         ((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+
         '<button type="button" class="btn" data-action="forceProtectedRefresh">Actualizar bandeja</button>'+
       '</div>'+
     '</form>';
-  drawer(modal("Corte móvil · flujo simple",body));
+  drawer(modal("Corte móvil · registro de chipa",body));
+  function refreshMobileCutRemainder(){
+    var dis=cutParseDecimal((qs("#mobileCarretoTotal")||{}).value);
+    var sol=cutParseDecimal((qs("#mobileMetrosCortar")||{}).value);
+    var out=qs("#mobileChipaRestante");
+    var final=qs("#mobileMetrajeFinal");
+    if(final)final.value=(qs("#mobileMetrosCortar")||{}).value||"";
+    if(out)out.value=(Number.isFinite(dis)&&Number.isFinite(sol))?cutNormalizeDecimal(dis-sol):"";
+  }
+  var total=qs("#mobileCarretoTotal");if(total){total.oninput=refreshMobileCutRemainder;total.onchange=refreshMobileCutRemainder;}
+  refreshMobileCutRemainder();
+  if(started && !finished){
+    window.__cutTimerInterval&&clearInterval(window.__cutTimerInterval);
+    window.__cutTimerInterval=setInterval(function(){var t=fmt(cutElapsedMs(cut));var a=qs("#mobileCutTimer");if(a)a.textContent=t;},1000);
+  }
   qsa("[data-cut-action]").forEach(function(btn){btn.onclick=function(){handleCutAction(c,cut,btn.getAttribute("data-cut-action"));};});
 }
 
@@ -7063,38 +7119,26 @@ function renderCutsQueue(){
   });
 
   if(isMobileRuntime()||isCutRuntimeUser()){
-    var groupKeys=Object.keys(groups).sort(function(a,b){
-      return groups[b].meters-groups[a].meters || groups[a].title.localeCompare(groups[b].title);
-    });
+    var groupKeys=Object.keys(groups).sort(function(a,b){return groups[b].meters-groups[a].meters || groups[a].title.localeCompare(groups[b].title);});
     var groupHtml=groupKeys.map(function(k){
       var g=groups[k];
       var body=g.items.map(function(r){
-        return '<article class="mobile-cut-row aesthetic">'+
-          '<div class="mobile-cut-row-head"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div><div class="mobile-cut-chip-wrap">'+cutStatusChip(r.cut.status)+'</div></div>'+
-          '<div class="mobile-cut-row-body"><div><span>Corte</span><b>'+esc(r.cut.code||r.cut.id||"")+'</b></div><div><span>Metros</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div></div>'+
-          '<div class="mobile-cut-row-ref"><span>'+esc(r.cut.referencia||"Referencia")+'</span><small>'+esc(r.cut.descripcion||"")+'</small></div>'+
-          '<div class="mobile-cut-row-footer"><button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></div>'+
+        return '<article class="mobile-cut-line">'+
+          '<div class="mcl-top"><div><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div>'+cutStatusChip(r.cut.status)+'</div>'+
+          '<div class="mcl-info"><div><span>Código</span><b>'+esc(r.cut.code||r.cut.id||"")+'</b></div><div><span>Metros</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div></div>'+
+          '<div class="mcl-ref"><span>'+esc(r.cut.referencia||"Referencia")+'</span><small>'+esc(r.cut.descripcion||"")+'</small></div>'+
+          '<button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button>'+
         '</article>';
       }).join("");
-      return '<details class="card mobile-cut-group aesthetic" open>'+
-        '<summary><div class="mobile-cut-group-main"><div class="mobile-cut-group-title"><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendientes</small></div><div class="mobile-cut-group-stats"><span>'+esc(cutNormalizeDecimal(g.meters))+' m</span><small>por prealistar</small></div></div><span class="chip primary">'+esc(g.key)+'</span></summary>'+
-        '<div class="mobile-cut-info-strip"><b>Prealistamiento</b><span>agrupa este cable y luego abre cada pedido para registrar el corte.</span></div>'+
-        '<div class="mobile-cut-list grouped">'+body+'</div>'+
+      return '<details class="card mobile-cut-group clean-group" open>'+
+        '<summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary>'+
+        '<div class="mobile-prep-note"><strong>Prealistamiento:</strong> reúna este cable y abra pedido por pedido.</div>'+
+        '<div class="mobile-cut-lines">'+body+'</div>'+
       '</details>';
     }).join("");
-    layout(
-      header(
-        "Cortes agrupados",
-        "Bandeja organizada por referencia y tipo de cable, con visual limpia para prealistamiento.",
-        '<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>'
-      )+
-      '<section class="grid grid-3 mobile-cut-summary">'+
-        '<article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por operar</small></article>'+
-        '<article class="card kpi"><span>Grupos de cable</span><strong>'+groupKeys.length+'</strong><small>Organización</small></article>'+
-        '<article class="card kpi"><span>Versión</span><strong>V183</strong><small>Diseño móvil</small></article>'+
-      '</section>'+
-      '<section class="mobile-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
-    );
+    layout(header("Cortes agrupados","Organizado por tipo/referencia de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
+      '<section class="grid grid-3 mobile-cut-summary"><article class="card kpi"><span>Pendientes</span><strong>'+rows.length+'</strong><small>Cortes</small></article><article class="card kpi"><span>Grupos</span><strong>'+groupKeys.length+'</strong><small>Referencias</small></article><article class="card kpi"><span>Versión</span><strong>V184</strong><small>Corregida</small></article></section>'+
+      '<section class="mobile-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
     return;
   }
 
