@@ -7,6 +7,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isFabianCutDirect() {
+      return request.auth != null
+        && (
+          request.auth.uid == 'Af45H9xUP0N8Uej2bKmLHRcZao73'
+          || (
+            request.auth.token.email != null
+            && request.auth.token.email == 'f.duque@ei.com.co'
+          )
+        );
+    }
+
     function userPath() {
       return /databases/$(database)/documents/users/$(request.auth.uid);
     }
@@ -406,6 +417,10 @@ service cloud.firestore {
         'status',
         'createdAt',
         'updatedAt',
+        'lastMobileCutWriteAt',
+        'lastMobileCutWriteVersion',
+        'updatedByName',
+        'updatedBy',
 
         'requirementType',
         'requirements',
@@ -747,6 +762,56 @@ service cloud.firestore {
       );
     }
 
+    // V220: permite las transiciones operativas de Corte a cualquier usuario
+    // autenticado de la aplicación, sin depender de una autoescritura users/{uid}.
+    // La autorización queda restringida a documentos que ya contienen cortes y
+    // únicamente a campos propios del flujo Corte -> Alistamiento.
+    function isAuthenticatedCutTransition() {
+      return signedIn()
+        && resource.data.cutRequests is list
+        && request.resource.data.cutRequests is list
+        && request.resource.data.cutRequests.size() > 0
+        && (
+          resource.data.currentProcess in ['corte_cable', 'alistamiento']
+          || request.resource.data.currentProcess in ['corte_cable', 'alistamiento']
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'cutRequests',
+          'cutReturnAlerts',
+          'hasCuts',
+          'visibleRoles',
+          'targetRoles',
+          'currentProcess',
+          'status',
+          'assignedRole',
+          'assignedUid',
+          'assignedTo',
+          'assignedName',
+          'assignedUsers',
+          'assignedUserIds',
+          'assignedUserId',
+          'assignedEmail',
+          'checklist',
+          'processStats',
+          'activeStartedAt',
+          'deadStartedAt',
+          'waitStartedAt',
+          'flowTrace',
+          'history',
+          'updatedAt',
+          'updatedBy',
+          'updatedByName',
+          'lastMobileCutWriteVersion',
+          'lastMobileCutWriteAt'
+        ]);
+    }
+
+    function isAuthenticatedCutEventCreate() {
+      return signedIn()
+        && request.resource.data.caseId is string
+        && request.resource.data.process in ['corte_cable', 'alistamiento'];
+    }
+
     function canOperateCase() {
       return activeUser() && (
         canSeeAll()
@@ -799,20 +864,35 @@ service cloud.firestore {
     }
 
     match /cases/{caseId} {
-      allow read: if activeUser();
+      allow read: if isFabianCutDirect() || activeUser();
 
       allow create: if activeUser() && !isAuditRole()
         && validCasePayload();
 
-      allow update: if !isAuditRole() && (canOperateCase() || isKnownFabianCutAuth() || isCutRole())
-        && validCasePayload();
+      // V220: Fabián puede actualizar directamente cualquier caso operativo.
+      // El resto de usuarios conserva la validación normal.
+      allow update: if isFabianCutDirect()
+        || (
+          !isAuditRole()
+          && (
+            canOperateCase()
+            || isKnownFabianCutAuth()
+            || isCutRole()
+            || isAuthenticatedCutTransition()
+          )
+          && validCasePayload()
+        );
 
       allow delete: if isAdminOrSuper();
     }
 
     match /case_events/{eventId} {
-      allow read: if activeUser();
-      allow create: if activeUser() && !isAuditRole();
+      allow read: if isFabianCutDirect() || activeUser();
+      allow create: if isFabianCutDirect()
+        || (
+          activeUser() && !isAuditRole()
+        )
+        || isAuthenticatedCutEventCreate();
       allow update: if false;
       allow delete: if isAdminOrSuper();
     }
@@ -878,15 +958,15 @@ service cloud.firestore {
 
     match /siesa_exports/{exportId} {
       allow read: if activeUser();
-      allow create: if canSeeAll() || isCutRole();
+      allow create: if isFabianCutDirect() || canSeeAll() || isCutRole();
       allow update, delete: if isAdminOrSuper();
     }
 
 
     match /inventario_chipas/{chipId} {
       allow read: if activeUser();
-      allow create: if activeUser() && !isAuditRole() && (canSeeAll() || isCutRole());
-      allow update: if activeUser() && !isAuditRole() && (canSeeAll() || isCutRole());
+      allow create: if isFabianCutDirect() || (activeUser() && !isAuditRole() && (canSeeAll() || isCutRole()));
+      allow update: if isFabianCutDirect() || (activeUser() && !isAuditRole() && (canSeeAll() || isCutRole()));
       allow delete: if isAdminOrSuper();
     }
 

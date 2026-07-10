@@ -1,4 +1,4 @@
-// V219 service worker: limpieza total y carga sin caché
+// V220 service worker: limpieza total y red sin caché
 self.addEventListener('install', function() { self.skipWaiting(); });
 self.addEventListener('activate', function(event) {
   event.waitUntil(
