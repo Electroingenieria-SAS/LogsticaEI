@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v207-csv-sigue-ciclo-pdf-recepcion";
+var CACHE_VERSION = "ei-trazabilidad-v208-csv-pdf-mismo-soporte-recepcion";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){
