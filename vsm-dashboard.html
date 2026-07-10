@@ -330,14 +330,14 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V235 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V236 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
 <div class="report-modal" id="smartReportModal" aria-hidden="true">
     <section class="report-dialog" role="dialog" aria-modal="true" aria-labelledby="smartReportTitle">
       <header class="report-head">
         <div>
-          <h2 id="smartReportTitle">Generador de informes analíticos y gráficos</h2>
-          <p>El informe incluirá diagnóstico, gráficas, tendencias, riesgos, conclusiones y plan de acción con los datos visibles en el VSM.</p>
+          <h2 id="smartReportTitle">Generador de informes institucionales</h2>
+          <p>El informe se construirá sobre la plantilla oficial de Electroingeniería e incluirá visualizaciones tipo Power BI, diagnóstico, conclusiones y plan de acción.</p>
         </div>
         <button class="report-close" id="btnCloseSmartReport" type="button" aria-label="Cerrar">×</button>
       </header>
@@ -345,6 +345,7 @@
       <form id="smartReportForm">
         <div class="report-body">
           <div class="report-scope" id="smartReportScope">Alcance actual del tablero.</div>
+          <div class="report-scope"><strong>Plantilla:</strong> Formato institucional Electroingeniería - OFICIOS, tamaño carta, con logos, datos de contacto y elementos gráficos corporativos.</div>
 
           <div class="report-form-grid">
             <label class="report-field">
@@ -421,7 +422,7 @@
         </div>
 
         <footer class="report-foot">
-          <small>El PDF y el Excel incluirán dashboard ejecutivo, gráficas, matriz de riesgos, análisis, conclusiones y anexos. No se modifica Firebase.</small>
+          <small>El PDF utilizará la plantilla institucional OFICIOS como fondo real de cada página. Las gráficas tendrán diseño tipo Power BI. No se modifica Firebase.</small>
           <div class="report-foot-actions">
             <button class="btn soft" id="btnCancelSmartReport" type="button">Cancelar</button>
             <button class="btn report" id="btnGenerateSmartReport" type="submit">Generar informe</button>
@@ -431,6 +432,6 @@
     </section>
   </div>
 
-  <script src="./vsm-dashboard.js?v=235"></script>
+  <script src="./vsm-dashboard.js?v=236"></script>
 </body>
 </html>
