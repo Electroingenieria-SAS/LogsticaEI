@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v204-fix-drawer-recepcion-pedidos";
+var CACHE_VERSION = "ei-trazabilidad-v205-fix-x-modal-qty-csv-recepcion";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){

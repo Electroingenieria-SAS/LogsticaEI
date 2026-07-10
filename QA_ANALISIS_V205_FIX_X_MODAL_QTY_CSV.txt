@@ -1,0 +1,38 @@
+V205 - Fix X, popup grande y cantidad CSV
+
+Problemas reportados:
+1. La X no cerraba.
+2. El popup quedó pequeño.
+3. El CSV estaba interpretando mal cantidades del PDF: 89,00 podía terminar como 8900.
+
+Corrección:
+1. eiV205CloseReceptionDrawer() cierra el drawer real.
+2. La X y Cancelar tienen onclick directo.
+3. Click en fondo y Escape también cierran.
+4. Modal PC grande:
+   width:min(1180px,96vw)
+   max-height:92vh
+5. CSV regenerado:
+   PVC_4641_lineas_recepcion_73.csv
+   cantidades como enteros reales: 89, 85, 84, 80, 47, etc.
+6. Parser CSV:
+   89,00 -> 89
+   89.00 -> 89
+   1.000 -> 1000
+   89,50 -> 89.50
+
+CSV:
+- Líneas: 73
+- Cantidad mínima/máxima de muestra validada desde PDF sin ceros decimales.
+
+Alcance:
+- Solo Recepción de pedidos / openReceptionPdf(id).
+- No se toca Corte.
+- No se toca stickers.
+- No se toca Recepción de mercancía.
+- No se toca fotos/facturas/evidencias.
+
+QA:
+- node --check app.js OK.
+- node --check vsm-dashboard.js OK.
+- node --check service-worker.js OK.

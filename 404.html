@@ -16,17 +16,17 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v204-fix-drawer-recepcion-pedidos">
-  <link rel="stylesheet" href="./mobile-v204.css?v=v204-fix-drawer-recepcion-pedidos">
+  <link rel="stylesheet" href="./styles.css?v=v205-fix-x-modal-qty-csv-recepcion">
+  <link rel="stylesheet" href="./mobile-v205.css?v=v205-fix-x-modal-qty-csv-recepcion">
 
 
   <script>
     (function(){
-      var V="v204-fix-drawer-recepcion-pedidos";
+      var V="v205-fix-x-modal-qty-csv-recepcion";
       try{
         window.EI_REQUIRED_VERSION=V;
         localStorage.setItem("EI_REQUIRED_VERSION",V);
-        window.__EI_V204_CLEAN_PROMISE=(function(){
+        window.__EI_V205_CLEAN_PROMISE=(function(){
           var tasks=[];
           if("serviceWorker" in navigator){
             tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){
@@ -40,7 +40,7 @@
           }
           return Promise.all(tasks).catch(function(){});
         })();
-      }catch(e){window.__EI_V204_CLEAN_PROMISE=Promise.resolve();}
+      }catch(e){window.__EI_V205_CLEAN_PROMISE=Promise.resolve();}
     })();
   </script>
 
@@ -67,12 +67,12 @@
 
   <script>
     window.addEventListener("load", function(){
-      Promise.resolve(window.__EI_V204_CLEAN_PROMISE).finally(function(){
+      Promise.resolve(window.__EI_V205_CLEAN_PROMISE).finally(function(){
         var existing=document.querySelectorAll('script[data-ei-main-app="true"]');
         existing.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
         var s=document.createElement("script");
         s.setAttribute("data-ei-main-app","true");
-        s.src="./app.js?v=v204-fix-drawer-recepcion-pedidos&t="+Date.now();
+        s.src="./app.js?v=v205-fix-x-modal-qty-csv-recepcion&t="+Date.now();
         s.async=false;
         document.body.appendChild(s);
       });
