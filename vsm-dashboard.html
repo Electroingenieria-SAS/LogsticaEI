@@ -330,7 +330,7 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V233 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V234 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
 <div class="report-modal" id="smartReportModal" aria-hidden="true">
     <section class="report-dialog" role="dialog" aria-modal="true" aria-labelledby="smartReportTitle">
@@ -377,8 +377,8 @@
               <span>Formato <b class="report-required">*</b></span>
               <select id="reportFormat" name="reportFormat" required>
                 <option value="pdf">PDF</option>
-                <option value="excel">Excel</option>
-                <option value="both">PDF y Excel</option>
+                <option value="excel">Excel real (.xlsx)</option>
+                <option value="both">PDF y Excel (.xlsx)</option>
               </select>
             </label>
             <label class="report-field full">
@@ -419,7 +419,7 @@
         </div>
 
         <footer class="report-foot">
-          <small>Los datos se toman del tablero con los filtros actuales. El informe no modifica Firebase.</small>
+          <small>Los datos se toman del tablero con los filtros actuales. El PDF y el Excel se construyen con texto, tablas y gráficas reales. No se modifica Firebase.</small>
           <div class="report-foot-actions">
             <button class="btn soft" id="btnCancelSmartReport" type="button">Cancelar</button>
             <button class="btn report" id="btnGenerateSmartReport" type="submit">Generar informe</button>
@@ -429,6 +429,6 @@
     </section>
   </div>
 
-  <script src="./vsm-dashboard.js?v=233"></script>
+  <script src="./vsm-dashboard.js?v=234"></script>
 </body>
 </html>

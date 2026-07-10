@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V233';
+var VERSION='V234';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -581,7 +581,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V233_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V234_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -2679,14 +2679,13 @@ function v232ReportBody(meta,analysis,mode){
 function v232FullReportHtml(meta,analysis,mode){
   return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(meta.title)+'</title><style>'+v232ReportCss()+'</style></head><body><main class="report">'+v232ReportBody(meta,analysis,mode)+'</main></body></html>';
 }
-async function v232LoadPdfLibraries(){
-  if(!window.html2canvas){
-    await loadOne([
-      "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
-      "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
-      "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
-    ],function(){return !!window.html2canvas;},"html2canvas");
-  }
+
+/* ============================================================
+   V234 · MOTORES NATIVOS DE INFORMES
+   PDF: jsPDF + AutoTable, sin capturas HTML.
+   Excel: ExcelJS .xlsx con hojas, estilos y gráficas.
+============================================================ */
+async function v234LoadPdfLibraries(){
   if(!(window.jspdf&&window.jspdf.jsPDF)){
     await loadOne([
       "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
@@ -2694,51 +2693,811 @@ async function v232LoadPdfLibraries(){
       "https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"
     ],function(){return !!(window.jspdf&&window.jspdf.jsPDF);},"jsPDF");
   }
+  var PDF=window.jspdf&&window.jspdf.jsPDF;
+  if(!(PDF&&PDF.API&&PDF.API.autoTable)){
+    await loadOne([
+      "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js",
+      "https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js",
+      "https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"
+    ],function(){
+      var P=window.jspdf&&window.jspdf.jsPDF;
+      return !!(P&&P.API&&P.API.autoTable);
+    },"jsPDF AutoTable");
+  }
 }
-function v232OpenPrintFallback(meta,analysis){
+async function v234LoadExcelLibrary(){
+  if(!window.ExcelJS){
+    await loadOne([
+      "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js",
+      "https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js"
+    ],function(){return !!window.ExcelJS;},"ExcelJS");
+  }
+}
+function v234MsHours(ms){
+  var n=Number(ms||0)/3600000;
+  return isFinite(n)?Math.round(n*100)/100:0;
+}
+function v234PdfPageState(doc){
+  return {
+    pageWidth:doc.internal.pageSize.getWidth(),
+    pageHeight:doc.internal.pageSize.getHeight(),
+    margin:42,
+    y:50,
+    section:"",
+    contentWidth:doc.internal.pageSize.getWidth()-84
+  };
+}
+function v234PdfHeader(doc,state,title){
+  doc.setFillColor(6,27,70);
+  doc.rect(0,0,state.pageWidth,28,"F");
+  doc.setTextColor(255,255,255);
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(8);
+  doc.text("ELECTROINGENIERÍA · VSM OPERATIVO",state.margin,18);
+  doc.setFont("helvetica","normal");
+  doc.text(title||state.section||"Informe analítico",state.pageWidth-state.margin,18,{align:"right"});
+  doc.setTextColor(16,32,51);
+  state.y=46;
+}
+function v234PdfNewPage(doc,state,title){
+  doc.addPage();
+  state.section=title||state.section;
+  v234PdfHeader(doc,state,state.section);
+}
+function v234PdfEnsure(doc,state,height,title){
+  if(state.y+height>state.pageHeight-48)v234PdfNewPage(doc,state,title||state.section);
+}
+function v234PdfSection(doc,state,title){
+  v234PdfEnsure(doc,state,42,title);
+  state.section=title;
+  doc.setFillColor(238,243,249);
+  doc.roundedRect(state.margin,state.y,state.contentWidth,28,6,6,"F");
+  doc.setTextColor(6,27,70);
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(13);
+  doc.text(title,state.margin+10,state.y+18);
+  state.y+=40;
+}
+function v234PdfParagraph(doc,state,text,opts){
+  opts=opts||{};
+  var size=opts.size||9.5;
+  var indent=opts.indent||0;
+  var width=state.contentWidth-indent;
+  doc.setFont("helvetica",opts.bold?"bold":"normal");
+  doc.setFontSize(size);
+  doc.setTextColor(16,32,51);
+  var lines=doc.splitTextToSize(String(text||""),width);
+  var h=lines.length*(size*1.38)+4;
+  v234PdfEnsure(doc,state,h,state.section);
+  doc.text(lines,state.margin+indent,state.y);
+  state.y+=h;
+}
+function v234PdfBulletList(doc,state,items){
+  (items||[]).forEach(function(item){
+    var lines=doc.splitTextToSize(String(item||""),state.contentWidth-18);
+    var h=Math.max(16,lines.length*12+4);
+    v234PdfEnsure(doc,state,h,state.section);
+    doc.setFillColor(242,183,5);
+    doc.circle(state.margin+4,state.y-3,2.2,"F");
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(9.2);
+    doc.setTextColor(16,32,51);
+    doc.text(lines,state.margin+14,state.y);
+    state.y+=h;
+  });
+}
+function v234PdfKpiGrid(doc,state,kpis){
+  var cols=4,gap=8,w=(state.contentWidth-gap*(cols-1))/cols,h=66;
+  for(var i=0;i<kpis.length;i++){
+    if(i%cols===0)v234PdfEnsure(doc,state,h+10,state.section);
+    var col=i%cols,x=state.margin+col*(w+gap),y=state.y;
+    doc.setDrawColor(216,226,239);
+    doc.setFillColor(248,250,252);
+    doc.roundedRect(x,y,w,h,6,6,"FD");
+    doc.setFont("helvetica","bold");
+    doc.setTextColor(100,116,139);
+    doc.setFontSize(7);
+    var title=doc.splitTextToSize(String(kpis[i].title||""),w-12);
+    doc.text(title,x+6,y+12);
+    doc.setTextColor(6,27,70);
+    doc.setFontSize(15);
+    doc.text(String(kpis[i].value||"—"),x+6,y+35);
+    doc.setTextColor(100,116,139);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(6.8);
+    var detail=doc.splitTextToSize(String(kpis[i].detail||""),w-12);
+    doc.text(detail,x+6,y+49);
+    if(col===cols-1||i===kpis.length-1)state.y+=h+10;
+  }
+}
+function v234PdfBarChart(doc,state,title,rows,valueFn,labelFn,displayFn,colorFn){
+  rows=(rows||[]).slice(0,12);
+  var rowH=21,boxH=42+rows.length*rowH;
+  v234PdfEnsure(doc,state,boxH+8,state.section);
+  var x=state.margin,y=state.y,w=state.contentWidth;
+  doc.setDrawColor(216,226,239);
+  doc.setFillColor(255,255,255);
+  doc.roundedRect(x,y,w,boxH,7,7,"FD");
+  doc.setFont("helvetica","bold");
+  doc.setTextColor(6,27,70);
+  doc.setFontSize(10);
+  doc.text(title,x+10,y+18);
+  var max=rows.reduce(function(a,r){return Math.max(a,Number(valueFn(r))||0);},0)||1;
+  rows.forEach(function(r,i){
+    var yy=y+34+i*rowH;
+    var value=Number(valueFn(r))||0;
+    var label=String(labelFn(r)||"");
+    var display=String(displayFn(r)||"");
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(7.2);
+    doc.setTextColor(51,65,85);
+    var shortLabel=label.length>27?label.slice(0,26)+"…":label;
+    doc.text(shortLabel,x+10,yy+8);
+    var barX=x+145,barW=w-225;
+    doc.setFillColor(237,242,247);
+    doc.roundedRect(barX,yy,barW,10,5,5,"F");
+    var cls=colorFn?colorFn(r):"info";
+    if(cls==="ok")doc.setFillColor(15,159,110);
+    else if(cls==="warn")doc.setFillColor(217,119,6);
+    else if(cls==="bad")doc.setFillColor(220,38,38);
+    else doc.setFillColor(37,99,235);
+    doc.roundedRect(barX,yy,Math.max(3,barW*Math.min(1,value/max)),10,5,5,"F");
+    doc.setTextColor(6,27,70);
+    doc.setFont("helvetica","bold");
+    doc.text(display,x+w-10,yy+8,{align:"right"});
+  });
+  state.y+=boxH+12;
+}
+function v234PdfTable(doc,state,title,head,body,options){
+  options=options||{};
+  v234PdfSection(doc,state,title);
+  doc.autoTable({
+    startY:state.y,
+    head:[head],
+    body:body.length?body:[head.map(function(){return "Sin datos";})],
+    margin:{left:state.margin,right:state.margin,top:42,bottom:42},
+    theme:"grid",
+    styles:{
+      font:"helvetica",fontSize:options.fontSize||7.2,
+      cellPadding:3,textColor:[16,32,51],lineColor:[216,226,239],lineWidth:.35,
+      overflow:"linebreak",valign:"top"
+    },
+    headStyles:{fillColor:[6,27,70],textColor:[255,255,255],fontStyle:"bold"},
+    alternateRowStyles:{fillColor:[248,250,252]},
+    columnStyles:options.columnStyles||{},
+    didDrawPage:function(){
+      state.section=title;
+      v234PdfHeader(doc,state,title);
+    }
+  });
+  state.y=(doc.lastAutoTable&&doc.lastAutoTable.finalY||state.y)+16;
+}
+function v234PdfFooterAll(doc,meta){
+  var pages=doc.getNumberOfPages();
+  for(var i=1;i<=pages;i++){
+    doc.setPage(i);
+    var w=doc.internal.pageSize.getWidth(),h=doc.internal.pageSize.getHeight();
+    doc.setDrawColor(216,226,239);
+    doc.line(42,h-27,w-42,h-27);
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100,116,139);
+    doc.text(meta.author+" · "+meta.department,42,h-15);
+    doc.text("Página "+i+" de "+pages,w-42,h-15,{align:"right"});
+  }
+}
+function v234PdfConclusion(analysis){
+  var parts=[];
+  parts.push(analysis.scoreState.text);
+  if(analysis.lowestCompliance&&analysis.lowestCompliance.label){
+    parts.push("El proceso que requiere mayor atención es "+analysis.lowestCompliance.label+
+      ", con un cumplimiento de "+Number(analysis.lowestCompliance.slaPct||0)+"%.");
+  }
+  if(analysis.highestWip&&analysis.highestWip.label){
+    parts.push("La concentración de trabajo pendiente se ubica en "+analysis.highestWip.label+
+      ", con "+Number(analysis.highestWip.wip||0)+" caso(s) en WIP.");
+  }
+  parts.push("Las decisiones deben priorizar la reducción de atrasos, la trazabilidad completa de cada transición y el cierre oportuno de novedades, reprocesos y no entregas.");
+  return parts.join(" ");
+}
+function v234OpenPrintFallback(meta,analysis){
   var win=window.open("","_blank");
   if(!win)throw new Error("El navegador bloqueó la ventana de impresión. Habilite las ventanas emergentes.");
   win.document.open();
   win.document.write(v232FullReportHtml(meta,analysis,"pdf"));
   win.document.close();
-  setTimeout(function(){try{win.focus();win.print();}catch(e){}},900);
+  setTimeout(function(){try{win.focus();win.print();}catch(e){}},700);
 }
 async function v232GeneratePdf(meta,analysis){
-  var host=document.createElement("div");
-  host.style.cssText="position:fixed;left:-12000px;top:0;width:794px;background:#fff;z-index:-1";
-  host.innerHTML='<style>'+v232ReportCss()+'</style><main class="report">'+v232ReportBody(meta,analysis,"pdf")+'</main>';
-  document.body.appendChild(host);
   try{
-    await v232LoadPdfLibraries();
+    await v234LoadPdfLibraries();
     var PDF=window.jspdf.jsPDF;
-    var pdf=new PDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});
-    await pdf.html(host,{
-      x:18,y:18,width:559,windowWidth:794,autoPaging:"text",
-      html2canvas:{scale:.75,useCORS:true,backgroundColor:"#ffffff",logging:false}
+    var doc=new PDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});
+    var state=v234PdfPageState(doc);
+    var m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
+
+    // Portada.
+    doc.setFillColor(6,27,70);
+    doc.rect(0,0,state.pageWidth,state.pageHeight,"F");
+    doc.setFillColor(242,183,5);
+    doc.rect(0,0,15,state.pageHeight,"F");
+    doc.setTextColor(255,255,255);
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(10);
+    doc.text(meta.confidentiality.toUpperCase()+" · "+v232TypeLabel(meta.type).toUpperCase(),52,68);
+    doc.setFontSize(27);
+    var titleLines=doc.splitTextToSize(meta.title,state.pageWidth-104);
+    doc.text(titleLines,52,122);
+    var titleBottom=122+titleLines.length*32;
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(12);
+    var objLines=doc.splitTextToSize(meta.objective,state.pageWidth-104);
+    doc.text(objLines,52,titleBottom+20);
+    var boxY=titleBottom+105;
+    var boxW=(state.pageWidth-116)/2;
+    [
+      ["Elaborado por",meta.author+"\n"+meta.position],
+      ["Área responsable",meta.department],
+      ["Dirigido a",meta.audience],
+      ["Periodo / alcance",meta.periodName||meta.scope]
+    ].forEach(function(item,i){
+      var col=i%2,row=Math.floor(i/2),x=52+col*(boxW+12),y=boxY+row*88;
+      doc.setFillColor(15,45,92);
+      doc.setDrawColor(67,94,135);
+      doc.roundedRect(x,y,boxW,72,7,7,"FD");
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(8);
+      doc.setTextColor(242,183,5);
+      doc.text(item[0],x+10,y+17);
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(10);
+      doc.setTextColor(255,255,255);
+      doc.text(doc.splitTextToSize(item[1],boxW-20),x+10,y+35);
     });
-    pdf.save(v232FileName(meta,"pdf"));
+    doc.setFontSize(8);
+    doc.setTextColor(203,213,225);
+    doc.text("Generado el "+meta.generatedAt.toLocaleString("es-CO")+" · "+VERSION,52,state.pageHeight-45);
+    doc.text("Super Admin excluido de productividad y tiempos operativos.",52,state.pageHeight-29);
+
+    // Resumen ejecutivo.
+    v234PdfNewPage(doc,state,"Resumen ejecutivo");
+    v234PdfSection(doc,state,"1. Resumen ejecutivo");
+    v234PdfParagraph(doc,state,"Índice general de desempeño: "+analysis.score+"% · "+analysis.scoreState.label+".",{"bold":true});
+    v234PdfParagraph(doc,state,analysis.scoreState.text);
+    v234PdfKpiGrid(doc,state,[
+      {title:"Total cargado",value:String(m.totalLoaded||app.cases.length||0),detail:"Pedidos disponibles"},
+      {title:"Trazados VSM",value:String(m.cases||0),detail:"Pedidos calculables"},
+      {title:"WIP actual",value:String(m.wip||0),detail:String(m.lateWip||0)+" fuera de meta"},
+      {title:"Cerrados",value:String(m.closed||0),detail:"Throughput "+String(m.throughput||0)+"/día"},
+      {title:"LT P50",value:v225Time(m.leadP50||0),detail:"P90 "+v225Time(m.leadP90||0)},
+      {title:"Picking promedio",value:v225Time(m.pickingAvg||0),detail:"P90 "+v225Time(m.pickingP90||0)},
+      {title:"Confiabilidad",value:String(Number(r.avg||0))+"%",detail:String(Number(r.low||0))+" registros críticos"},
+      {title:"No entregas",value:String(m.noDeliveryCount||0),detail:"Filtro actual"}
+    ]);
+
+    v234PdfSection(doc,state,"2. Hallazgos analíticos");
+    v234PdfBulletList(doc,state,analysis.findings);
+    if(meta.notes){
+      v234PdfParagraph(doc,state,"Contexto suministrado: "+meta.notes,{bold:true});
+    }
+
+    // Gráficas.
+    v234PdfSection(doc,state,"3. Gráficas para toma de decisiones");
+    v234PdfBarChart(
+      doc,state,"Lead Time promedio por proceso",
+      analysis.processes.slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);}),
+      function(x){return Number(x.avg||0);},
+      function(x){return x.label;},
+      function(x){return v225Time(x.avg||0);}
+    );
+    v234PdfBarChart(
+      doc,state,"Cumplimiento por proceso",
+      analysis.processes.slice().sort(function(a,b){return Number(a.slaPct||0)-Number(b.slaPct||0);}),
+      function(x){return Number(x.slaPct||0);},
+      function(x){return x.label;},
+      function(x){return Number(x.slaPct||0)+"%";},
+      function(x){return x.slaPct>=85?"ok":(x.slaPct>=65?"warn":"bad");}
+    );
+    v234PdfBarChart(
+      doc,state,"WIP por área",
+      analysis.areas.slice().sort(function(a,b){return Number(b.wip||0)-Number(a.wip||0);}),
+      function(x){return Number(x.wip||0);},
+      function(x){return x.label;},
+      function(x){return Number(x.wip||0)+" pedido(s)";}
+    );
+    if(meta.includeWaits){
+      v234PdfBarChart(
+        doc,state,"Novedades, reprocesos y no entregas",
+        [
+          {label:"Novedades",value:w.novelty||0,cls:"warn"},
+          {label:"Reprocesos",value:w.rework||0,cls:"bad"},
+          {label:"No entregas",value:w.noDelivery||0,cls:"warn"}
+        ],
+        function(x){return x.value;},
+        function(x){return x.label;},
+        function(x){return v225Time(x.value);},
+        function(x){return x.cls;}
+      );
+    }
+
+    // Tablas.
+    v234PdfTable(doc,state,"4. Desempeño por proceso",
+      ["Proceso","Casos","WIP","Atrasados","LT prom.","P50","P90","Cumpl."],
+      analysis.processes.map(function(x){
+        return [
+          x.label,Number(x.cases||0),Number(x.wip||0),Number(x.wipLate||0),
+          v225Time(x.avg||0),v225Time(x.p50||0),v225Time(x.p90||0),Number(x.slaPct||0)+"%"
+        ];
+      }),
+      {fontSize:6.8}
+    );
+    v234PdfTable(doc,state,"5. Desempeño por área",
+      ["Área","Casos","WIP","Cerrados","LT prom.","Trabajo","Cumpl.","Confiab.","No entregas"],
+      analysis.areas.map(function(x){
+        return [
+          x.label,Number(x.cases||0),Number(x.wip||0),Number(x.closed||0),
+          v225Time(x.avg||0),v225Time(x.work||0),Number(x.compliance||0)+"%",
+          Number(x.reliability||0)+"%",Number(x.noDeliveries||0)
+        ];
+      }),
+      {fontSize:6.5}
+    );
+
+    if(meta.includeActors){
+      v234PdfTable(doc,state,"6. Productividad por actor",
+        ["Actor","Rol","Casos","WIP","Cerrados","Trabajo","Promedio","Cumpl.","Carga"],
+        analysis.actors.slice(0,40).map(function(x){
+          return [
+            x.user,roleTitle(x.role),Number(x.count||0),Number(x.open||0),Number(x.closed||0),
+            v225Time(x.active||0),v225Time(x.directPerCase||0),
+            Number(x.compliance||0)+"%",Number(x.directLoadPct||0)+"%"
+          ];
+        }),
+        {fontSize:6.3}
+      );
+      v234PdfParagraph(doc,state,"Nota: el Super Admin está excluido. La carga directa representa actividad trazada y no debe utilizarse aisladamente como evaluación individual.");
+    }
+
+    if(meta.includeWaits){
+      v234PdfTable(doc,state,"7. Trazabilidad de tiempos especiales",
+        ["Pedido","Categoría","Área","Proceso","Duración","Abierto","Origen"],
+        (w.all||[]).slice(0,80).map(function(x){
+          return [
+            x.pedido,x.category,v225AreaLabel(x.area),processTitle(x.process),
+            v225Time(x.duration||0),x.open?"Sí":"No",x.source
+          ];
+        }),
+        {fontSize:6.2,columnStyles:{6:{cellWidth:145}}}
+      );
+    }
+
+    if(meta.includeAlerts){
+      v234PdfTable(doc,state,"8. Alertas y riesgos prioritarios",
+        ["Prioridad","Pedido","Proceso","Hallazgo","Acción sugerida"],
+        (m.alertRows||[]).slice(0,60).map(function(x){
+          return [
+            x.severity==="bad"?"Alta":"Media",x.pedido||"",x.proceso||"",
+            x.detalle||"",x.accion||""
+          ];
+        }),
+        {fontSize:6.3,columnStyles:{3:{cellWidth:150},4:{cellWidth:150}}}
+      );
+    }
+
+    v234PdfSection(doc,state,"9. Recomendaciones");
+    v234PdfBulletList(doc,state,analysis.recommendations);
+
+    if(meta.includeActionPlan){
+      v234PdfTable(doc,state,"10. Plan de acción propuesto",
+        ["Prioridad","Situación","Acción","Responsable sugerido","Meta"],
+        analysis.actions.map(function(x){
+          return [x.priority,x.issue,x.action,x.owner,x.target];
+        }),
+        {fontSize:6.5,columnStyles:{2:{cellWidth:165}}}
+      );
+    }
+
+    if(meta.includeOrders){
+      v234PdfTable(doc,state,"11. Anexo de pedidos críticos",
+        ["Pedido","OC","Cliente","Proceso","Responsable","Tiempo","Meta","Estado","Próxima acción"],
+        (m.wipRows||[]).slice(0,120).map(function(x){
+          return [
+            x.pedido,x.oc,x.cliente,x.processLabel,x.responsable,
+            v225Time(x.age||0),Number(x.slaHours||0)+" h",
+            x.late?"Fuera de meta":"Dentro de meta",x.next||""
+          ];
+        }),
+        {fontSize:5.8,columnStyles:{2:{cellWidth:90},8:{cellWidth:110}}}
+      );
+    }
+
+    if(meta.includeMethodology){
+      v234PdfTable(doc,state,"12. Metodología, fórmulas y fuentes",
+        ["Elemento","Criterio aplicado"],
+        [
+          ["Jornada laboral","07:00–12:00 y 13:40–17:30; se excluyen sábados, domingos y festivos colombianos cargados."],
+          ["Lead Time","Tiempo laboral desde el inicio del pedido o etapa hasta su cierre o corte de análisis."],
+          ["P50 / P90","P50 es la mediana; P90 es el tiempo bajo el cual termina el 90% de los casos."],
+          ["Trabajo directo","Actividad registrada o inferida mediante eventos operativos; no incluye al Super Admin."],
+          ["Reproceso","Exceso sobre la meta cuando el pedido regresa a una etapa anterior por corrección, diferencia, rechazo o no conformidad."],
+          ["No entrega","Desde la confirmación mediante noDelivery, noDeliveryReports, requirementType=no_entrega o NO_DELIVERY_* hasta su solución."],
+          ["Índice compuesto","30% cumplimiento, 25% confiabilidad, 20% WIP en meta, 10% cobertura, 7,5% no entregas y 7,5% reprocesos."],
+          ["Fuentes","cases, case_events, reportes_novedad, processStats, requirements, openRequirement, noDeliveryReports, stateHistory y flowTrace."]
+        ],
+        {fontSize:7,columnStyles:{0:{cellWidth:95}}}
+      );
+    }
+
+    v234PdfSection(doc,state,"13. Conclusión");
+    v234PdfParagraph(doc,state,v234PdfConclusion(analysis),{size:10});
+    v234PdfParagraph(doc,state,"Informe elaborado por "+meta.author+", "+meta.position+", para "+meta.audience+".");
+    v234PdfFooterAll(doc,meta);
+    doc.save(v232FileName(meta,"pdf"));
   }catch(e){
-    console.warn("[V232 Informe] PDF directo no disponible, se usa impresión.",e);
-    v232OpenPrintFallback(meta,analysis);
-    status("Se abrió la versión imprimible. Seleccione «Guardar como PDF» en el diálogo de impresión.","ok");
-  }finally{
-    try{host.remove();}catch(e){}
+    console.error("[V234 Informe PDF]",e);
+    v234OpenPrintFallback(meta,analysis);
+    status("El navegador no cargó el motor PDF. Se abrió el informe completo para imprimir y guardar como PDF.","ok");
   }
 }
-function v232GenerateExcel(meta,analysis){
-  var html=v232FullReportHtml(meta,analysis,"excel");
-  var blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"});
+function v234ExcelStyleHeader(row){
+  row.height=26;
+  row.eachCell(function(cell){
+    cell.font={bold:true,color:{argb:"FFFFFFFF"},size:10};
+    cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF061B46"}};
+    cell.alignment={vertical:"middle",horizontal:"center",wrapText:true};
+    cell.border={
+      top:{style:"thin",color:{argb:"FFD8E2EF"}},
+      left:{style:"thin",color:{argb:"FFD8E2EF"}},
+      bottom:{style:"thin",color:{argb:"FFD8E2EF"}},
+      right:{style:"thin",color:{argb:"FFD8E2EF"}}
+    };
+  });
+}
+function v234ExcelStyleTable(sheet,startRow,endRow){
+  for(var r=startRow;r<=endRow;r++){
+    var row=sheet.getRow(r);
+    row.eachCell(function(cell){
+      cell.alignment={vertical:"top",wrapText:true};
+      cell.border={
+        top:{style:"thin",color:{argb:"FFD8E2EF"}},
+        left:{style:"thin",color:{argb:"FFD8E2EF"}},
+        bottom:{style:"thin",color:{argb:"FFD8E2EF"}},
+        right:{style:"thin",color:{argb:"FFD8E2EF"}}
+      };
+      if(r%2===0)cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8FAFC"}};
+    });
+  }
+}
+function v234ExcelTitle(sheet,title,subtitle){
+  sheet.mergeCells("A1:J1");
+  var c=sheet.getCell("A1");
+  c.value=title;
+  c.font={bold:true,size:18,color:{argb:"FFFFFFFF"}};
+  c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF061B46"}};
+  c.alignment={vertical:"middle",horizontal:"left"};
+  sheet.getRow(1).height=34;
+  sheet.mergeCells("A2:J2");
+  var s=sheet.getCell("A2");
+  s.value=subtitle||"";
+  s.font={italic:true,size:10,color:{argb:"FF475569"}};
+  s.alignment={wrapText:true};
+  sheet.getRow(2).height=30;
+}
+function v234ExcelAutoWidths(sheet,min,max){
+  min=min||10;max=max||42;
+  sheet.columns.forEach(function(col){
+    var width=min;
+    col.eachCell({includeEmpty:true},function(cell){
+      var value=cell.value;
+      var text=value===null||value===undefined?"":String(value.richText?value.richText.map(function(x){return x.text;}).join(""):value);
+      width=Math.max(width,Math.min(max,text.length+2));
+    });
+    col.width=width;
+  });
+}
+function v234CanvasChart(title,rows,valueFn,labelFn,displayFn,colorFn){
+  rows=(rows||[]).slice(0,12);
+  var canvas=document.createElement("canvas");
+  canvas.width=1100;
+  canvas.height=Math.max(440,130+rows.length*48);
+  var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#061b46";ctx.font="bold 28px Arial";ctx.fillText(title,35,48);
+  ctx.font="18px Arial";
+  var max=rows.reduce(function(a,r){return Math.max(a,Number(valueFn(r))||0);},0)||1;
+  rows.forEach(function(r,i){
+    var y=95+i*48,value=Number(valueFn(r))||0,label=String(labelFn(r)||"");
+    var display=String(displayFn(r)||"");
+    ctx.fillStyle="#334155";ctx.font="16px Arial";
+    ctx.fillText(label.length>31?label.slice(0,30)+"…":label,35,y+18);
+    var barX=330,barY=y,barW=600,barH=22;
+    ctx.fillStyle="#edf2f7";ctx.beginPath();ctx.roundRect(barX,barY,barW,barH,11);ctx.fill();
+    var cls=colorFn?colorFn(r):"info";
+    ctx.fillStyle=cls==="ok"?"#0f9f6e":cls==="warn"?"#d97706":cls==="bad"?"#dc2626":"#2563eb";
+    ctx.beginPath();ctx.roundRect(barX,barY,Math.max(6,barW*Math.min(1,value/max)),barH,11);ctx.fill();
+    ctx.fillStyle="#061b46";ctx.font="bold 16px Arial";ctx.textAlign="right";
+    ctx.fillText(display,1060,y+18);ctx.textAlign="left";
+  });
+  return canvas.toDataURL("image/png");
+}
+function v234ExcelAddImage(workbook,sheet,dataUrl,range){
+  var id=workbook.addImage({base64:dataUrl,extension:"png"});
+  sheet.addImage(id,range);
+}
+function v234ExcelSheet(workbook,name,title,subtitle,headers,rows){
+  var sheet=workbook.addWorksheet(name,{views:[{state:"frozen",ySplit:3}]});
+  v234ExcelTitle(sheet,title,subtitle);
+  sheet.addRow([]);
+  var headerRow=sheet.addRow(headers);
+  v234ExcelStyleHeader(headerRow);
+  rows.forEach(function(row){sheet.addRow(row);});
+  v234ExcelStyleTable(sheet,headerRow.number+1,sheet.rowCount);
+  sheet.autoFilter={from:{row:headerRow.number,column:1},to:{row:sheet.rowCount,column:headers.length}};
+  v234ExcelAutoWidths(sheet);
+  return sheet;
+}
+function v234DownloadBlob(blob,filename){
   var a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
-  a.download=v232FileName(meta,"xls");
+  a.download=filename;
   document.body.appendChild(a);
   a.click();
-  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1200);
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1500);
+}
+async function v232GenerateExcel(meta,analysis){
+  await v234LoadExcelLibrary();
+  var ExcelJS=window.ExcelJS,m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
+  var workbook=new ExcelJS.Workbook();
+  workbook.creator=meta.author;
+  workbook.lastModifiedBy=meta.author;
+  workbook.created=meta.generatedAt;
+  workbook.modified=meta.generatedAt;
+  workbook.properties.date1904=false;
+  workbook.calcProperties.fullCalcOnLoad=true;
+
+  // Portada / resumen.
+  var summary=workbook.addWorksheet("Resumen",{views:[{showGridLines:false}]});
+  summary.mergeCells("A1:H3");
+  var title=summary.getCell("A1");
+  title.value=meta.title;
+  title.font={bold:true,size:22,color:{argb:"FFFFFFFF"}};
+  title.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF061B46"}};
+  title.alignment={vertical:"middle",horizontal:"left",wrapText:true};
+  summary.getRow(1).height=35;summary.getRow(2).height=35;summary.getRow(3).height=35;
+  summary.getCell("A5").value="Elaborado por";summary.getCell("B5").value=meta.author;
+  summary.getCell("A6").value="Cargo";summary.getCell("B6").value=meta.position;
+  summary.getCell("A7").value="Área responsable";summary.getCell("B7").value=meta.department;
+  summary.getCell("A8").value="Dirigido a";summary.getCell("B8").value=meta.audience;
+  summary.getCell("A9").value="Periodo / alcance";summary.getCell("B9").value=meta.periodName||meta.scope;
+  summary.getCell("A10").value="Clasificación";summary.getCell("B10").value=meta.confidentiality;
+  summary.getCell("A12").value="Objetivo";summary.getCell("B12").value=meta.objective;
+  summary.mergeCells("B12:H14");
+  summary.getCell("B12").alignment={wrapText:true,vertical:"top"};
+
+  var kpiStart=16;
+  var kpis=[
+    ["Índice de desempeño",analysis.score+"%",analysis.scoreState.label],
+    ["Total cargado",m.totalLoaded||app.cases.length||0,"Pedidos disponibles"],
+    ["Trazados VSM",m.cases||0,"Pedidos calculables"],
+    ["WIP actual",m.wip||0,(m.lateWip||0)+" fuera de meta"],
+    ["Cerrados",m.closed||0,"Throughput "+(m.throughput||0)+"/día"],
+    ["LT P50",v234MsHours(m.leadP50||0),"Horas; P90 "+v234MsHours(m.leadP90||0)],
+    ["Confiabilidad",Number(r.avg||0)+"%",Number(r.low||0)+" críticos"],
+    ["No entregas",m.noDeliveryCount||0,"Filtro actual"]
+  ];
+  kpis.forEach(function(k,i){
+    var row=kpiStart+Math.floor(i/4)*4,col=1+(i%4)*2;
+    summary.mergeCells(row,col,row+2,col+1);
+    var cell=summary.getCell(row,col);
+    cell.value={richText:[
+      {text:k[0]+"\n",font:{bold:true,size:9,color:{argb:"FF64748B"}}},
+      {text:String(k[1])+"\n",font:{bold:true,size:18,color:{argb:"FF061B46"}}},
+      {text:String(k[2]),font:{size:8,color:{argb:"FF64748B"}}}
+    ]};
+    cell.alignment={vertical:"middle",horizontal:"left",wrapText:true};
+    cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8FAFC"}};
+    cell.border={
+      top:{style:"thin",color:{argb:"FFD8E2EF"}},left:{style:"thin",color:{argb:"FFD8E2EF"}},
+      bottom:{style:"thin",color:{argb:"FFD8E2EF"}},right:{style:"thin",color:{argb:"FFD8E2EF"}}
+    };
+  });
+
+  var rowNum=25;
+  summary.getCell("A"+rowNum).value="Hallazgos analíticos";
+  summary.getCell("A"+rowNum).font={bold:true,size:14,color:{argb:"FF061B46"}};
+  rowNum++;
+  analysis.findings.forEach(function(f){
+    summary.mergeCells(rowNum,1,rowNum,8);
+    summary.getCell(rowNum,1).value="• "+f;
+    summary.getCell(rowNum,1).alignment={wrapText:true,vertical:"top"};
+    rowNum++;
+  });
+  rowNum+=1;
+  summary.getCell("A"+rowNum).value="Recomendaciones";
+  summary.getCell("A"+rowNum).font={bold:true,size:14,color:{argb:"FF061B46"}};
+  rowNum++;
+  analysis.recommendations.forEach(function(f){
+    summary.mergeCells(rowNum,1,rowNum,8);
+    summary.getCell(rowNum,1).value="• "+f;
+    summary.getCell(rowNum,1).alignment={wrapText:true,vertical:"top"};
+    rowNum++;
+  });
+  summary.columns=[{width:22},{width:26},{width:18},{width:18},{width:18},{width:18},{width:18},{width:18}];
+
+  // Procesos.
+  var processSheet=v234ExcelSheet(
+    workbook,"Procesos","Desempeño por proceso",meta.scope,
+    ["Proceso","Casos","WIP","Atrasados","LT promedio (h)","P50 (h)","P90 (h)","Trabajo directo (h)","Bloqueo (h)","Cumplimiento (%)"],
+    analysis.processes.map(function(x){
+      return [
+        x.label,Number(x.cases||0),Number(x.wip||0),Number(x.wipLate||0),
+        v234MsHours(x.avg||0),v234MsHours(x.p50||0),v234MsHours(x.p90||0),
+        v234MsHours(x.cases?x.active/x.cases:0),v234MsHours(x.cases?x.wait/x.cases:0),
+        Number(x.slaPct||0)
+      ];
+    })
+  );
+  var processChart=v234CanvasChart(
+    "Lead Time promedio por proceso",
+    analysis.processes.slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);}),
+    function(x){return Number(x.avg||0);},function(x){return x.label;},
+    function(x){return v225Time(x.avg||0);}
+  );
+  v234ExcelAddImage(workbook,processSheet,processChart,{tl:{col:0,row:processSheet.rowCount+2},ext:{width:760,height:420}});
+
+  // Áreas.
+  var areaSheet=v234ExcelSheet(
+    workbook,"Áreas","Desempeño por área",meta.scope,
+    ["Área","Casos","Intervenciones","WIP / abiertas","Cerrados","LT promedio (h)","Trabajo directo (h)","Bloqueo / espera (h)","Cumplimiento (%)","Confiabilidad (%)","No entregas","Actores"],
+    analysis.areas.map(function(x){
+      return [
+        x.label,Number(x.cases||0),x.area==="ventas"?Number(x.interventions||0):"",
+        Number(x.wip||0),Number(x.closed||0),v234MsHours(x.avg||0),v234MsHours(x.work||0),
+        v234MsHours(x.block||0),Number(x.compliance||0),Number(x.reliability||0),
+        Number(x.noDeliveries||0),Number(x.workers||0)
+      ];
+    })
+  );
+  var areaChart=v234CanvasChart(
+    "Cumplimiento por área",
+    analysis.areas.slice().sort(function(a,b){return Number(a.compliance||0)-Number(b.compliance||0);}),
+    function(x){return Number(x.compliance||0);},function(x){return x.label;},
+    function(x){return Number(x.compliance||0)+"%";},
+    function(x){return x.compliance>=85?"ok":(x.compliance>=65?"warn":"bad");}
+  );
+  v234ExcelAddImage(workbook,areaSheet,areaChart,{tl:{col:0,row:areaSheet.rowCount+2},ext:{width:760,height:420}});
+
+  // Actores.
+  if(meta.includeActors){
+    var actorSheet=v234ExcelSheet(
+      workbook,"Actores","Productividad por actor","Super Admin excluido de todas las mediciones.",
+      ["Actor","Rol","Casos","WIP","Cerrados","Trabajo directo (h)","Promedio directo (h)","Cumplimiento (%)","Carga directa (%)","Procesos"],
+      analysis.actors.map(function(x){
+        return [
+          x.user,roleTitle(x.role),Number(x.count||0),Number(x.open||0),Number(x.closed||0),
+          v234MsHours(x.active||0),v234MsHours(x.directPerCase||0),Number(x.compliance||0),
+          Number(x.directLoadPct||0),x.processList||""
+        ];
+      })
+    );
+    var actorChart=v234CanvasChart(
+      "Trabajo directo trazado por actor",
+      analysis.actors.slice().sort(function(a,b){return Number(b.active||0)-Number(a.active||0);}),
+      function(x){return Number(x.active||0);},function(x){return x.user;},
+      function(x){return v225Time(x.active||0);}
+    );
+    v234ExcelAddImage(workbook,actorSheet,actorChart,{tl:{col:0,row:actorSheet.rowCount+2},ext:{width:760,height:460}});
+  }
+
+  // Esperas.
+  if(meta.includeWaits){
+    var waitsSheet=v234ExcelSheet(
+      workbook,"Esperas","Novedades, reprocesos y no entregas",meta.scope,
+      ["Pedido","Categoría","Área","Proceso","Inicio","Fin / corte","Duración (h)","Abierto","Origen del cálculo","Detalle"],
+      (w.all||[]).map(function(x){
+        return [
+          x.pedido,x.category,v225AreaLabel(x.area),processTitle(x.process),
+          x.start?new Date(x.start):"",x.end?new Date(x.end):"",
+          v234MsHours(x.duration||0),x.open?"Sí":"No",x.source,x.detail
+        ];
+      })
+    );
+    waitsSheet.getColumn(5).numFmt="dd/mm/yyyy hh:mm";
+    waitsSheet.getColumn(6).numFmt="dd/mm/yyyy hh:mm";
+    var waitsChart=v234CanvasChart(
+      "Tiempos especiales de espera",
+      [
+        {label:"Novedades",value:w.novelty||0,cls:"warn"},
+        {label:"Reprocesos",value:w.rework||0,cls:"bad"},
+        {label:"No entregas",value:w.noDelivery||0,cls:"warn"}
+      ],
+      function(x){return x.value;},function(x){return x.label;},
+      function(x){return v225Time(x.value);},function(x){return x.cls;}
+    );
+    v234ExcelAddImage(workbook,waitsSheet,waitsChart,{tl:{col:0,row:waitsSheet.rowCount+2},ext:{width:760,height:320}});
+  }
+
+  // Alertas.
+  if(meta.includeAlerts){
+    v234ExcelSheet(
+      workbook,"Alertas","Alertas y riesgos prioritarios",meta.scope,
+      ["Prioridad","Pedido","Proceso","Hallazgo","Acción sugerida"],
+      (m.alertRows||[]).map(function(x){
+        return [x.severity==="bad"?"Alta":"Media",x.pedido||"",x.proceso||"",x.detalle||"",x.accion||""];
+      })
+    );
+  }
+
+  // Plan de acción.
+  if(meta.includeActionPlan){
+    v234ExcelSheet(
+      workbook,"Plan de acción","Plan de acción propuesto","Generado automáticamente a partir de los resultados del tablero.",
+      ["Prioridad","Situación","Acción","Responsable sugerido","Meta","Estado","Fecha compromiso","Observaciones"],
+      analysis.actions.map(function(x){return [x.priority,x.issue,x.action,x.owner,x.target,"Pendiente","",""];})
+    );
+  }
+
+  // Pedidos críticos.
+  if(meta.includeOrders){
+    v234ExcelSheet(
+      workbook,"Pedidos críticos","Anexo de pedidos críticos",meta.scope,
+      ["Pedido","OC","Cliente","Proceso","Responsable","Tiempo en proceso (h)","Meta (h)","Estado","Bloqueo","Próxima acción","Lead Time total (h)"],
+      (m.wipRows||[]).map(function(x){
+        return [
+          x.pedido,x.oc,x.cliente,x.processLabel,x.responsable,
+          v234MsHours(x.age||0),Number(x.slaHours||0),x.late?"Fuera de meta":"Dentro de meta",
+          x.blocker||"",x.next||"",v234MsHours(x.lead||0)
+        ];
+      })
+    );
+  }
+
+  // Metodología.
+  if(meta.includeMethodology){
+    v234ExcelSheet(
+      workbook,"Metodología","Metodología, fórmulas y fuentes","Criterios aplicados por el VSM.",
+      ["Elemento","Criterio aplicado"],
+      [
+        ["Jornada laboral","07:00–12:00 y 13:40–17:30; se excluyen sábados, domingos y festivos colombianos cargados."],
+        ["Lead Time","Tiempo laboral desde el inicio del pedido o etapa hasta su cierre o corte de análisis."],
+        ["P50 / P90","P50 es la mediana; P90 representa el tiempo bajo el cual termina el 90% de los casos."],
+        ["Trabajo directo","Actividad registrada o inferida mediante eventos operativos; el Super Admin está excluido."],
+        ["Reproceso","Exceso sobre la meta cuando el pedido regresa a una etapa anterior por corrección, diferencia, rechazo o no conformidad."],
+        ["No entrega","Desde noDelivery, noDeliveryReports, requirementType=no_entrega o NO_DELIVERY_* hasta solución o cierre."],
+        ["Índice compuesto","30% cumplimiento, 25% confiabilidad, 20% WIP en meta, 10% cobertura, 7,5% no entregas y 7,5% reprocesos."],
+        ["Fuentes","cases, case_events, reportes_novedad, processStats, requirements, openRequirement, noDeliveryReports, stateHistory y flowTrace."]
+      ]
+    );
+  }
+
+  // Conclusiones.
+  v234ExcelSheet(
+    workbook,"Conclusiones","Conclusiones y recomendaciones",meta.scope,
+    ["Tipo","Contenido"],
+    [
+      ["Conclusión general",v234PdfConclusion(analysis)]
+    ].concat(
+      analysis.findings.map(function(x){return ["Hallazgo",x];}),
+      analysis.recommendations.map(function(x){return ["Recomendación",x];})
+    )
+  );
+
+  workbook.eachSheet(function(sheet){
+    sheet.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+    sheet.headerFooter={
+      oddHeader:"&CElectroingeniería · "+meta.title,
+      oddFooter:"&L"+meta.author+" · "+meta.department+"&RPage &P of &N"
+    };
+  });
+
+  var buffer=await workbook.xlsx.writeBuffer();
+  var blob=new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  v234DownloadBlob(blob,v232FileName(meta,"xlsx"));
 }
 async function v232GenerateReport(meta){
   if(!app.metrics)await refresh();
   var analysis=v232Analyze(meta);
-  loading(true,"Construyendo diagnóstico, gráficas y plan de acción...");
+  loading(true,"Construyendo texto, tablas, gráficas, conclusiones y plan de acción...");
   try{
     if(meta.format==="excel")v232GenerateExcel(meta,analysis);
     else if(meta.format==="pdf")await v232GeneratePdf(meta,analysis);
