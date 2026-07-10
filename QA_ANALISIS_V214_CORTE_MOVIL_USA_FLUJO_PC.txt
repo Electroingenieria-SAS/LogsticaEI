@@ -1,0 +1,29 @@
+V214 - Corte móvil usa el mismo flujo de PC
+
+Decisión:
+- Se eliminó la idea de una ruta móvil paralela.
+- La versión móvil ahora usa el mismo handleCutAction original que PC.
+- Móvil solo conserva:
+  1. permisos reforzados para Fabián Duque / auxiliar_corte
+  2. vista simple sin cronómetro grande
+  3. reparación de usuario/caso antes de abrir
+
+Qué NO hace V214:
+- No reemplaza startCut.
+- No reemplaza finishCut.
+- No reemplaza registerCut.
+- No crea persistencia móvil paralela.
+- No cambia la lógica de PC.
+
+Qué sí hace:
+- handleCutAction móvil llama al flujo original de PC.
+- openCutModule prepara permisos y luego abre el módulo normal.
+- No necesita corte y Medida completa quedan intactos.
+- Registrar corte / cumplido usa data-cut-action="registerCut", igual que PC.
+- Firestore rules permiten actualización por rol corte/Fabián.
+
+Alcance:
+- Corte móvil + permisos.
+- No se toca Recepción de pedidos.
+- No se toca PDF/CSV.
+- No se toca stickers.
