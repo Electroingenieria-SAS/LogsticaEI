@@ -1,0 +1,26 @@
+V204 - Fix openDrawer Recepción de pedidos
+
+Error reportado:
+- Uncaught ReferenceError: openDrawer is not defined
+- Ubicación: openReceptionPdf()
+
+Causa:
+- La V203 reemplazó la ventana de Recepción de pedidos usando openDrawer(...), pero esa función no está globalmente disponible en esta base de la app.
+
+Corrección:
+- Se agrega eiV204OpenDrawerHtml(html).
+- openReceptionPdf ahora usa el contenedor real #drawer:
+  d.innerHTML = html
+  d.classList.add("open")
+
+Alcance:
+- Solo Recepción de pedidos / openReceptionPdf(id).
+- No se toca Corte.
+- No se toca stickers.
+- No se toca Recepción de mercancía.
+- No se toca fotos/facturas/evidencias.
+
+QA:
+- node --check app.js OK.
+- node --check vsm-dashboard.js OK.
+- node --check service-worker.js OK.

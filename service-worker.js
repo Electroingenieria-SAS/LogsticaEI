@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v203-recepcion-pedidos-dos-botones-pdf-csv";
+var CACHE_VERSION = "ei-trazabilidad-v204-fix-drawer-recepcion-pedidos";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){
