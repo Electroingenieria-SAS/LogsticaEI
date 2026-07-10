@@ -143,11 +143,8 @@
     .wait-card.ok:before{background:var(--ok)}
     .wait-card span{display:block;color:var(--muted);font-size:.7rem;font-weight:900;text-transform:uppercase}
     .wait-card strong{display:block;color:var(--blue);font-size:1.35rem;margin-top:6px}
-    .wait-card small{display:block;color:var(--muted);font-size:.73rem;line-height:1.4;margin-top:5px}
-    .wait-scope{
-      display:inline-flex;margin-top:8px;padding:4px 8px;border-radius:999px;
-      background:#eff6ff;color:#1d4ed8;font-size:.68rem;font-weight:900
-    }
+    .wait-card small{display:block;color:var(--muted);font-size:.73rem;line-height:1.5;margin-top:6px}
+    .wait-scope{display:inline-flex;margin-top:8px;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.68rem;font-weight:900}.wait-source{display:block;margin-top:8px;padding:7px 8px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:.67rem;line-height:1.4}
     .wait-detail-list{display:grid;gap:8px}
     .wait-detail-row{
       display:grid;grid-template-columns:minmax(130px,1fr) minmax(120px,2fr) auto;
@@ -213,7 +210,7 @@
           <option value="areas">Resumen por área</option><option value="procesos">Rendimiento por proceso</option>
           <option value="picking">Picking / alistamiento</option>
           <option value="cortes">Cortes</option>
-          <option value="usuarios">Productividad por usuario</option><option value="confiabilidad">Confiabilidad y reprocesos</option>
+          <option value="usuarios">Productividad por usuario</option><option value="confiabilidad">Confiabilidad del proceso</option><option value="esperas">Trazabilidad de tiempos de espera</option>
           <option value="usuario_proceso">Usuario por proceso</option>
           <option value="pedidos">Todos los pedidos</option>
           <option value="novedades">Novedades y reportes</option>
@@ -243,7 +240,7 @@
     <div class="section-head"><h2>Tiempos críticos</h2><span>Picking, corte, recepción y facturación.</span></div>
     <section id="operationalFocus" class="focus-grid"></section>
 
-    <div class="section-head"><h2 id="waitSectionTitle">Tiempo de espera acumulado</h2><span id="waitSectionSubtitle">Esperas registradas en procesos, requerimientos, novedades, devoluciones y reprocesos.</span></div>
+    <div class="section-head"><h2 id="waitSectionTitle">Tiempos especiales de espera</h2><span id="waitSectionSubtitle">Novedades, reprocesos fuera de meta y no entregas.</span></div>
     <section id="waitBoard" class="wait-grid"></section>
     <section id="waitComposition" class="chart-grid" style="margin-top:14px"></section>
 
@@ -280,8 +277,8 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V227 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V228 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=227"></script>
+  <script src="./vsm-dashboard.js?v=228"></script>
 </body>
 </html>
