@@ -131,6 +131,34 @@
       .process-main{grid-template-columns:1fr}
       .process-stats{grid-template-columns:1fr}
     }
+  
+    .wait-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:13px}
+    .wait-card{
+      background:#fff;border:1px solid var(--line);border-radius:20px;padding:15px;
+      box-shadow:var(--shadow);position:relative;overflow:hidden;min-width:0
+    }
+    .wait-card:before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:var(--info)}
+    .wait-card.warn:before{background:var(--warn)}
+    .wait-card.bad:before{background:var(--bad)}
+    .wait-card.ok:before{background:var(--ok)}
+    .wait-card span{display:block;color:var(--muted);font-size:.7rem;font-weight:900;text-transform:uppercase}
+    .wait-card strong{display:block;color:var(--blue);font-size:1.35rem;margin-top:6px}
+    .wait-card small{display:block;color:var(--muted);font-size:.73rem;line-height:1.4;margin-top:5px}
+    .wait-scope{
+      display:inline-flex;margin-top:8px;padding:4px 8px;border-radius:999px;
+      background:#eff6ff;color:#1d4ed8;font-size:.68rem;font-weight:900
+    }
+    .wait-detail-list{display:grid;gap:8px}
+    .wait-detail-row{
+      display:grid;grid-template-columns:minmax(130px,1fr) minmax(120px,2fr) auto;
+      gap:9px;align-items:center;padding:9px;border:1px solid #edf2f7;border-radius:13px;background:#fff
+    }
+    .wait-detail-row strong{color:var(--blue)}
+    .wait-detail-row small{display:block;color:var(--muted);margin-top:2px}
+    @media(max-width:700px){
+      .wait-detail-row{grid-template-columns:1fr}
+    }
+
   </style>
 </head>
 <body>
@@ -215,6 +243,10 @@
     <div class="section-head"><h2>Tiempos críticos</h2><span>Picking, corte, recepción y facturación.</span></div>
     <section id="operationalFocus" class="focus-grid"></section>
 
+    <div class="section-head"><h2 id="waitSectionTitle">Tiempo de espera acumulado</h2><span id="waitSectionSubtitle">Esperas registradas en procesos, requerimientos, novedades, devoluciones y reprocesos.</span></div>
+    <section id="waitBoard" class="wait-grid"></section>
+    <section id="waitComposition" class="chart-grid" style="margin-top:14px"></section>
+
     <div class="section-head"><h2>Flujo por proceso</h2><span>Promedio, P50, P90, WIP y cumplimiento de meta.</span></div>
     <section id="processFlow" class="flow-board"></section>
 
@@ -248,8 +280,8 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V226 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V227 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=226"></script>
+  <script src="./vsm-dashboard.js?v=227"></script>
 </body>
 </html>

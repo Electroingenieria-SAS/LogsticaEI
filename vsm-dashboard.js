@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V226';
+var VERSION='V227';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -342,7 +342,7 @@ function renderSummary(){
     ['NVA/día',timeUnit(m.deadDayAvg),'Tiempo muerto/no clasificado.','NVA'],
     ['% Ocupación',m.eff+'%','Valor sobre LT.','VA/LT'],
     ['% Espera',m.waitPct+'%','Espera sobre LT.','Espera/LT'],
-    ['% tiempo no explicado',m.deadPct+'%','NVA sobre LT.','NVA/LT'],
+    ['% tiempo de espera acumulado',m.deadPct+'%','NVA sobre LT.','NVA/LT'],
     ['Throughput',m.throughput,'Cerrados por día.','Pedidos/día'],
     ['WIP',m.wip,'Pedidos abiertos.','En proceso'],
     ['Requerimientos',m.reqCount,'Bloqueos trazados.','Eventos'],
@@ -388,7 +388,7 @@ function resetVsmFiltersBase(){
 function renderTable(){
   var view=$('fView').value,m=app.metrics;if(!m)return;var html='',title='',count=0;
   if(view==='procesos'){
-    title='Lead time por proceso';count=m.processRows.length;html=table(['Macroproceso','Casos','WIP','LT prom.','Total','Ocupación','Espera','NVA','% VA','% Espera','% tiempo no explicado','Req. h','Cortes'],m.processRows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td>'+r.cases+'</td><td>'+r.wip+'</td><td>'+fmt(r.avg)+'</td><td>'+timeUnit(r.total)+'</td><td>'+timeUnit(r.active)+'</td><td>'+timeUnit(r.wait)+'</td><td>'+timeUnit(r.dead)+'</td><td>'+r.eff+'%</td><td>'+r.waitPct+'%</td><td>'+r.deadPct+'%</td><td>'+timeUnit(r.req)+'</td><td>'+r.doneCuts+'/'+r.cuts+'</td></tr>';}));
+    title='Lead time por proceso';count=m.processRows.length;html=table(['Macroproceso','Casos','WIP','LT prom.','Total','Ocupación','Espera','NVA','% VA','% Espera','% tiempo de espera acumulado','Req. h','Cortes'],m.processRows.map(function(r){return '<tr><td>'+esc(r.label)+'</td><td>'+r.cases+'</td><td>'+r.wip+'</td><td>'+fmt(r.avg)+'</td><td>'+timeUnit(r.total)+'</td><td>'+timeUnit(r.active)+'</td><td>'+timeUnit(r.wait)+'</td><td>'+timeUnit(r.dead)+'</td><td>'+r.eff+'%</td><td>'+r.waitPct+'%</td><td>'+r.deadPct+'%</td><td>'+timeUnit(r.req)+'</td><td>'+r.doneCuts+'/'+r.cuts+'</td></tr>';}));
   }else if(view==='usuarios'){
     title='Productividad por usuario';count=m.userRows.length;html=table(['Usuario','Rol','Casos','Abiertos','Cerrados','LT prom.','Total','Ocupación','Espera','NVA','% VA','% Espera','Productividad','Procesos trazados'],m.userRows.map(function(r){return '<tr><td><strong>'+esc(r.user)+'</strong></td><td>'+esc(roleTitle(r.role))+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+fmt(r.avg)+'</td><td>'+timeUnit(r.total)+'</td><td>'+timeUnit(r.active)+'</td><td>'+timeUnit(r.wait)+'</td><td>'+timeUnit(r.dead)+'</td><td>'+r.eff+'%</td><td>'+r.waitPct+'%</td><td>'+r.productivity+'</td><td>'+esc(r.processList||'')+'</td></tr>';}));
   }else if(view==='usuario_proceso'){
@@ -485,9 +485,9 @@ async function loadCases(all){if(!app.db)return;loading(true,'Leyendo Firebase s
   app.cases=out;app.loadedAll=!!all;fillFilters();status('Datos reales cargados desde Firebase: '+out.length+' pedido(s) y '+app.events.length+' evento(s) y '+(app.reports||[]).length+' novedad(es). '+VERSION+' calcula Lead Time con conciliación completa: base cargada, trazados VSM, cancelados/anulados, excluidos y no trazados.','ok');await refresh();}
 function xls(v){return esc(v).replace(/\n/g,' ');}function row(cells){return '<tr>'+cells.map(function(c){return '<td>'+xls(c)+'</td>';}).join('')+'</tr>';}
 async function appendRows(parts,items,mapper,chunk){for(var i=0;i<items.length;i++){parts.push(mapper(items[i],i));if(i%chunk===0){loading(true,'Exportando '+i+' / '+items.length);await sleep(0);}}}
-async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,parts=[];loading(true,'Preparando Excel VSM completo...');parts.push('<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}table{border-collapse:collapse;margin-bottom:24px}th,td{border:1px solid #cbd5e1;padding:6px;font-size:12px}th{background:#061b46;color:#fff}.n{mso-number-format:"0.00"}</style></head><body>');parts.push('<h1>Dashboard VSM ERP · '+VERSION+' · Normalizado por día y separado Normal/PVE</h1><p>Exportado: '+xls(new Date().toLocaleString('es-CO'))+'</p><h2>Fórmulas y criterios</h2><table><tr><th>Indicador</th><th>Fórmula / lectura</th></tr>'+row(['Lead Time pedido','Fin real o corte del análisis - inicio real del pedido. Si faltan campos, se respalda con trazas/eventos y updatedAt.'])+row(['Lead Time normalizado por día','Lead Time acumulado del pedido dividido entre los días calendario que abarca el pedido. Sirve para leer horas reales por pedido/día.'])+row(['VSM normal / PVE','Los PVE se separan porque pasan por Compras y tienen una carga distinta; los demás pedidos se miden como flujo normal.'])+row(['Lead Time proceso','Tiempo transcurrido en cada macroproceso desde processStats + trazas + eventos + estado actual.'])+row(['VA','Tiempo activo registrado o inferido por eventos de trabajo / conformidad / cierre.'])+row(['Espera','Tiempos de espera por proceso + bloqueos + requerimientos + pago/separación.'])+row(['Requerimientos','Desde creación del requerimiento hasta respuesta/cierre o corte.'])+row(['Tiempo no explicado','Lead Time - VA - Espera, sin negativos.'])+row(['Eficiencia','VA / Lead Time.'])+row(['Cancelados/anulados','No se incluyen en Lead Time ni productividad. Se reportan en control independiente por tipo, proceso, asesor y soporte.'])+'</table>');
-  parts.push('<h2>Resumen ejecutivo</h2><table><tr><th>Pedidos</th><th>Cerrados</th><th>WIP</th><th>Tipo VSM</th><th>LT hábil/día</th><th>Lead Time promedio total</th><th>P50 LT</th><th>P90 LT</th><th>Throughput cerrado/día</th><th>% VA</th><th>% Espera</th><th>% tiempo no explicado</th><th>Requerimientos</th><th>Cancelados/anulados excluidos</th><th>Cuello principal</th><th>Datos incompletos</th></tr>'+row([m.cases,m.closed,m.wip,m.vsmType,fmt(m.leadDayAvg),fmt(m.leadAvg),fmt(m.leadP50),fmt(m.leadP90),m.throughput,m.eff+'%',m.waitPct+'%',m.deadPct+'%',m.reqCount,m.cancelTotal,m.bottleneck?m.bottleneck.label:'',m.incomplete])+'</table>');
-  parts.push('<h2>VSM por proceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>LT promedio</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo no explicado h</th><th>Eficiencia</th><th>Req. h</th><th>Cortes</th></tr>');await appendRows(parts,m.processRows,function(r){return row([r.label,r.cases,r.wip,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',timeUnit(r.req),r.doneCuts+'/'+r.cuts]);},30);parts.push('</table>');
+async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,parts=[];loading(true,'Preparando Excel VSM completo...');parts.push('<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}table{border-collapse:collapse;margin-bottom:24px}th,td{border:1px solid #cbd5e1;padding:6px;font-size:12px}th{background:#061b46;color:#fff}.n{mso-number-format:"0.00"}</style></head><body>');parts.push('<h1>Dashboard VSM ERP · '+VERSION+' · Normalizado por día y separado Normal/PVE</h1><p>Exportado: '+xls(new Date().toLocaleString('es-CO'))+'</p><h2>Fórmulas y criterios</h2><table><tr><th>Indicador</th><th>Fórmula / lectura</th></tr>'+row(['Lead Time pedido','Fin real o corte del análisis - inicio real del pedido. Si faltan campos, se respalda con trazas/eventos y updatedAt.'])+row(['Lead Time normalizado por día','Lead Time acumulado del pedido dividido entre los días calendario que abarca el pedido. Sirve para leer horas reales por pedido/día.'])+row(['VSM normal / PVE','Los PVE se separan porque pasan por Compras y tienen una carga distinta; los demás pedidos se miden como flujo normal.'])+row(['Lead Time proceso','Tiempo transcurrido en cada macroproceso desde processStats + trazas + eventos + estado actual.'])+row(['VA','Tiempo activo registrado o inferido por eventos de trabajo / conformidad / cierre.'])+row(['Espera','Tiempos de espera por proceso + bloqueos + requerimientos + pago/separación.'])+row(['Requerimientos','Desde creación del requerimiento hasta respuesta/cierre o corte.'])+row(['Tiempo de espera acumulado','Lead Time - VA - Espera, sin negativos.'])+row(['Eficiencia','VA / Lead Time.'])+row(['Cancelados/anulados','No se incluyen en Lead Time ni productividad. Se reportan en control independiente por tipo, proceso, asesor y soporte.'])+'</table>');
+  parts.push('<h2>Resumen ejecutivo</h2><table><tr><th>Pedidos</th><th>Cerrados</th><th>WIP</th><th>Tipo VSM</th><th>LT hábil/día</th><th>Lead Time promedio total</th><th>P50 LT</th><th>P90 LT</th><th>Throughput cerrado/día</th><th>% VA</th><th>% Espera</th><th>% tiempo de espera acumulado</th><th>Requerimientos</th><th>Cancelados/anulados excluidos</th><th>Cuello principal</th><th>Datos incompletos</th></tr>'+row([m.cases,m.closed,m.wip,m.vsmType,fmt(m.leadDayAvg),fmt(m.leadAvg),fmt(m.leadP50),fmt(m.leadP90),m.throughput,m.eff+'%',m.waitPct+'%',m.deadPct+'%',m.reqCount,m.cancelTotal,m.bottleneck?m.bottleneck.label:'',m.incomplete])+'</table>');
+  parts.push('<h2>VSM por proceso</h2><table><tr><th>Macroproceso</th><th>Casos</th><th>WIP</th><th>LT promedio</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo de espera acumulado h</th><th>Eficiencia</th><th>Req. h</th><th>Cortes</th></tr>');await appendRows(parts,m.processRows,function(r){return row([r.label,r.cases,r.wip,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',timeUnit(r.req),r.doneCuts+'/'+r.cuts]);},30);parts.push('</table>');
 
   parts.push('<h2>Cobertura</h2><table><tr><th>Indicador</th><th>Cantidad</th></tr>'+row(['Total cargado',m.totalLoaded])+row(['Dentro del filtro',m.filteredTotal])+row(['Trazados VSM',m.cases])+row(['No trazados',m.notTraced])+row(['Cancelados/anulados',m.cancelTotal])+row(['Excluidos KPI',m.excludedKpi])+'</table>');
   parts.push('<h2>Resumen por área</h2><table><tr><th>Área</th><th>Casos</th><th>WIP</th><th>Cerrados</th><th>LT promedio</th><th>Trabajo</th><th>Bloqueo</th><th>No explicado</th><th>Cumplimiento</th><th>Confiabilidad</th><th>Reprocesos</th><th>Actores</th></tr>');
@@ -496,12 +496,17 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Productividad por actor</h2><table><tr><th>Actor</th><th>Rol</th><th>Casos</th><th>WIP</th><th>Cerrados</th><th>Trabajo directo</th><th>Promedio directo</th><th>Cumplimiento</th><th>Productividad de cierre</th><th>Carga directa</th><th>Procesos</th></tr>');
   await appendRows(parts,m.actorRows||[],function(r){return row([r.user,roleTitle(r.role),r.count,r.open,r.closed,hours(r.active),hours(r.directPerCase),r.compliance+'%',r.productivity+'%',r.directLoadPct+'%',r.processList||'']);},25);
   parts.push('</table>');
-  parts.push('<h2>Demora exacta por pedido</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Inicio</th><th>Fin/corte</th><th>LT hábil h/día</th><th>Lead Time total</th><th>Horas LT total</th><th>Días pedido</th><th>VA h/día</th><th>Espera h/día</th><th>Tiempo no explicado h/día</th><th>VA h total</th><th>Espera h total</th><th>Req. h</th><th>Tiempo no explicado h total</th><th>Eficiencia</th><th>Cuello pedido</th><th>Calidad dato</th></tr>');await appendRows(parts,m.caseRows,function(r){var c=r.c;return row([r.orderType,refOf(c),purchase(c),c.client||'',advisor(c),processTitle(c.currentProcess),c.status||'',dateTxt(r.start),r.closed?dateTxt(r.end):'Abierto · '+dateTxt(r.end),hours(r.leadPerDay),fmt(r.lead),hours(r.lead),r.orderDays,hours(r.vaPerDay),hours(r.waitPerDay),hours(r.deadPerDay),hours(r.va),timeUnit(r.wait),timeUnit(r.req),timeUnit(r.dead),pct(r.va,r.lead)+'%',r.bottleneck.label||'',r.missingStart?'Sin fecha base clara':'OK']);},25);parts.push('</table>');
-  parts.push('<h2>Productividad por usuario</h2><table><tr><th>Usuario</th><th>Rol</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>LT prom.</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo no explicado h</th><th>% VA</th><th>% Espera</th><th>Cerrados/h VA</th><th>Procesos trazados</th></tr>');await appendRows(parts,m.userRows,function(r){return row([r.user,roleTitle(r.role),r.count,r.open,r.closed,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',r.waitPct+'%',r.productivity,r.processList||'']);},35);parts.push('</table>');parts.push('<h2>Detalle usuario por proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Proceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>LT prom.</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo no explicado h</th><th>% VA</th><th>% Espera</th><th>Req. h</th><th>Cortes</th></tr>');await appendRows(parts,m.userProcessRows,function(r){return row([r.user,roleTitle(r.role),r.label,r.count,r.open,r.closed,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',r.waitPct+'%',timeUnit(r.req),Math.round(r.cuts)]);},35);parts.push('</table>');
+
+  parts.push('<h2>Tiempo de espera acumulado</h2><table><tr><th>Alcance</th><th>Total</th><th>Espera procesos</th><th>Requerimientos</th><th>Novedades</th><th>Reprocesos</th><th>Devoluciones</th></tr>'+row([m.waiting.scope.label,hours(m.waiting.total),hours(m.waiting.processWait),hours(m.waiting.requirement),hours(m.waiting.novelty),hours(m.waiting.rework),hours(m.waiting.devolution)])+'</table>');
+  parts.push('<h2>Detalle de esperas trazadas</h2><table><tr><th>Pedido</th><th>Tipo</th><th>Área</th><th>Proceso</th><th>Duración</th><th>Detalle</th><th>Abierto</th></tr>');
+  await appendRows(parts,m.waiting.details||[],function(x){return row([x.pedido,x.type,v225AreaLabel(x.area),processTitle(x.process),hours(x.duration),x.detail,x.open?'Sí':'No']);},25);
+  parts.push('</table>');
+  parts.push('<h2>Demora exacta por pedido</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Proceso actual</th><th>Estado</th><th>Inicio</th><th>Fin/corte</th><th>LT hábil h/día</th><th>Lead Time total</th><th>Horas LT total</th><th>Días pedido</th><th>VA h/día</th><th>Espera h/día</th><th>Tiempo de espera acumulado h/día</th><th>VA h total</th><th>Espera h total</th><th>Req. h</th><th>Tiempo de espera acumulado h total</th><th>Eficiencia</th><th>Cuello pedido</th><th>Calidad dato</th></tr>');await appendRows(parts,m.caseRows,function(r){var c=r.c;return row([r.orderType,refOf(c),purchase(c),c.client||'',advisor(c),processTitle(c.currentProcess),c.status||'',dateTxt(r.start),r.closed?dateTxt(r.end):'Abierto · '+dateTxt(r.end),hours(r.leadPerDay),fmt(r.lead),hours(r.lead),r.orderDays,hours(r.vaPerDay),hours(r.waitPerDay),hours(r.deadPerDay),hours(r.va),timeUnit(r.wait),timeUnit(r.req),timeUnit(r.dead),pct(r.va,r.lead)+'%',r.bottleneck.label||'',r.missingStart?'Sin fecha base clara':'OK']);},25);parts.push('</table>');
+  parts.push('<h2>Productividad por usuario</h2><table><tr><th>Usuario</th><th>Rol</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>LT prom.</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo de espera acumulado h</th><th>% VA</th><th>% Espera</th><th>Cerrados/h VA</th><th>Procesos trazados</th></tr>');await appendRows(parts,m.userRows,function(r){return row([r.user,roleTitle(r.role),r.count,r.open,r.closed,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',r.waitPct+'%',r.productivity,r.processList||'']);},35);parts.push('</table>');parts.push('<h2>Detalle usuario por proceso</h2><table><tr><th>Usuario</th><th>Rol</th><th>Proceso</th><th>Casos</th><th>Abiertos</th><th>Cerrados</th><th>LT prom.</th><th>Horas total</th><th>VA h</th><th>Espera h</th><th>Tiempo de espera acumulado h</th><th>% VA</th><th>% Espera</th><th>Req. h</th><th>Cortes</th></tr>');await appendRows(parts,m.userProcessRows,function(r){return row([r.user,roleTitle(r.role),r.label,r.count,r.open,r.closed,fmt(r.avg),timeUnit(r.total),timeUnit(r.active),timeUnit(r.wait),timeUnit(r.dead),r.eff+'%',r.waitPct+'%',timeUnit(r.req),Math.round(r.cuts)]);},35);parts.push('</table>');
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V226_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V227_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -1088,7 +1093,7 @@ function v225Kpi(title,value,detail,kind,tag){return v222Kpi(title,value,detail,
 function v225TotalLoaded(){
   return (app.cases||[]).length;
 }
-async function compute(cases,cancelledCases){
+async function computeV227Base(cases,cancelledCases){
   await computeV225Base(cases,cancelledCases);
   var m=app.metrics;if(!m)return;
   m.areaRows=v225BuildAreaRows(m);
@@ -1110,7 +1115,7 @@ function renderCoverage(){
     v225CoverageCard("Cancelados / anulados",m.cancelTotal,"Separados de los indicadores operativos.")+
     v225CoverageCard("Excluidos del KPI",m.excludedKpi,"No contaminan tiempos ni productividad.");
 }
-function renderSummary(){
+function renderSummaryV227Base(){
   var m=app.metrics;if(!m)return;
   $("summary").innerHTML=
     v225Kpi("Total de pedidos",String(m.totalLoaded),"Base completa cargada desde Firestore","ok","Filtrados "+m.filteredTotal)+
@@ -1121,7 +1126,7 @@ function renderSummary(){
     v225Kpi("Corte físico",v225Time(m.physicalCutAvg),m.physicalCuts+" cortes físicos","","P90 "+v225Time(m.physicalCutP90))+
     v225Kpi("Trabajo directo promedio",v225Time(m.vaAvg),"Actividad registrada por pedido","ok",m.eff+"% del LT")+
     v225Kpi("Bloqueo explícito",v225Time(m.waitAvg),"Requerimientos, pagos y esperas documentadas",m.waitPct>30?"warn":"ok",m.waitPct+"% del LT")+
-    v225Kpi("Tiempo no explicado",v225Time(m.trueUnexplainedAvg),"Solo residuo sin marcas suficientes; no es improductividad",m.trueUnexplainedAvg>m.vaAvg?"warn":"ok","Revisar trazabilidad")+
+    v225Kpi("Tiempo de espera acumulado",v225Time(m.trueUnexplainedAvg),"Solo residuo sin marcas suficientes; no es improductividad",m.trueUnexplainedAvg>m.vaAvg?"warn":"ok","Revisar trazabilidad")+
     v225Kpi("Confiabilidad del proceso",m.reliability.avg+"%","Calidad promedio de estados, responsables y fechas",m.reliability.avg>=90?"ok":(m.reliability.avg>=70?"warn":"bad"),m.reliability.low+" casos críticos")+
     v225Kpi("Reprocesos / devoluciones",String(m.reworkTotal),"Casos con señales de corrección, devolución o no conformidad",m.reworkTotal?"warn":"ok","Filtro actual")+
     v225Kpi("Cumplimiento documental",m.reliability.responsiblePct+"%","Pedidos con responsable identificado",m.reliability.responsiblePct>=90?"ok":"warn","Proceso "+m.reliability.processPct+"%");
@@ -1197,7 +1202,7 @@ function renderProcessFlow(){
       '<div class="process-main"><div><span>LT promedio</span><strong>'+v225Time(r.avg||0)+'</strong></div><div><span>Cumplimiento</span><strong>'+Number(r.slaPct||0)+'%</strong></div></div>'+
       '<div class="process-stats"><div><span>Trabajo directo</span><b>'+v225Time(direct)+'</b></div><div><span>Bloqueo</span><b>'+v225Time(block)+'</b></div><div><span>WIP / atraso</span><b>'+Number(r.wip||0)+' / '+Number(r.wipLate||0)+'</b></div></div>'+
       '<div class="progress"><i style="width:'+Math.max(0,Math.min(100,r.slaPct||0))+'%"></i></div>'+
-      '<small class="metric-note">P50 '+v225Time(r.p50||0)+' · P90 '+v225Time(r.p90||0)+' · tiempo no explicado '+v225Time(residual)+'</small>'+
+      '<small class="metric-note">P50 '+v225Time(r.p50||0)+' · P90 '+v225Time(r.p90||0)+' · tiempo de espera acumulado '+v225Time(residual)+'</small>'+
     '</article>';
   }).join("");
 }
@@ -1230,7 +1235,7 @@ function v225ChartRows(rows,valueFn,labelFn,metaFn,classFn){
     return '<div class="chart-row"><b title="'+esc(labelFn(r))+'">'+esc(labelFn(r))+'</b><div class="chart-track"><i class="'+(classFn?classFn(r):'')+'" style="width:'+Math.max(2,Math.min(100,(v/max)*100))+'%"></i></div><span>'+esc(metaFn(r))+'</span></div>';
   }).join("")||'<p class="muted">Sin datos suficientes.</p>';
 }
-function renderPowerCharts(){
+function renderPowerChartsV227Base(){
   var m=app.metrics;if(!m)return;
   var proc=(m.processRows||[]).filter(function(r){return r.cases||r.wip;});
   $("powerCharts").innerHTML=
@@ -1253,7 +1258,7 @@ function resetVsmFilters(){
   $("fArea").value="";
   v225FilterSummary();
 }
-function renderTable(){
+function renderTableV227Base(){
   var m=app.metrics;if(!m)return;
   var view=$("fView").value;
   if(view==="areas"){
@@ -1278,9 +1283,233 @@ function renderTable(){
   $("rowCount").textContent=$("rowCount").textContent+" · total cargado "+m.totalLoaded;
 }
 function v225Table(headers,rows){return '<div class="table-wrap"><table>'+table(headers,rows)+'</table></div>';}
-function bind(){
+function bindV227Base(){
   bindV225Base();
   $("fArea").addEventListener("change",function(){refresh().catch(function(e){loading(false);status("Error filtrando por área: "+esc(e.message||e),"bad");});});
+}
+
+
+/* ============================================================
+   V227 · TIEMPO DE ESPERA ACUMULADO Y TRAZABILIDAD
+============================================================ */
+function v227Scope(){
+  var area=$("fArea")&&$("fArea").value;
+  var process=$("fProcess")&&$("fProcess").value;
+  var label="Todas las áreas";
+  if(area)label=v225AreaLabel(area);
+  if(process)label=(area?v225AreaLabel(area)+" · ":"")+processTitle(process);
+  return {area:area||"",process:process||"",label:label};
+}
+function v227AreaForEventText(text){
+  text=lower(text||"");
+  if(/ventas|asesor|vendedor/.test(text))return "ventas";
+  if(/compra|compras|pve/.test(text))return "compras";
+  if(/factur/.test(text))return "facturacion";
+  if(/caja|cartera|pago|financier/.test(text))return "cartera";
+  if(/despacho|transportadora|guia|entrega|cliente recoge|cliente punto/.test(text))return "despacho";
+  if(/recepcion|alistamiento|picking|corte|logistica/.test(text))return "logistica";
+  return "";
+}
+function v227RequirementTimes(c){
+  var now=nowMs(),rows=[],scope=v227Scope();
+  var reqs=[];
+  if(c.openRequirement)reqs.push(c.openRequirement);
+  (c.requirements||[]).forEach(function(r){reqs.push(r);});
+  reqs.forEach(function(r,idx){
+    if(!r)return;
+    var start=tms(r.sentAt)||tms(r.createdAt)||tms(r.openedAt)||tms(r.requestedAt);
+    var end=tms(r.resolvedAt)||tms(r.closedAt)||tms(r.completedAt)||tms(r.respondedAt)||tms(r.updatedAt);
+    var status=lower(r.status||"");
+    if(!end && !/cerr|resuel|complet|final/.test(status))end=now;
+    if(!isFinite(start)||!isFinite(end)||end<start)return;
+    var text=[r.reason,r.detail,r.description,r.targetRole,r.sourceProcess,r.source,r.type,r.category].join(" ");
+    var area=v227AreaForEventText(text)||v225AreaForProcess(r.sourceProcess)||v225AreaForProcess(c.currentProcess);
+    if(scope.area&&area&&scope.area!==area)return;
+    if(scope.process&&r.sourceProcess&&scope.process!==r.sourceProcess)return;
+    rows.push({
+      type:"Requerimiento",
+      area:area||v225AreaForProcess(c.currentProcess)||"logistica",
+      process:r.sourceProcess||c.currentProcess||"",
+      duration:workingMsBetween(start,end),
+      start:start,end:end,
+      detail:r.reason||r.detail||r.description||"Requerimiento registrado",
+      open:!/cerr|resuel|complet|final/.test(status)
+    });
+  });
+  return rows;
+}
+function v227ReportTimes(c,m){
+  var scope=v227Scope(),id=idOf(c);
+  return (m.reportRows||[]).filter(function(r){
+    var reportCase=String(r.caseId||r.sourceId||r.pedido||"");
+    return reportCase===id||reportCase===refOf(c)||String(r.pedido||"")===refOf(c);
+  }).map(function(r){
+    var text=[r.title,r.category,r.sourceModule,r.status,r.severity].join(" ");
+    var area=v227AreaForEventText(text)||v225AreaForProcess(c.currentProcess);
+    if(scope.area&&area&&scope.area!==area)return null;
+    var duration=Number(r.closeMs||r.responseMs||0);
+    return {
+      type:"Novedad",
+      area:area||"logistica",
+      process:c.currentProcess||"",
+      duration:duration,
+      detail:r.title||r.category||"Novedad registrada",
+      open:!!r.pending
+    };
+  }).filter(function(x){return x&&x.duration>0;});
+}
+function v227ReworkTimes(c){
+  var scope=v227Scope(),events=allTraceEvents(c),rows=[];
+  var keys=/reproceso|retrabajo|devuelto|devolucion|no conforme|rechazado|corregir|correccion|retorno|regresar|reabrir/;
+  for(var i=0;i<events.length;i++){
+    var e=events[i],txt=lower([e.type,e.detail,e.process,e.role].join(" "));
+    if(!keys.test(txt))continue;
+    var end=i<events.length-1?events[i+1].ms:(tms(c.closedAt)||tms(c.updatedAt)||nowMs());
+    if(!isFinite(e.ms)||!isFinite(end)||end<e.ms)continue;
+    var area=v227AreaForEventText(txt)||v225AreaForProcess(e.process)||v225AreaForProcess(c.currentProcess);
+    if(scope.area&&area&&scope.area!==area)continue;
+    if(scope.process&&e.process&&scope.process!==e.process)continue;
+    rows.push({
+      type:/devuel|devolucion|retorno/.test(txt)?"Devolución":"Reproceso",
+      area:area||"logistica",
+      process:e.process||c.currentProcess||"",
+      duration:workingMsBetween(e.ms,end),
+      detail:e.detail||e.type||"Evento de reproceso",
+      open:false
+    });
+  }
+  return rows;
+}
+function v227ProcessWaitForCase(cm){
+  var scope=v227Scope(),rows=(cm.pRows||[]);
+  if(scope.process)rows=rows.filter(function(p){return p.process===scope.process;});
+  else if(scope.area){
+    var def=V225_AREA_DEF[scope.area]||{processes:[]};
+    if(scope.area==="ventas")rows=[];
+    else rows=rows.filter(function(p){return def.processes.indexOf(p.process)>=0;});
+  }
+  return rows.reduce(function(s,p){return s+(p.wait||0);},0);
+}
+function v227BuildWaiting(m){
+  var details=[],processWait=0,requirement=0,novelty=0,rework=0,devolution=0;
+  (m.caseRows||[]).forEach(function(cm){
+    var c=cm.c;
+    processWait+=v227ProcessWaitForCase(cm);
+    v227RequirementTimes(c).forEach(function(x){requirement+=x.duration;details.push(Object.assign({pedido:refOf(c)},x));});
+    v227ReportTimes(c,m).forEach(function(x){novelty+=x.duration;details.push(Object.assign({pedido:refOf(c)},x));});
+    v227ReworkTimes(c).forEach(function(x){
+      if(x.type==="Devolución")devolution+=x.duration;else rework+=x.duration;
+      details.push(Object.assign({pedido:refOf(c)},x));
+    });
+  });
+
+  // Evitar que la suma supere el tiempo disponible total de los pedidos.
+  var raw=processWait+requirement+novelty+rework+devolution;
+  var maxAvailable=Math.max(0,(m.leadTotal||0)-(m.va||0));
+  var total=Math.min(raw,maxAvailable||raw);
+  var scale=raw>0&&total<raw?total/raw:1;
+
+  processWait*=scale;requirement*=scale;novelty*=scale;rework*=scale;devolution*=scale;
+  details.forEach(function(x){x.duration*=scale;});
+  details.sort(function(a,b){return b.duration-a.duration;});
+
+  return {
+    scope:v227Scope(),
+    total:total,
+    processWait:processWait,
+    requirement:requirement,
+    novelty:novelty,
+    rework:rework,
+    devolution:devolution,
+    average:m.cases?total/m.cases:0,
+    details:details,
+    openRequirements:details.filter(function(x){return x.type==="Requerimiento"&&x.open;}).length,
+    openNovelties:details.filter(function(x){return x.type==="Novedad"&&x.open;}).length
+  };
+}
+async function compute(cases,cancelledCases){
+  await computeV227Base(cases,cancelledCases);
+  var m=app.metrics;if(!m)return;
+  m.waiting=v227BuildWaiting(m);
+  m.trueUnexplainedTotal=0;
+  m.trueUnexplainedAvg=0;
+}
+function v227WaitCard(title,value,detail,kind,scope){
+  return '<article class="wait-card '+(kind||'')+'"><span>'+esc(title)+'</span><strong>'+esc(value)+'</strong><small>'+esc(detail)+'</small><em class="wait-scope">'+esc(scope)+'</em></article>';
+}
+function renderWaitBoard(){
+  var m=app.metrics;if(!m||!m.waiting)return;
+  var w=m.waiting,scope=w.scope.label;
+  $("waitSectionTitle").textContent="Tiempo de espera acumulado · "+scope;
+  $("waitSectionSubtitle").textContent="Suma de esperas de procesos, requerimientos, novedades, devoluciones y reprocesos para "+scope+".";
+  $("waitBoard").innerHTML=
+    v227WaitCard("Espera acumulada",v225Time(w.total),"Total laboral de todas las esperas trazadas.","warn",scope)+
+    v227WaitCard("Espera de procesos",v225Time(w.processWait),"Estados de espera registrados dentro de los procesos.","info",scope)+
+    v227WaitCard("Requerimientos",v225Time(w.requirement),w.openRequirements+" requerimiento(s) aún abierto(s).",w.openRequirements?"bad":"ok",scope)+
+    v227WaitCard("Novedades",v225Time(w.novelty),w.openNovelties+" novedad(es) pendiente(s).",w.openNovelties?"warn":"ok",scope)+
+    v227WaitCard("Reprocesos",v225Time(w.rework),"Tiempo originado por correcciones, rechazos o retrabajos.",w.rework?"warn":"ok",scope)+
+    v227WaitCard("Devoluciones",v225Time(w.devolution),"Tiempo asociado a devoluciones, retornos o regresos de proceso.",w.devolution?"warn":"ok",scope);
+
+  var components=[
+    {label:"Espera de procesos",value:w.processWait,cls:"info"},
+    {label:"Requerimientos",value:w.requirement,cls:"warn"},
+    {label:"Novedades",value:w.novelty,cls:"warn"},
+    {label:"Reprocesos",value:w.rework,cls:"bad"},
+    {label:"Devoluciones",value:w.devolution,cls:"bad"}
+  ];
+  $("waitComposition").innerHTML=
+    '<article class="chart-card"><h3>Composición del tiempo de espera · '+esc(scope)+'</h3>'+
+      v225ChartRows(components,function(r){return r.value;},function(r){return r.label;},function(r){return v225Time(r.value);},function(r){return r.cls;})+
+    '</article>'+
+    '<article class="chart-card"><h3>Principales esperas trazadas</h3><div class="wait-detail-list">'+
+      (w.details.slice(0,12).map(function(x){
+        return '<div class="wait-detail-row"><div><strong>'+esc(x.pedido)+'</strong><small>'+esc(v225AreaLabel(x.area))+(x.process?' · '+esc(processTitle(x.process)):'')+'</small></div><div><strong>'+esc(x.type)+'</strong><small>'+esc(x.detail)+'</small></div><span class="badge '+(x.open?'bad':'warn')+'">'+v225Time(x.duration)+'</span></div>';
+      }).join("")||'<p class="muted">No se encontraron esperas trazadas con los filtros actuales.</p>')+
+    '</div></article>';
+}
+function renderSummary(){
+  renderSummaryV227Base();
+  var m=app.metrics;if(!m||!m.waiting)return;
+  var w=m.waiting;
+  var cards=$("summary").innerHTML;
+  cards=cards.replace(/<article class="card kpi [^"]*"><span>Tiempo de espera acumulado<\/span>[\s\S]*?<\/article>/,
+    v225Kpi("Tiempo de espera acumulado",v225Time(w.average),"Promedio por pedido: procesos, requerimientos, novedades, reprocesos y devoluciones",w.total?"warn":"ok",w.scope.label)
+  );
+  $("summary").innerHTML=cards;
+  renderWaitBoard();
+}
+function renderPowerCharts(){
+  renderPowerChartsV227Base();
+  var m=app.metrics;if(!m||!m.waiting)return;
+  var w=m.waiting;
+  $("quickBars").innerHTML='<article class="chart-card"><h3>Composición del Lead Time · '+esc(w.scope.label)+'</h3>'+v227LeadStack(m,w)+'</article>';
+}
+function v227LeadStack(m,w){
+  var total=Math.max(1,m.leadTotal||0);
+  var work=v225Pct(m.va,total),waiting=v225Pct(w.total,total);
+  var other=Math.max(0,100-work-waiting);
+  return '<div class="stack"><i class="va" style="width:'+work+'%"></i><i class="wait" style="width:'+waiting+'%"></i><i style="width:'+other+'%;background:#2563eb"></i></div>'+
+    '<div class="legend"><span><i class="dot va"></i>Trabajo directo '+work+'%</span><span><i class="dot wait"></i>Espera acumulada '+waiting+'%</span><span><i class="dot" style="background:#2563eb"></i>Transferencia y ejecución contextual '+other+'%</span></div>';
+}
+function renderTable(){
+  renderTableV227Base();
+  var m=app.metrics;if(!m||!m.waiting)return;
+  if($("fView").value==="confiabilidad"){
+    $("rowCount").textContent=$("rowCount").textContent+" · espera acumulada "+v225Time(m.waiting.total)+" · "+m.waiting.scope.label;
+  }
+}
+function bind(){
+  bindV227Base();
+  ["fArea","fProcess"].forEach(function(id){
+    $(id).addEventListener("change",function(){
+      setTimeout(function(){
+        if(app.metrics&&app.metrics.waiting){
+          renderWaitBoard();
+          v225FilterSummary();
+        }
+      },0);
+    });
+  });
 }
 
 function bindBase(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}
