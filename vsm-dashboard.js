@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V236';
+var VERSION='V237';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -581,7 +581,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V236_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V237_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -4688,6 +4688,506 @@ function v236RiskCanvas(analysis){
   return o.canvas.toDataURL("image/png");
 }
 
+
+/* ============================================================
+   V237 · VISUALIZACIONES REFINADAS TIPO POWER BI
+   Mantiene datos, plantilla, tablas y estructura de V236.
+============================================================ */
+var V237_PALETTE={
+  navy:"#002B5C",navy2:"#0B3E73",blue:"#0B66C3",blue2:"#2F80ED",
+  cyan:"#5BA9E6",sky:"#EAF3FB",yellow:"#F4C300",green:"#12A66A",
+  orange:"#F79009",red:"#D92D20",purple:"#7A5AF8",ink:"#26374A",
+  gray:"#667085",muted:"#98A2B3",line:"#E3E9F0",soft:"#F5F8FC",
+  white:"#FFFFFF"
+};
+function v237C(name){return V237_PALETTE[name]||name;}
+function v237Clamp(value,min,max){return Math.max(min,Math.min(max,Number(value)||0));}
+function v237Short(value,max){
+  var text=String(value==null?"":value);
+  max=max||28;
+  return text.length>max?text.slice(0,max-1)+"…":text;
+}
+function v237Round(ctx,x,y,w,h,r,fill,stroke,lineWidth){
+  ctx.save();ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+  if(fill){ctx.fillStyle=fill;ctx.fill();}
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lineWidth||1;ctx.stroke();}
+  ctx.restore();
+}
+function v237Card(ctx,x,y,w,h,r){
+  ctx.save();
+  ctx.shadowColor="rgba(16,39,68,.10)";
+  ctx.shadowBlur=22;
+  ctx.shadowOffsetY=8;
+  v237Round(ctx,x,y,w,h,r||18,v237C("white"),null);
+  ctx.restore();
+  v237Round(ctx,x,y,w,h,r||18,null,v237C("line"),1);
+}
+function v237Canvas(w,h){
+  var canvas=document.createElement("canvas");
+  canvas.width=w;canvas.height=h;
+  var ctx=canvas.getContext("2d");
+  var grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,"#FBFCFE");grad.addColorStop(1,"#F3F7FB");
+  ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+  return {canvas:canvas,ctx:ctx};
+}
+function v237Title(ctx,title,subtitle,w){
+  ctx.fillStyle=v237C("navy");ctx.font='700 30px "Century Gothic",Arial';
+  ctx.fillText(title,42,50);
+  if(subtitle){
+    ctx.fillStyle=v237C("gray");ctx.font='400 15px "Century Gothic",Arial';
+    ctx.fillText(subtitle,42,78);
+  }
+  ctx.fillStyle=v237C("yellow");v237Round(ctx,42,94,84,6,3,v237C("yellow"),null);
+  ctx.fillStyle=v237C("line");ctx.fillRect(138,96,w-180,2);
+}
+function v237StatusColor(value){
+  return Number(value)>=85?v237C("green"):Number(value)>=65?v237C("orange"):v237C("red");
+}
+function v237Pill(ctx,x,y,text,color,width){
+  width=width||Math.max(82,ctx.measureText(String(text)).width+24);
+  v237Round(ctx,x,y,width,28,14,color,null);
+  ctx.fillStyle="#fff";ctx.font='700 12px "Century Gothic",Arial';
+  ctx.textAlign="center";ctx.fillText(String(text),x+width/2,y+19);ctx.textAlign="left";
+}
+function v237MetricCard(ctx,x,y,w,h,title,value,detail,color,icon){
+  v237Card(ctx,x,y,w,h,17);
+  ctx.fillStyle=color||v237C("blue");v237Round(ctx,x,y,7,h,4,color||v237C("blue"),null);
+  ctx.fillStyle="#F1F6FB";v237Round(ctx,x+18,y+18,46,46,14,"#F1F6FB",null);
+  ctx.fillStyle=color||v237C("blue");ctx.font='700 16px "Century Gothic",Arial';
+  ctx.textAlign="center";ctx.fillText(icon||"•",x+41,y+48);ctx.textAlign="left";
+  ctx.fillStyle=v237C("gray");ctx.font='600 12px "Century Gothic",Arial';
+  ctx.fillText(v237Short(title,28),x+78,y+31);
+  ctx.fillStyle=v237C("navy");ctx.font='700 28px "Century Gothic",Arial';
+  ctx.fillText(String(value),x+78,y+68);
+  ctx.fillStyle=v237C("muted");ctx.font='400 11px "Century Gothic",Arial';
+  ctx.fillText(v237Short(detail,34),x+78,y+91);
+}
+function v237DrawSpark(ctx,rows,x,y,w,h,valueFn,color){
+  rows=(rows||[]).slice(-18);
+  if(rows.length<2)return;
+  var values=rows.map(function(r){return Number(valueFn(r))||0;});
+  var max=Math.max.apply(Math,[1].concat(values)),min=Math.min.apply(Math,[0].concat(values));
+  var grad=ctx.createLinearGradient(0,y,0,y+h);
+  grad.addColorStop(0,"rgba(11,102,195,.22)");grad.addColorStop(1,"rgba(11,102,195,0)");
+  ctx.beginPath();
+  rows.forEach(function(r,i){
+    var xx=x+i*w/(rows.length-1),yy=y+h-(values[i]-min)/(max-min||1)*h;
+    if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
+  });
+  ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+  ctx.beginPath();
+  rows.forEach(function(r,i){
+    var xx=x+i*w/(rows.length-1),yy=y+h-(values[i]-min)/(max-min||1)*h;
+    if(i===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
+  });
+  ctx.strokeStyle=color||v237C("blue");ctx.lineWidth=3;ctx.stroke();
+}
+function v237Empty(ctx,x,y,w,h,message){
+  ctx.fillStyle=v237C("soft");v237Round(ctx,x,y,w,h,14,v237C("soft"),v237C("line"));
+  ctx.fillStyle=v237C("muted");ctx.font='500 15px "Century Gothic",Arial';
+  ctx.textAlign="center";ctx.fillText(message||"Sin datos suficientes",x+w/2,y+h/2);ctx.textAlign="left";
+}
+
+/* DASHBOARD */
+function v236DashboardCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,m=analysis.m,r=m.reliability||{};
+  var trends=analysis.dailyTrend||[],processes=(analysis.processHealth||[]).slice().sort(function(a,b){return a.health-b.health;});
+  v237Title(c,"Dashboard ejecutivo","Lectura consolidada para toma de decisiones",1600);
+
+  var metrics=[
+    ["Pedidos trazados",m.cases||0,"Cobertura "+v235Percent(m.cases,Math.max(1,m.totalLoaded||m.cases))+"%",v237C("blue"),"01"],
+    ["WIP actual",m.wip||0,(m.lateWip||0)+" fuera de meta",Number(m.lateWip||0)>0?v237C("orange"):v237C("green"),"02"],
+    ["Lead Time P50",v225Time(m.leadP50||0),"P90 "+v225Time(m.leadP90||0),v237C("purple"),"03"],
+    ["Throughput",String(m.throughput||0)+"/día",String(m.closed||0)+" pedidos cerrados",v237C("cyan"),"04"]
+  ];
+  metrics.forEach(function(k,i){v237MetricCard(c,42+i*382,120,354,112,k[0],k[1],k[2],k[3],k[4]);});
+
+  /* Score */
+  v237Card(c,42,258,370,330,20);
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Índice de desempeño",68,300);
+  c.fillStyle=v237C("muted");c.font='400 12px "Century Gothic",Arial';c.fillText("Resultado compuesto del periodo",68,324);
+  var cx=227,cy=448,radius=100,score=analysis.score,color=v237StatusColor(score);
+  c.lineWidth=24;c.lineCap="round";
+  c.strokeStyle="#E8EEF5";c.beginPath();c.arc(cx,cy,radius,Math.PI*.78,Math.PI*2.22);c.stroke();
+  c.strokeStyle=color;c.beginPath();c.arc(cx,cy,radius,Math.PI*.78,Math.PI*.78+Math.PI*1.44*(score/100));c.stroke();
+  c.lineCap="butt";
+  c.fillStyle=v237C("navy");c.font='700 58px "Century Gothic",Arial';c.textAlign="center";c.fillText(score+"%",cx,cy+16);
+  c.fillStyle=color;c.font='700 13px "Century Gothic",Arial';c.fillText(analysis.scoreState.label.toUpperCase(),cx,cy+50);c.textAlign="left";
+  c.fillStyle=v237C("gray");c.font='400 12px "Century Gothic",Arial';
+  c.fillText("Confiabilidad "+Number(r.avg||0)+"%",68,558);
+  c.textAlign="right";c.fillText("No entregas "+Number(m.noDeliveryCount||0),386,558);c.textAlign="left";
+
+  /* Salud de procesos */
+  v237Card(c,432,258,700,330,20);
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Procesos que requieren atención",458,300);
+  c.fillStyle=v237C("muted");c.font='400 12px "Century Gothic",Arial';c.fillText("Ranking por salud integral",458,324);
+  processes.slice(0,5).forEach(function(p,i){
+    var yy=357+i*45,val=Number(p.health||0),barX=690,barW=330;
+    c.fillStyle=v237C("ink");c.font='600 12px "Century Gothic",Arial';c.fillText(v237Short(p.label,29),458,yy+14);
+    v237Round(c,barX,yy,barW,14,7,"#EDF2F7",null);
+    v237Round(c,barX,yy,Math.max(5,barW*val/100),14,7,v237StatusColor(val),null);
+    c.fillStyle=v237C("navy");c.font='700 12px "Century Gothic",Arial';c.textAlign="right";c.fillText(val+"%",1092,yy+13);c.textAlign="left";
+  });
+
+  /* Control WIP */
+  v237Card(c,1152,258,406,330,20);
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Control del WIP",1178,300);
+  var totalWip=Math.max(1,Number(m.wip||0)),late=Number(m.lateWip||0),onTime=Math.max(0,totalWip-late);
+  c.fillStyle=v237C("muted");c.font='400 12px "Century Gothic",Arial';c.fillText("Pedidos abiertos por condición",1178,324);
+  c.fillStyle="#EDF2F7";v237Round(c,1178,358,354,32,16,"#EDF2F7",null);
+  if(onTime>0)v237Round(c,1178,358,354*onTime/totalWip,32,16,v237C("green"),null);
+  if(late>0)v237Round(c,1178+354*onTime/totalWip,358,354*late/totalWip,32,16,v237C("red"),null);
+  c.fillStyle=v237C("navy");c.font='700 34px "Century Gothic",Arial';c.fillText(String(m.wip||0),1178,449);
+  c.fillStyle=v237C("gray");c.font='600 12px "Century Gothic",Arial';c.fillText("WIP total",1178,472);
+  c.fillStyle=v237C("green");c.font='700 25px "Century Gothic",Arial';c.fillText(String(onTime),1320,449);
+  c.fillStyle=v237C("gray");c.font='600 12px "Century Gothic",Arial';c.fillText("Dentro de meta",1320,472);
+  c.fillStyle=v237C("red");c.font='700 25px "Century Gothic",Arial';c.fillText(String(late),1450,449);
+  c.fillStyle=v237C("gray");c.font='600 12px "Century Gothic",Arial';c.fillText("Fuera de meta",1450,472);
+  var wipPct=Math.round(onTime/totalWip*100);
+  v237Pill(c,1178,510,wipPct+"% controlado",wipPct>=85?v237C("green"):wipPct>=65?v237C("orange"):v237C("red"),150);
+
+  /* Tendencia corta */
+  v237Card(c,42,610,990,246,20);
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Tendencia reciente de cierres",68,650);
+  c.fillStyle=v237C("muted");c.font='400 12px "Century Gothic",Arial';c.fillText("Últimos registros del periodo",68,674);
+  if(trends.length>1){
+    v237DrawSpark(c,trends,72,705,900,100,function(x){return x.count;},v237C("blue"));
+    c.fillStyle=v237C("gray");c.font='400 11px "Century Gothic",Arial';
+    c.fillText(trends[0].day.slice(5),72,829);c.textAlign="right";c.fillText(trends[trends.length-1].day.slice(5),972,829);c.textAlign="left";
+  }else v237Empty(c,72,702,900,105,"No hay suficientes cierres para mostrar tendencia.");
+
+  /* Semáforos */
+  v237Card(c,1052,610,506,246,20);
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Semáforos ejecutivos",1078,650);
+  (analysis.signals||[]).slice(0,4).forEach(function(s,i){
+    var yy=690+i*37,col=v237StatusColor(s.value);
+    c.fillStyle=col;c.beginPath();c.arc(1090,yy,7,0,Math.PI*2);c.fill();
+    c.fillStyle=v237C("ink");c.font='600 12px "Century Gothic",Arial';c.fillText(v237Short(s.label,27),1110,yy+4);
+    c.fillStyle=v237C("navy");c.font='700 13px "Century Gothic",Arial';c.textAlign="right";c.fillText(String(s.value)+s.suffix,1520,yy+4);c.textAlign="left";
+  });
+  return o.canvas.toDataURL("image/png");
+}
+
+/* TENDENCIA COMBINADA */
+function v236TrendCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=analysis.dailyTrend||[];
+  v237Title(c,"Tendencia del flujo","Cierres diarios y evolución del Lead Time promedio",1600);
+
+  var avgClose=rows.length?v232Average(rows.map(function(x){return x.count;})):0;
+  var avgLt=rows.length?v232Average(rows.map(function(x){return v234MsHours(x.avgLt);})):0;
+  var best=rows.slice().sort(function(a,b){return b.count-a.count;})[0]||{};
+  var last=rows[rows.length-1]||{};
+  [
+    ["Promedio de cierres",Math.round(avgClose*100)/100+"/día","Periodo analizado",v237C("blue"),"01"],
+    ["LT promedio",Math.round(avgLt*100)/100+" h","Pedidos cerrados",v237C("orange"),"02"],
+    ["Mejor día",best.day?best.day.slice(5):"—",(best.count||0)+" cierres",v237C("green"),"03"],
+    ["Último corte",last.day?last.day.slice(5):"—",(last.count||0)+" cierres",v237C("purple"),"04"]
+  ].forEach(function(k,i){v237MetricCard(c,42+i*382,118,354,106,k[0],k[1],k[2],k[3],k[4]);});
+
+  v237Card(c,42,250,1516,600,20);
+  if(rows.length<2){v237Empty(c,82,300,1436,490,"No hay suficientes cierres para construir la tendencia.");return o.canvas.toDataURL("image/png");}
+  var x=112,y=320,w=1360,h=410;
+  var counts=rows.map(function(r){return Number(r.count||0);});
+  var lts=rows.map(function(r){return v234MsHours(r.avgLt);});
+  var maxC=Math.max.apply(Math,[1].concat(counts)),maxLt=Math.max.apply(Math,[1].concat(lts));
+  var slot=w/rows.length,barW=Math.max(14,Math.min(48,slot*.52));
+
+  c.font='400 11px "Century Gothic",Arial';c.fillStyle=v237C("muted");
+  for(var g=0;g<=5;g++){
+    var yy=y+h*g/5;
+    c.strokeStyle="#E8EDF3";c.lineWidth=1;c.beginPath();c.moveTo(x,yy);c.lineTo(x+w,yy);c.stroke();
+    c.textAlign="right";c.fillText(String(Math.round(maxC*(1-g/5))),x-14,yy+4);
+    c.textAlign="left";c.fillText(String(Math.round(maxLt*(1-g/5)))+" h",x+w+14,yy+4);
+  }
+  rows.forEach(function(r,i){
+    var center=x+(i+.5)*slot,bh=(Number(r.count||0)/maxC)*h,top=y+h-bh;
+    var grad=c.createLinearGradient(0,top,0,y+h);grad.addColorStop(0,"#0B66C3");grad.addColorStop(1,"#69AFE4");
+    v237Round(c,center-barW/2,top,barW,bh,8,grad,null);
+  });
+  c.beginPath();
+  rows.forEach(function(r,i){
+    var center=x+(i+.5)*slot,yy=y+h-(v234MsHours(r.avgLt)/maxLt)*h;
+    if(i===0)c.moveTo(center,yy);else c.lineTo(center,yy);
+  });
+  c.strokeStyle=v237C("orange");c.lineWidth=4;c.stroke();
+  rows.forEach(function(r,i){
+    var center=x+(i+.5)*slot,yy=y+h-(v234MsHours(r.avgLt)/maxLt)*h;
+    c.fillStyle="#fff";c.beginPath();c.arc(center,yy,6,0,Math.PI*2);c.fill();
+    c.strokeStyle=v237C("orange");c.lineWidth=3;c.beginPath();c.arc(center,yy,6,0,Math.PI*2);c.stroke();
+    if(i===0||i===rows.length-1||i%Math.max(1,Math.ceil(rows.length/8))===0){
+      c.fillStyle=v237C("gray");c.font='400 11px "Century Gothic",Arial';c.textAlign="center";
+      c.fillText(r.day.slice(5),center,y+h+27);c.textAlign="left";
+    }
+  });
+  c.fillStyle=v237C("blue");v237Round(c,116,778,22,12,4,v237C("blue"),null);
+  c.fillStyle=v237C("ink");c.font='600 12px "Century Gothic",Arial';c.fillText("Pedidos cerrados",148,789);
+  c.strokeStyle=v237C("orange");c.lineWidth=4;c.beginPath();c.moveTo(315,784);c.lineTo(345,784);c.stroke();
+  c.fillStyle="#fff";c.beginPath();c.arc(330,784,5,0,Math.PI*2);c.fill();c.strokeStyle=v237C("orange");c.lineWidth=2;c.stroke();
+  c.fillStyle=v237C("ink");c.fillText("Lead Time promedio",356,789);
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';c.textAlign="right";
+  c.fillText("Escala izquierda: cierres | Escala derecha: horas",1490,789);c.textAlign="left";
+  return o.canvas.toDataURL("image/png");
+}
+
+/* PROCESOS */
+function v236ProcessCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=(analysis.processHealth||[]).slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);});
+  v237Title(c,"Desempeño por proceso","Lead Time, cumplimiento, WIP y salud integral",1600);
+  var slow=rows[0]||{},low=(analysis.processHealth||[]).slice().sort(function(a,b){return Number(a.slaPct||0)-Number(b.slaPct||0);})[0]||{},highWip=(analysis.processHealth||[]).slice().sort(function(a,b){return Number(b.wip||0)-Number(a.wip||0);})[0]||{};
+  [
+    ["Mayor Lead Time",slow.label||"—",v225Time(slow.avg||0),v237C("red"),"LT"],
+    ["Menor cumplimiento",low.label||"—",Number(low.slaPct||0)+"%",v237C("orange"),"%"],
+    ["Mayor WIP",highWip.label||"—",String(highWip.wip||0)+" pedidos",v237C("purple"),"WIP"]
+  ].forEach(function(k,i){
+    var x=42+i*506,y=118;v237Card(c,x,y,476,104,17);
+    c.fillStyle=k[3];v237Round(c,x,y,7,104,4,k[3],null);
+    c.fillStyle=v237C("gray");c.font='600 11px "Century Gothic",Arial';c.fillText(k[0].toUpperCase(),x+24,146);
+    c.fillStyle=v237C("navy");c.font='700 17px "Century Gothic",Arial';c.fillText(v237Short(k[1],31),x+24,177);
+    c.fillStyle=k[3];c.font='700 21px "Century Gothic",Arial';c.textAlign="right";c.fillText(k[2],x+448,178);c.textAlign="left";
+  });
+
+  /* LT */
+  v237Card(c,42,248,900,610,20);
+  c.fillStyle=v237C("navy");c.font='700 18px "Century Gothic",Arial';c.fillText("Ranking de Lead Time",68,287);
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';c.fillText("Horas laborales promedio por proceso",68,309);
+  var max=Math.max.apply(Math,[1].concat(rows.map(function(r){return v234MsHours(r.avg||0);})));
+  var chartX=345,chartW=500,targetX=chartX+chartW*Math.min(1,8/max);
+  c.strokeStyle=v237C("yellow");c.lineWidth=2;c.setLineDash([6,6]);c.beginPath();c.moveTo(targetX,334);c.lineTo(targetX,810);c.stroke();c.setLineDash([]);
+  c.fillStyle=v237C("orange");c.font='600 10px "Century Gothic",Arial';c.fillText("Referencia 8 h",targetX+6,344);
+  rows.slice(0,8).forEach(function(r,i){
+    var yy=365+i*55,val=v234MsHours(r.avg||0),bw=chartW*val/max;
+    c.fillStyle=v237C("ink");c.font='600 12px "Century Gothic",Arial';c.fillText(v237Short(r.label,31),68,yy+15);
+    v237Round(c,chartX,yy,chartW,18,9,"#EDF2F7",null);
+    var grad=c.createLinearGradient(chartX,0,chartX+chartW,0);grad.addColorStop(0,"#6CB4E9");grad.addColorStop(1,"#0B66C3");
+    v237Round(c,chartX,yy,Math.max(6,bw),18,9,grad,null);
+    c.fillStyle=v237C("navy");c.font='700 12px "Century Gothic",Arial';c.textAlign="right";c.fillText(v225Time(r.avg||0),878,yy+15);c.textAlign="left";
+  });
+
+  /* Cumplimiento */
+  v237Card(c,966,248,592,610,20);
+  c.fillStyle=v237C("navy");c.font='700 18px "Century Gothic",Arial';c.fillText("Cumplimiento y salud",992,287);
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';c.fillText("Meta visual recomendada: 85%",992,309);
+  (analysis.processHealth||[]).slice().sort(function(a,b){return Number(a.slaPct||0)-Number(b.slaPct||0);}).slice(0,8).forEach(function(r,i){
+    var yy=352+i*58,pct=Number(r.slaPct||0),health=Number(r.health||0);
+    c.fillStyle=v237C("ink");c.font='600 11px "Century Gothic",Arial';c.fillText(v237Short(r.label,25),992,yy+11);
+    var bx=1195,bw=260;
+    v237Round(c,bx,yy,bw,13,7,"#EDF2F7",null);
+    v237Round(c,bx,yy,Math.max(5,bw*pct/100),13,7,v237StatusColor(pct),null);
+    c.strokeStyle=v237C("navy");c.lineWidth=2;c.beginPath();c.moveTo(bx+bw*.85,yy-3);c.lineTo(bx+bw*.85,yy+16);c.stroke();
+    c.fillStyle=v237C("navy");c.font='700 11px "Century Gothic",Arial';c.textAlign="right";c.fillText(pct+"%",1515,yy+11);c.textAlign="left";
+    c.fillStyle=v237StatusColor(health);c.beginPath();c.arc(1010,yy+32,6,0,Math.PI*2);c.fill();
+    c.fillStyle=v237C("gray");c.font='400 10px "Century Gothic",Arial';c.fillText("Salud "+health+"% | WIP "+Number(r.wip||0),1024,yy+36);
+  });
+  return o.canvas.toDataURL("image/png");
+}
+
+/* MATRIZ DE PROCESOS */
+function v236MatrixCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=analysis.processes||[];
+  v237Title(c,"Matriz de procesos","Lead Time, cumplimiento y volumen de WIP",1600);
+  v237Card(c,42,120,1185,735,20);
+  v237Card(c,1247,120,311,735,20);
+  var x=130,y=215,w=1010,h=520;
+  var maxLt=Math.max.apply(Math,[1].concat(rows.map(function(r){return v234MsHours(r.avg||0);})));
+  var medianLt=v235Median(rows.map(function(r){return v234MsHours(r.avg||0);}));
+  var splitX=x+w*(medianLt/maxLt),splitY=y+h*(1-.85);
+
+  c.fillStyle="#FFF7ED";c.fillRect(x,y,splitX-x,splitY-y);
+  c.fillStyle="#ECFDF3";c.fillRect(splitX,y,x+w-splitX,splitY-y);
+  c.fillStyle="#FEF3F2";c.fillRect(x,splitY,splitX-x,y+h-splitY);
+  c.fillStyle="#EFF8FF";c.fillRect(splitX,splitY,x+w-splitX,y+h-splitY);
+  c.strokeStyle="#D0D8E2";c.lineWidth=1;c.strokeRect(x,y,w,h);
+  c.strokeStyle="#7B8794";c.lineWidth=2;c.setLineDash([7,6]);
+  c.beginPath();c.moveTo(splitX,y);c.lineTo(splitX,y+h);c.moveTo(x,splitY);c.lineTo(x+w,splitY);c.stroke();c.setLineDash([]);
+
+  c.fillStyle=v237C("gray");c.font='600 11px "Century Gothic",Arial';
+  c.fillText("Rápido / requiere control",x+16,y+24);
+  c.fillText("Alto desempeño",splitX+16,y+24);
+  c.fillText("Crítico",x+16,splitY+24);
+  c.fillText("Lento / estable",splitX+16,splitY+24);
+  c.font='400 10px "Century Gothic",Arial';
+  for(var g=0;g<=4;g++){
+    var xx=x+w*g/4,val=maxLt*g/4;
+    c.strokeStyle="#E8EDF3";c.beginPath();c.moveTo(xx,y+h);c.lineTo(xx,y+h+6);c.stroke();
+    c.textAlign="center";c.fillText(Math.round(val*10)/10+" h",xx,y+h+23);c.textAlign="left";
+  }
+  [0,25,50,75,100].forEach(function(pct){
+    var yy=y+h-h*pct/100;c.strokeStyle="#E8EDF3";c.beginPath();c.moveTo(x-6,yy);c.lineTo(x,yy);c.stroke();
+    c.textAlign="right";c.fillText(pct+"%",x-12,yy+4);c.textAlign="left";
+  });
+  c.fillStyle=v237C("gray");c.font='600 11px "Century Gothic",Arial';c.textAlign="center";c.fillText("LEAD TIME PROMEDIO",x+w/2,y+h+50);c.textAlign="left";
+  c.save();c.translate(72,y+h/2);c.rotate(-Math.PI/2);c.textAlign="center";c.fillText("CUMPLIMIENTO",0,0);c.restore();
+
+  rows.forEach(function(r,i){
+    var xx=x+w*v234MsHours(r.avg||0)/maxLt,yy=y+h-h*Number(r.slaPct||0)/100;
+    var radius=Math.max(10,Math.min(27,10+Math.sqrt(Number(r.wip||0))*5));
+    var col=v237StatusColor(v235HealthScoreProcess(r));
+    c.save();c.shadowColor="rgba(16,39,68,.20)";c.shadowBlur=9;c.fillStyle=col;c.globalAlpha=.92;
+    c.beginPath();c.arc(xx,yy,radius,0,Math.PI*2);c.fill();c.restore();
+    c.fillStyle="#fff";c.font='700 10px "Century Gothic",Arial';c.textAlign="center";c.fillText(String(i+1),xx,yy+4);c.textAlign="left";
+  });
+
+  c.fillStyle=v237C("navy");c.font='700 18px "Century Gothic",Arial';c.fillText("Leyenda de procesos",1273,164);
+  rows.slice(0,10).forEach(function(r,i){
+    var yy=202+i*55,col=v237StatusColor(v235HealthScoreProcess(r));
+    c.fillStyle=col;c.beginPath();c.arc(1288,yy,12,0,Math.PI*2);c.fill();
+    c.fillStyle="#fff";c.font='700 9px "Century Gothic",Arial';c.textAlign="center";c.fillText(String(i+1),1288,yy+3);c.textAlign="left";
+    c.fillStyle=v237C("ink");c.font='600 11px "Century Gothic",Arial';c.fillText(v237Short(r.label,25),1310,yy-2);
+    c.fillStyle=v237C("muted");c.font='400 10px "Century Gothic",Arial';c.fillText(v225Time(r.avg||0)+" | "+Number(r.slaPct||0)+"% | WIP "+Number(r.wip||0),1310,yy+17);
+  });
+  c.fillStyle=v237C("muted");c.font='400 10px "Century Gothic",Arial';
+  c.fillText("Línea vertical: mediana de LT",1273,788);
+  c.fillText("Línea horizontal: meta 85%",1273,807);
+  c.fillText("Tamaño: volumen de WIP",1273,826);
+  return o.canvas.toDataURL("image/png");
+}
+
+/* ÁREAS */
+function v236AreaCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=(analysis.areaHealth||[]).slice(0,6);
+  v237Title(c,"Desempeño por área","Cumplimiento, confiabilidad, Lead Time y salud integral",1600);
+  rows.forEach(function(a,i){
+    var col=i%2,row=Math.floor(i/2),x=42+col*770,y=118+row*245,w=736,h=220;
+    v237Card(c,x,y,w,h,18);
+    var color=v237StatusColor(a.health);
+    v237Round(c,x,y,8,h,4,color,null);
+    c.fillStyle=v237C("navy");c.font='700 21px "Century Gothic",Arial';c.fillText(a.label,x+26,y+38);
+    v237Pill(c,x+w-150,y+20,a.healthStatus.label,color,126);
+    c.fillStyle=v237C("gray");c.font='600 10px "Century Gothic",Arial';c.fillText("SALUD",x+26,y+77);
+    c.fillStyle=color;c.font='700 38px "Century Gothic",Arial';c.fillText(a.health+"%",x+26,y+120);
+    c.fillStyle=v237C("muted");c.font='400 10px "Century Gothic",Arial';c.fillText("LT "+v225Time(a.avg||0)+" | WIP "+Number(a.wip||0)+" | Casos "+Number(a.cases||0),x+26,y+149);
+    var bx=x+250,bw=430;
+    c.fillStyle=v237C("ink");c.font='600 11px "Century Gothic",Arial';c.fillText("Cumplimiento",bx,y+75);
+    v237Round(c,bx,y+86,bw,14,7,"#EDF2F7",null);v237Round(c,bx,y+86,Math.max(5,bw*Number(a.compliance||0)/100),14,7,v237StatusColor(a.compliance),null);
+    c.fillStyle=v237C("navy");c.font='700 11px "Century Gothic",Arial';c.textAlign="right";c.fillText(Number(a.compliance||0)+"%",bx+bw,y+75);c.textAlign="left";
+    c.fillStyle=v237C("ink");c.font='600 11px "Century Gothic",Arial';c.fillText("Confiabilidad",bx,y+135);
+    v237Round(c,bx,y+146,bw,14,7,"#EDF2F7",null);v237Round(c,bx,y+146,Math.max(5,bw*Number(a.reliability||0)/100),14,7,v237StatusColor(a.reliability),null);
+    c.fillStyle=v237C("navy");c.font='700 11px "Century Gothic",Arial';c.textAlign="right";c.fillText(Number(a.reliability||0)+"%",bx+bw,y+135);c.textAlign="left";
+    c.fillStyle=v237C("muted");c.font='400 10px "Century Gothic",Arial';c.fillText("No entregas: "+Number(a.noDeliveries||0)+" | Actores: "+Number(a.workers||0),bx,y+190);
+  });
+  return o.canvas.toDataURL("image/png");
+}
+
+/* ACTORES */
+function v236ActorCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=(analysis.actors||[]).slice().sort(function(a,b){return Number(b.active||0)-Number(a.active||0);}).slice(0,12);
+  v237Title(c,"Productividad por actor","Trabajo directo trazado, cumplimiento y WIP",1600);
+  var avgCompliance=rows.length?Math.round(v232Average(rows.map(function(x){return Number(x.compliance||0);} ))):0;
+  var totalWork=rows.reduce(function(s,x){return s+Number(x.active||0);},0);
+  [
+    ["Actores medidos",rows.length,"Super Admin excluido",v237C("blue"),"01"],
+    ["Trabajo trazado",v225Time(totalWork),"Suma de actores visibles",v237C("purple"),"02"],
+    ["Cumplimiento medio",avgCompliance+"%","Promedio de actores",v237StatusColor(avgCompliance),"03"]
+  ].forEach(function(k,i){v237MetricCard(c,42+i*506,118,476,104,k[0],k[1],k[2],k[3],k[4]);});
+  v237Card(c,42,248,1516,610,20);
+  c.fillStyle=v237C("gray");c.font='600 10px "Century Gothic",Arial';
+  c.fillText("ACTOR",70,286);c.fillText("TRABAJO DIRECTO",420,286);c.fillText("CUMPL.",1282,286);c.fillText("WIP",1445,286);
+  var max=Math.max.apply(Math,[1].concat(rows.map(function(r){return Number(r.active||0);})));
+  rows.forEach(function(r,i){
+    var yy=316+i*42,val=Number(r.active||0),bw=730*val/max,col=v237StatusColor(r.compliance);
+    if(i%2===0){c.fillStyle="#FAFBFD";c.fillRect(62,yy-8,1475,36);}
+    c.fillStyle=v237C("ink");c.font='600 12px "Century Gothic",Arial';c.fillText(v237Short(r.user,34),70,yy+13);
+    v237Round(c,420,yy,730,16,8,"#EDF2F7",null);
+    var grad=c.createLinearGradient(420,0,1150,0);grad.addColorStop(0,"#79B9E8");grad.addColorStop(1,"#0B66C3");
+    v237Round(c,420,yy,Math.max(5,bw),16,8,grad,null);
+    c.fillStyle=v237C("navy");c.font='700 11px "Century Gothic",Arial';c.textAlign="right";c.fillText(v225Time(r.active||0),1225,yy+13);c.textAlign="left";
+    v237Pill(c,1260,yy-5,Number(r.compliance||0)+"%",col,86);
+    v237Round(c,1432,yy-5,76,28,14,"#EEF3F8",null);c.fillStyle=v237C("navy");c.font='700 11px "Century Gothic",Arial';c.textAlign="center";c.fillText(String(r.open||0),1470,yy+14);c.textAlign="left";
+  });
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';
+  c.fillText("La carga directa debe analizarse junto con complejidad, calidad, cumplimiento y cantidad de casos.",70,834);
+  return o.canvas.toDataURL("image/png");
+}
+
+/* PARETO */
+function v236ParetoCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,rows=(analysis.pareto||[]).slice(0,9);
+  v237Title(c,"Pareto de causas","Tiempo asociado y porcentaje acumulado",1600);
+  var total=rows.reduce(function(s,r){return s+Number(r.value||0);},0);
+  var cumulative=0,causes80=0;
+  rows.forEach(function(r){if(cumulative<total*.8)causes80++;cumulative+=Number(r.value||0);});
+  [
+    ["Tiempo asociado",v225Time(total),"Total de causas",v237C("blue"),"01"],
+    ["Causas identificadas",rows.length,"Clasificación Pareto",v237C("purple"),"02"],
+    ["Causas que explican 80%",causes80,"Prioridad de intervención",v237C("orange"),"03"]
+  ].forEach(function(k,i){v237MetricCard(c,42+i*506,118,476,104,k[0],k[1],k[2],k[3],k[4]);});
+  v237Card(c,42,248,1516,610,20);
+  if(!rows.length){v237Empty(c,82,300,1436,490,"No existen causas suficientes para construir el Pareto.");return o.canvas.toDataURL("image/png");}
+  var x=118,y=330,w=1360,h=390,max=Math.max.apply(Math,rows.map(function(r){return Number(r.value||0);})),slot=w/rows.length,barW=Math.min(92,slot*.58),cum=0,points=[];
+  for(var g=0;g<=5;g++){
+    var yy=y+h*g/5;c.strokeStyle="#E8EDF3";c.lineWidth=1;c.beginPath();c.moveTo(x,yy);c.lineTo(x+w,yy);c.stroke();
+    c.fillStyle=v237C("muted");c.font='400 10px "Century Gothic",Arial';c.textAlign="right";c.fillText(Math.round(max*(1-g/5))+" h",x-12,yy+4);
+    c.textAlign="left";c.fillText(Math.round((1-g/5)*100)+"%",x+w+12,yy+4);
+  }
+  var line80=y+h*.2;c.strokeStyle=v237C("orange");c.lineWidth=2;c.setLineDash([7,6]);c.beginPath();c.moveTo(x,line80);c.lineTo(x+w,line80);c.stroke();c.setLineDash([]);
+  c.fillStyle=v237C("orange");c.font='600 10px "Century Gothic",Arial';c.fillText("80%",x+w+12,line80+4);
+  rows.forEach(function(r,i){
+    var center=x+(i+.5)*slot,val=Number(r.value||0),bh=val/max*h,top=y+h-bh;
+    var grad=c.createLinearGradient(0,top,0,y+h);
+    if(i===0){grad.addColorStop(0,"#003B70");grad.addColorStop(1,"#0B66C3");}
+    else{grad.addColorStop(0,"#4A9BDB");grad.addColorStop(1,"#9AC9EA");}
+    v237Round(c,center-barW/2,top,barW,bh,8,grad,null);
+    cum+=val;points.push([center,y+h-(cum/total)*h]);
+    c.fillStyle=v237C("navy");c.font='700 10px "Century Gothic",Arial';c.textAlign="center";c.fillText(v225Time(val),center,top-9);
+    c.save();c.translate(center,y+h+25);c.rotate(-Math.PI/8);c.fillStyle=v237C("ink");c.font='600 10px "Century Gothic",Arial';c.textAlign="right";c.fillText(v237Short(r.label,20),0,0);c.restore();
+  });
+  c.strokeStyle=v237C("yellow");c.lineWidth=4;c.beginPath();points.forEach(function(p,i){if(i===0)c.moveTo(p[0],p[1]);else c.lineTo(p[0],p[1]);});c.stroke();
+  points.forEach(function(p){c.fillStyle="#fff";c.beginPath();c.arc(p[0],p[1],6,0,Math.PI*2);c.fill();c.strokeStyle=v237C("yellow");c.lineWidth=3;c.stroke();});
+  c.fillStyle=v237C("blue");v237Round(c,120,799,24,12,4,v237C("blue"),null);
+  c.fillStyle=v237C("ink");c.font='600 11px "Century Gothic",Arial';c.fillText("Tiempo asociado",154,809);
+  c.strokeStyle=v237C("yellow");c.lineWidth=4;c.beginPath();c.moveTo(305,805);c.lineTo(335,805);c.stroke();
+  c.fillStyle=v237C("ink");c.fillText("Porcentaje acumulado",348,809);
+  return o.canvas.toDataURL("image/png");
+}
+
+/* RIESGOS */
+function v236RiskCanvas(analysis){
+  var o=v237Canvas(1600,900),c=o.ctx,risks=(analysis.risks||[]).slice(0,9);
+  v237Title(c,"Matriz de riesgos operativos","Probabilidad, impacto, evidencia y tratamiento",1600);
+  v237Card(c,42,118,700,740,20);v237Card(c,762,118,796,740,20);
+
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Mapa de calor",70,160);
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';c.fillText("Cantidad de riesgos por probabilidad e impacto",70,182);
+  var x=145,y=245,size=500,cell=size/3;
+  var colors=[
+    ["#EAF8F1","#EAF8F1","#FFF4E5"],
+    ["#EAF8F1","#FFF4E5","#FDECEC"],
+    ["#FFF4E5","#FDECEC","#FDECEC"]
+  ];
+  var groups={};
+  risks.forEach(function(r){var key=Number(r.probability)+"|"+Number(r.impact);if(!groups[key])groups[key]=[];groups[key].push(r);});
+  for(var impact=1;impact<=3;impact++){
+    for(var probability=1;probability<=3;probability++){
+      var xx=x+(probability-1)*cell,yy=y+(3-impact)*cell,key=probability+"|"+impact,count=(groups[key]||[]).length;
+      v237Round(c,xx+4,yy+4,cell-8,cell-8,14,colors[impact-1][probability-1],"#D6DEE8",1);
+      c.fillStyle=v237C("gray");c.font='600 10px "Century Gothic",Arial';c.fillText("P"+probability+" / I"+impact,xx+16,yy+24);
+      if(count){
+        var level=probability*impact>=7?v237C("red"):probability*impact>=4?v237C("orange"):v237C("green");
+        c.fillStyle=level;c.beginPath();c.arc(xx+cell/2,yy+cell/2,29,0,Math.PI*2);c.fill();
+        c.fillStyle="#fff";c.font='700 22px "Century Gothic",Arial';c.textAlign="center";c.fillText(String(count),xx+cell/2,yy+cell/2+7);c.textAlign="left";
+      }else{
+        c.fillStyle="#C7D0DA";c.font='600 18px "Century Gothic",Arial';c.textAlign="center";c.fillText("0",xx+cell/2,yy+cell/2+6);c.textAlign="left";
+      }
+    }
+  }
+  c.fillStyle=v237C("gray");c.font='600 11px "Century Gothic",Arial';c.textAlign="center";c.fillText("PROBABILIDAD",x+size/2,y+size+36);c.textAlign="left";
+  c.save();c.translate(88,y+size/2);c.rotate(-Math.PI/2);c.textAlign="center";c.fillText("IMPACTO",0,0);c.restore();
+
+  c.fillStyle=v237C("navy");c.font='700 19px "Century Gothic",Arial';c.fillText("Riesgos prioritarios",790,160);
+  c.fillStyle=v237C("muted");c.font='400 11px "Century Gothic",Arial';c.fillText("Evidencia y acción sugerida",790,182);
+  risks.slice(0,7).forEach(function(r,i){
+    var yy=210+i*84,col=r.level==="Alto"?v237C("red"):r.level==="Medio"?v237C("orange"):v237C("green");
+    if(i%2===0){c.fillStyle="#FAFBFD";v237Round(c,785,yy-8,748,72,12,"#FAFBFD",null);}
+    v237Pill(c,800,yy,r.level.toUpperCase(),col,92);
+    c.fillStyle=v237C("navy");c.font='700 13px "Century Gothic",Arial';c.fillText(v237Short(r.risk,43),910,yy+16);
+    c.fillStyle=v237C("gray");c.font='400 10px "Century Gothic",Arial';c.fillText(v237Short(r.evidence,72),910,yy+37);
+    c.fillStyle=v237C("blue");c.font='600 10px "Century Gothic",Arial';c.fillText("Acción: "+v237Short(r.treatment,63),910,yy+56);
+  });
+  return o.canvas.toDataURL("image/png");
+}
+
 /* --------------------- PDF SOBRE PLANTILLA --------------------- */
 function v236PdfState(doc){
   return {pageWidth:doc.internal.pageSize.getWidth(),pageHeight:doc.internal.pageSize.getHeight(),margin:58,top:145,bottom:708,contentWidth:doc.internal.pageSize.getWidth()-116,y:155,section:""};
@@ -4730,6 +5230,25 @@ function v236PdfKpiRow(doc,state,items){
 function v236PdfFinalize(doc,meta){
   var pages=doc.getNumberOfPages();for(var i=1;i<=pages;i++){doc.setPage(i);var pw=doc.internal.pageSize.getWidth();doc.setFillColor(0,43,92);doc.roundedRect(pw-112,690,54,15,7,7,"F");doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(6.5);doc.text("Página "+i+" / "+pages,pw-85,700,{align:"center"});doc.setTextColor(102,112,133);doc.setFont("helvetica","normal");doc.setFontSize(6.2);doc.text(v236Safe(meta.author+" | "+meta.department),58,700);}
 }
+
+/* V237: inserción proporcional de gráficas, sin estiramiento vertical. */
+function v236PdfImagePage(doc,state,title,subtitle,dataUrl,height){
+  v236PdfNewPage(doc,state,title,subtitle);
+  var props=doc.getImageProperties(dataUrl);
+  var aspect=(props&&props.width&&props.height)?props.width/props.height:(16/9);
+  var maxW=state.contentWidth;
+  var maxH=Math.min(Number(height||470),470);
+  var w=maxW,h=w/aspect;
+  if(h>maxH){h=maxH;w=h*aspect;}
+  var x=state.margin+(state.contentWidth-w)/2;
+  var y=state.y+14;
+  doc.setFillColor(246,249,252);
+  doc.setDrawColor(220,228,237);
+  doc.roundedRect(x-7,y-7,w+14,h+14,8,8,"FD");
+  doc.addImage(dataUrl,"PNG",x,y,w,h,undefined,"FAST");
+  state.y=y+h+16;
+}
+
 async function v232GeneratePdf(meta,analysis){
   try{
     analysis=v236EnhanceAnalysis(analysis);await v234LoadPdfLibraries();var PDF=window.jspdf.jsPDF;var doc=new PDF({orientation:"portrait",unit:"pt",format:"letter",compress:true});var state=v236PdfState(doc),m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
@@ -4742,7 +5261,7 @@ async function v232GeneratePdf(meta,analysis){
     v236PdfImagePage(doc,state,"1. Dashboard ejecutivo","Lectura consolidada de indicadores y semáforos",v236DashboardCanvas(analysis),455);
     v236PdfTextPage(doc,state,"2. Diagnóstico ejecutivo","Fortalezas, hallazgos y lectura gerencial",[analysis.keyMessage],analysis.strengths.concat(analysis.findings));
     if(meta.includeTrends)v236PdfImagePage(doc,state,"3. Tendencias del flujo","Evolución de cierres y Lead Time promedio",v236TrendCanvas(analysis),420);
-    v236PdfImagePage(doc,state,"4. Desempeño por proceso","Visuales tipo Power BI para priorización",v236ProcessCanvas(analysis),470);
+    v236PdfImagePage(doc,state,"4. Desempeño por proceso","Visualizaciones ejecutivas refinadas para priorización",v236ProcessCanvas(analysis),470);
     v236PdfImagePage(doc,state,"5. Matriz de procesos","Lead Time, cumplimiento y WIP",v236MatrixCanvas(analysis),470);
     v236PdfTable(doc,state,"6. Detalle por proceso","Indicadores calculados con horas laborales",["Proceso","Casos","WIP","Atras.","LT prom.","P50","P90","Cumpl.","Salud"],analysis.processHealth.map(function(x){return [x.label,x.cases||0,x.wip||0,x.wipLate||0,v225Time(x.avg||0),v225Time(x.p50||0),v225Time(x.p90||0),(x.slaPct||0)+"%",x.health+"%"];}),{fontSize:6.4});
     v236PdfImagePage(doc,state,"7. Desempeño por área","Diagnóstico comparativo de áreas",v236AreaCanvas(analysis),470);
