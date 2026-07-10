@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V234';
+var VERSION='V235';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -581,7 +581,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V234_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V235_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -2403,6 +2403,8 @@ function v232CollectMeta(){
     includeActionPlan:$("reportIncludeActionPlan").checked,
     includeAlerts:$("reportIncludeAlerts").checked,
     includeWaits:$("reportIncludeWaits").checked,
+    includeTrends:$("reportIncludeTrends")?$("reportIncludeTrends").checked:true,
+    includeRisks:$("reportIncludeRisks")?$("reportIncludeRisks").checked:true,
     scope:v232CurrentScopeText(),
     generatedAt:new Date()
   };
@@ -2448,7 +2450,7 @@ function v232ScoreLabel(score){
   if(score>=70)return {label:"Requiere atención",cls:"warn",text:"El flujo presenta desviaciones que deben gestionarse para evitar crecimiento del WIP y de los tiempos."};
   return {label:"Crítico",cls:"bad",text:"El resultado exige intervención prioritaria sobre tiempos, cumplimiento, trazabilidad y causas recurrentes."};
 }
-function v232Analyze(meta){
+function v232AnalyzeV235Base(meta){
   var m=app.metrics||{},processes=(m.processRows||[]).filter(function(r){return r.cases||r.wip;});
   var areas=(m.areaRows||[]).slice(),actors=(m.actorRows||[]).filter(function(r){return !v231IsExcludedSuperAdmin(r);});
   var score=v232OverallScore(m),scoreState=v232ScoreLabel(score);
@@ -3554,6 +3556,950 @@ function bind(){
   }else{
     console.warn("[V233] El formulario del generador no está disponible; el VSM continúa funcionando.");
   }
+}
+
+
+/* ============================================================
+   V235 · INFORME GRÁFICO, ANALÍTICO Y GERENCIAL
+============================================================ */
+function v235Clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function v235Percent(a,b){return b>0?Math.round((a/b)*100):0;}
+function v235PctChange(current,previous){
+  if(!previous)return current?100:0;
+  return Math.round(((current-previous)/Math.abs(previous))*100);
+}
+function v235Median(values){
+  values=(values||[]).filter(isFinite).sort(function(a,b){return a-b;});
+  if(!values.length)return 0;
+  var mid=Math.floor(values.length/2);
+  return values.length%2?values[mid]:(values[mid-1]+values[mid])/2;
+}
+function v235HealthScoreProcess(p){
+  var compliance=Number(p.slaPct||0);
+  var eff=Number(p.eff||0);
+  var wipOnTime=p.wip?Math.max(0,100-(Number(p.wipLate||0)/p.wip*100)):100;
+  var stability=p.p90?Math.max(0,100-Math.min(100,((p.p90-p.p50)/Math.max(1,p.p50))*50)):100;
+  return Math.round(v235Clamp(compliance*.45+eff*.20+wipOnTime*.25+stability*.10,0,100));
+}
+function v235HealthScoreArea(a){
+  var compliance=Number(a.compliance||0);
+  var reliability=Number(a.reliability||0);
+  var wipScore=a.cases?Math.max(0,100-(Number(a.wip||0)/Math.max(1,a.cases)*100)):100;
+  var noDeliveryScore=a.cases?Math.max(0,100-(Number(a.noDeliveries||0)/Math.max(1,a.cases)*100)):100;
+  return Math.round(v235Clamp(compliance*.45+reliability*.30+wipScore*.15+noDeliveryScore*.10,0,100));
+}
+function v235Status(score){
+  if(score>=85)return {label:"Controlado",cls:"ok",color:[15,159,110]};
+  if(score>=70)return {label:"En observación",cls:"warn",color:[217,119,6]};
+  return {label:"Prioritario",cls:"bad",color:[220,38,38]};
+}
+function v235AnalysisWindow(m){
+  var closed=(m.caseRows||[]).filter(function(x){return x.closed&&isFinite(x.end);});
+  var times=closed.map(function(x){return x.end;}).sort(function(a,b){return a-b;});
+  if(times.length<4)return null;
+  var split=times[Math.floor(times.length/2)];
+  var previous=closed.filter(function(x){return x.end<=split;});
+  var recent=closed.filter(function(x){return x.end>split;});
+  function group(rows){
+    return {
+      cases:rows.length,
+      avgLt:v232Average(rows.map(function(x){return x.lead||0;})),
+      p50:v235Median(rows.map(function(x){return x.lead||0;})),
+      work:v232Average(rows.map(function(x){return x.va||0;}))
+    };
+  }
+  return {split:split,previous:group(previous),recent:group(recent)};
+}
+function v235CauseLabel(text){
+  text=lower(text||"");
+  if(/no entrega|no_entrega|no-delivery/.test(text))return "No entrega";
+  if(/reproceso|retrabajo|correcci|devuelt|regres|rechaz|no conforme/.test(text))return "Reproceso / corrección";
+  if(/pago|cartera|caja|financier|retenci/.test(text))return "Pago / Cartera";
+  if(/corte|cable|medida/.test(text))return "Corte de cable";
+  if(/cliente|confirmaci|información cliente/.test(text))return "Cliente / información";
+  if(/transport|gu[ií]a|despacho|entrega/.test(text))return "Despacho / transportadora";
+  if(/document|factur|soporte|archivo/.test(text))return "Documentación";
+  if(/requer|novedad|pendiente/.test(text))return "Requerimiento / novedad";
+  return "Otros";
+}
+function v235BuildPareto(m){
+  var map={};
+  function add(label,value,count){
+    if(!map[label])map[label]={label:label,value:0,count:0};
+    map[label].value+=Number(value||0);
+    map[label].count+=Number(count||1);
+  }
+  var w=m.specialWait||{};
+  (w.all||[]).forEach(function(x){add(v235CauseLabel([x.category,x.detail,x.source].join(" ")),x.duration,1);});
+  (m.wipRows||[]).forEach(function(x){
+    if(x.blocker&&x.blocker!=="Sin bloqueo explícito")add(v235CauseLabel(x.blocker),x.age||0,1);
+  });
+  return Object.keys(map).map(function(k){return map[k];}).sort(function(a,b){return b.value-a.value;}).slice(0,10);
+}
+function v235BuildRisks(m,processes,areas){
+  var risks=[];
+  processes.forEach(function(p){
+    var probability=p.wip?Math.ceil(v235Clamp((Number(p.wipLate||0)/Math.max(1,p.wip))*3,1,3)):(p.slaPct<70?2:1);
+    var impact=p.avg>(m.leadP50||0)?3:(p.avg>(m.leadP50||0)*.6?2:1);
+    var score=probability*impact;
+    if(score>=4||p.slaPct<70||p.wipLate>0){
+      risks.push({
+        risk:"Desviación en "+p.label,
+        source:"Proceso",
+        probability:probability,impact:impact,score:score,
+        level:score>=7?"Alto":(score>=4?"Medio":"Bajo"),
+        evidence:"Cumplimiento "+Number(p.slaPct||0)+"% · WIP atrasado "+Number(p.wipLate||0)+" · LT "+v225Time(p.avg||0),
+        treatment:"Revisar carga, causas de espera, responsables y meta del proceso."
+      });
+    }
+  });
+  areas.forEach(function(a){
+    if(a.reliability<80){
+      risks.push({
+        risk:"Trazabilidad insuficiente en "+a.label,source:"Área",
+        probability:3,impact:2,score:6,level:"Medio",
+        evidence:"Confiabilidad "+Number(a.reliability||0)+"%",
+        treatment:"Completar fechas, responsables, estados y evidencias obligatorias."
+      });
+    }
+    if(Number(a.noDeliveries||0)>0){
+      risks.push({
+        risk:"No entregas en "+a.label,source:"Área",
+        probability:Math.min(3,Math.max(1,Number(a.noDeliveries||0))),
+        impact:3,score:Math.min(9,Math.max(3,Number(a.noDeliveries||0)*3)),
+        level:Number(a.noDeliveries||0)>=3?"Alto":"Medio",
+        evidence:Number(a.noDeliveries||0)+" pedido(s) identificado(s)",
+        treatment:"Clasificar causa, asignar responsable y cerrar la trazabilidad de la no entrega."
+      });
+    }
+  });
+  return risks.sort(function(a,b){return b.score-a.score;}).slice(0,20);
+}
+function v235BuildDecisionCards(analysis){
+  var m=analysis.m,decisions=[];
+  if(analysis.highestWip&&analysis.highestWip.label){
+    decisions.push({
+      title:"Controlar el WIP",
+      signal:Number(analysis.highestWip.wip||0)+" casos en "+analysis.highestWip.label,
+      decision:"Priorizar los vencidos y limitar nuevas asignaciones hasta estabilizar la carga.",
+      owner:v225AreaLabel(v225AreaForProcess(analysis.highestWip.process))||"Operaciones"
+    });
+  }
+  if(analysis.lowestCompliance&&analysis.lowestCompliance.label){
+    decisions.push({
+      title:"Recuperar cumplimiento",
+      signal:Number(analysis.lowestCompliance.slaPct||0)+"% en "+analysis.lowestCompliance.label,
+      decision:"Revisar estándar, secuencia, bloqueos y capacidad antes del próximo corte.",
+      owner:v225AreaLabel(v225AreaForProcess(analysis.lowestCompliance.process))||"Líder del proceso"
+    });
+  }
+  if((m.reliability||{}).avg<90){
+    decisions.push({
+      title:"Asegurar el dato",
+      signal:Number((m.reliability||{}).avg||0)+"% de confiabilidad",
+      decision:"No permitir cierres sin responsable, fecha, estado y proceso claramente registrados.",
+      owner:"Calidad / Sistemas"
+    });
+  }
+  if(Number(m.noDeliveryCount||0)>0){
+    decisions.push({
+      title:"Reducir no entregas",
+      signal:Number(m.noDeliveryCount||0)+" pedidos",
+      decision:"Aplicar Pareto de causas y seguimiento hasta cierre confirmado.",
+      owner:"Despacho / Cartera"
+    });
+  }
+  if(m.specialWait&&m.specialWait.rework>0){
+    decisions.push({
+      title:"Eliminar reprocesos recurrentes",
+      signal:v225Time(m.specialWait.rework)+" fuera de meta",
+      decision:"Identificar reincidencias por área de origen y establecer acción correctiva.",
+      owner:"Calidad / Área responsable"
+    });
+  }
+  return decisions.slice(0,6);
+}
+function v235ExecutiveSignals(analysis){
+  var m=analysis.m,r=m.reliability||{},w=m.specialWait||{};
+  var processCompliance=v232Average(analysis.processes.map(function(x){return Number(x.slaPct||0);}));
+  return [
+    {label:"Desempeño general",value:analysis.score,suffix:"%",status:v235Status(analysis.score)},
+    {label:"Cumplimiento procesos",value:Math.round(processCompliance),suffix:"%",status:v235Status(processCompliance)},
+    {label:"Confiabilidad",value:Number(r.avg||0),suffix:"%",status:v235Status(Number(r.avg||0))},
+    {label:"WIP dentro de meta",value:m.wip?Math.round(100-Number(m.lateWip||0)/m.wip*100):100,suffix:"%",status:v235Status(m.wip?100-Number(m.lateWip||0)/m.wip*100:100)},
+    {label:"Cobertura trazada",value:v235Percent(m.cases,Math.max(1,m.totalLoaded||m.cases)),suffix:"%",status:v235Status(v235Percent(m.cases,Math.max(1,m.totalLoaded||m.cases)))},
+    {label:"No entregas",value:Number(m.noDeliveryCount||0),suffix:"",status:Number(m.noDeliveryCount||0)===0?v235Status(100):(Number(m.noDeliveryCount||0)<=2?v235Status(75):v235Status(50))}
+  ];
+}
+function v232Analyze(meta){
+  var analysis=v232AnalyzeV235Base(meta);
+  var m=analysis.m;
+  analysis.processHealth=analysis.processes.map(function(p){
+    return Object.assign({},p,{health:v235HealthScoreProcess(p),healthStatus:v235Status(v235HealthScoreProcess(p))});
+  }).sort(function(a,b){return a.health-b.health;});
+  analysis.areaHealth=analysis.areas.map(function(a){
+    return Object.assign({},a,{health:v235HealthScoreArea(a),healthStatus:v235Status(v235HealthScoreArea(a))});
+  }).sort(function(a,b){return a.health-b.health;});
+  analysis.comparison=v235AnalysisWindow(m);
+  analysis.pareto=v235BuildPareto(m);
+  analysis.risks=v235BuildRisks(m,analysis.processes,analysis.areas);
+  analysis.decisions=v235BuildDecisionCards(analysis);
+  analysis.signals=v235ExecutiveSignals(analysis);
+  analysis.strengths=[];
+  var bestProcess=analysis.processes.slice().sort(function(a,b){return Number(b.slaPct||0)-Number(a.slaPct||0);})[0];
+  var bestArea=analysis.areas.slice().sort(function(a,b){return Number(b.reliability||0)-Number(a.reliability||0);})[0];
+  if(bestProcess&&bestProcess.label)analysis.strengths.push(bestProcess.label+" presenta el mayor cumplimiento con "+Number(bestProcess.slaPct||0)+"%.");
+  if(bestArea&&bestArea.label)analysis.strengths.push(bestArea.label+" presenta la mejor confiabilidad de registro con "+Number(bestArea.reliability||0)+"%.");
+  if(Number((m.reliability||{}).high||0)>0)analysis.strengths.push(Number((m.reliability||{}).high||0)+" pedidos cuentan con trazabilidad igual o superior al 90%.");
+  if(!analysis.strengths.length)analysis.strengths.push("No existen fortalezas cuantificables suficientes con los filtros actuales; se recomienda ampliar la muestra.");
+  analysis.managementQuestions=[
+    "¿Qué causas explican la mayor parte del WIP fuera de meta?",
+    "¿La meta del proceso crítico refleja el trabajo real o necesita recalibración?",
+    "¿Los responsables reciben las novedades con tiempo suficiente para responder?",
+    "¿Qué reprocesos se repiten y en qué área se originan?",
+    "¿Las no entregas se concentran por cliente, transportadora, documentación o preparación?"
+  ];
+  return analysis;
+}
+
+/* ---------- GRÁFICOS PDF ---------- */
+function v235PdfGauge(doc,state,score,label){
+  v234PdfEnsure(doc,state,150,state.section);
+  var cx=state.margin+82,cy=state.y+78,r=52;
+  doc.setDrawColor(226,232,240);
+  doc.setLineWidth(12);
+  doc.circle(cx,cy,r,"S");
+  var color=v235Status(score).color;
+  doc.setDrawColor(color[0],color[1],color[2]);
+  doc.setLineWidth(12);
+  var segments=40,filled=Math.round(segments*v235Clamp(score,0,100)/100);
+  for(var i=0;i<filled;i++){
+    var a1=(-90+i*360/segments)*Math.PI/180;
+    var a2=(-90+(i+0.72)*360/segments)*Math.PI/180;
+    doc.line(cx+Math.cos(a1)*r,cy+Math.sin(a1)*r,cx+Math.cos(a2)*r,cy+Math.sin(a2)*r);
+  }
+  doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(24);
+  doc.text(String(score)+"%",cx,cy+7,{align:"center"});
+  doc.setFontSize(9);doc.setTextColor(71,85,105);
+  doc.text(label,cx,cy+26,{align:"center"});
+}
+function v235PdfSignals(doc,state,signals){
+  var x=state.margin+175,y=state.y,w=state.contentWidth-175,cols=2,gap=8,cardW=(w-gap)/2,cardH=43;
+  (signals||[]).slice(0,6).forEach(function(s,i){
+    var col=i%cols,row=Math.floor(i/cols),xx=x+col*(cardW+gap),yy=y+row*(cardH+7);
+    var c=s.status.color;
+    doc.setFillColor(248,250,252);doc.setDrawColor(216,226,239);
+    doc.roundedRect(xx,yy,cardW,cardH,6,6,"FD");
+    doc.setFillColor(c[0],c[1],c[2]);doc.roundedRect(xx,yy,5,cardH,3,3,"F");
+    doc.setTextColor(100,116,139);doc.setFont("helvetica","bold");doc.setFontSize(7);
+    doc.text(s.label,xx+12,yy+13);
+    doc.setTextColor(6,27,70);doc.setFontSize(14);
+    doc.text(String(s.value)+s.suffix,xx+12,yy+31);
+    doc.setFontSize(7);doc.setTextColor(c[0],c[1],c[2]);
+    doc.text(s.status.label,xx+cardW-8,yy+31,{align:"right"});
+  });
+  state.y+=150;
+}
+function v235PdfLineChart(doc,state,title,rows,labelFn,valueFn,displayFn){
+  rows=(rows||[]).slice(-20);
+  var h=190;
+  v234PdfEnsure(doc,state,h+15,state.section);
+  var x=state.margin,y=state.y,w=state.contentWidth;
+  doc.setFillColor(255,255,255);doc.setDrawColor(216,226,239);doc.roundedRect(x,y,w,h,8,8,"FD");
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(6,27,70);doc.text(title,x+12,y+20);
+  var px=x+45,py=y+42,pw=w-70,ph=h-72;
+  var vals=rows.map(function(r){return Number(valueFn(r))||0;});
+  var max=Math.max.apply(Math,[1].concat(vals)),min=Math.min.apply(Math,[0].concat(vals));
+  doc.setDrawColor(226,232,240);doc.setLineWidth(.5);
+  for(var g=0;g<=4;g++){var gy=py+ph*g/4;doc.line(px,gy,px+pw,gy);}
+  if(rows.length>1){
+    doc.setDrawColor(37,99,235);doc.setLineWidth(2);
+    for(var i=1;i<rows.length;i++){
+      var x1=px+(i-1)*pw/(rows.length-1),x2=px+i*pw/(rows.length-1);
+      var y1=py+ph-(vals[i-1]-min)/(max-min||1)*ph,y2=py+ph-(vals[i]-min)/(max-min||1)*ph;
+      doc.line(x1,y1,x2,y2);
+    }
+    rows.forEach(function(r,i){
+      var xx=px+i*pw/(rows.length-1),yy=py+ph-(vals[i]-min)/(max-min||1)*ph;
+      doc.setFillColor(242,183,5);doc.circle(xx,yy,3,"F");
+      if(i===0||i===rows.length-1||i%Math.max(1,Math.floor(rows.length/5))===0){
+        doc.setFontSize(6.5);doc.setTextColor(100,116,139);
+        doc.text(String(labelFn(r)).slice(5),xx,py+ph+15,{align:"center"});
+      }
+    });
+  }else{
+    doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(100,116,139);
+    doc.text("No hay suficientes puntos para construir la tendencia.",x+w/2,y+h/2,{align:"center"});
+  }
+  doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(6,27,70);
+  if(rows.length)doc.text(displayFn(rows[rows.length-1]),x+w-12,y+20,{align:"right"});
+  state.y+=h+12;
+}
+function v235PdfDonut(doc,state,title,rows,labelFn,valueFn){
+  var h=180;
+  v234PdfEnsure(doc,state,h+12,state.section);
+  var x=state.margin,y=state.y,w=state.contentWidth;
+  doc.setFillColor(255,255,255);doc.setDrawColor(216,226,239);doc.roundedRect(x,y,w,h,8,8,"FD");
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(6,27,70);doc.text(title,x+12,y+20);
+  var total=rows.reduce(function(s,r){return s+(Number(valueFn(r))||0);},0);
+  var cx=x+105,cy=y+99,r=52,colors=[[37,99,235],[15,159,110],[242,183,5],[217,119,6],[124,58,237],[220,38,38]];
+  var start=-90;
+  rows.forEach(function(row,i){
+    var value=Number(valueFn(row))||0,angle=total?value/total*360:0;
+    doc.setDrawColor(colors[i%colors.length][0],colors[i%colors.length][1],colors[i%colors.length][2]);
+    doc.setLineWidth(18);
+    var steps=Math.max(1,Math.round(angle/5));
+    for(var s=0;s<steps;s++){
+      var a1=(start+s*angle/steps)*Math.PI/180,a2=(start+(s+.75)*angle/steps)*Math.PI/180;
+      doc.line(cx+Math.cos(a1)*r,cy+Math.sin(a1)*r,cx+Math.cos(a2)*r,cy+Math.sin(a2)*r);
+    }
+    start+=angle;
+  });
+  doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(13);
+  doc.text(String(rows.reduce(function(s,r){return s+(Number(r.count)||Number(valueFn(r))||0);},0)),cx,cy+4,{align:"center"});
+  doc.setFontSize(7);doc.setTextColor(100,116,139);doc.text("TOTAL",cx,cy+16,{align:"center"});
+  rows.slice(0,6).forEach(function(row,i){
+    var yy=y+47+i*19,c=colors[i%colors.length];
+    doc.setFillColor(c[0],c[1],c[2]);doc.circle(x+210,yy-3,4,"F");
+    doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(51,65,85);
+    doc.text(String(labelFn(row)).slice(0,32),x+220,yy);
+    doc.setFont("helvetica","bold");doc.setTextColor(6,27,70);
+    doc.text(v225Time(Number(valueFn(row))||0),x+w-12,yy,{align:"right"});
+  });
+  state.y+=h+12;
+}
+function v235PdfQuadrant(doc,state,title,rows){
+  var h=225;
+  v234PdfEnsure(doc,state,h+12,state.section);
+  var x=state.margin,y=state.y,w=state.contentWidth;
+  doc.setFillColor(255,255,255);doc.setDrawColor(216,226,239);doc.roundedRect(x,y,w,h,8,8,"FD");
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(6,27,70);doc.text(title,x+12,y+20);
+  var px=x+55,py=y+43,pw=w-85,ph=h-78;
+  doc.setFillColor(236,253,245);doc.rect(px+pw/2,py,pw/2,ph/2,"F");
+  doc.setFillColor(255,247,237);doc.rect(px,py,pw/2,ph/2,"F");
+  doc.setFillColor(254,242,242);doc.rect(px,py+ph/2,pw/2,ph/2,"F");
+  doc.setFillColor(239,246,255);doc.rect(px+pw/2,py+ph/2,pw/2,ph/2,"F");
+  doc.setDrawColor(148,163,184);doc.line(px+pw/2,py,px+pw/2,py+ph);doc.line(px,py+ph/2,px+pw,py+ph/2);
+  var maxLt=Math.max.apply(Math,[1].concat(rows.map(function(r){return Number(r.avg)||0;})));
+  rows.slice(0,14).forEach(function(r,i){
+    var xx=px+v235Clamp((Number(r.avg||0)/maxLt)*pw,0,pw);
+    var yy=py+ph-v235Clamp(Number(r.slaPct||0)/100*ph,0,ph);
+    var st=v235Status(v235HealthScoreProcess(r)),c=st.color;
+    doc.setFillColor(c[0],c[1],c[2]);doc.circle(xx,yy,Math.max(3,Math.min(8,3+Number(r.wip||0))),"F");
+    doc.setFont("helvetica","bold");doc.setFontSize(5.8);doc.setTextColor(51,65,85);
+    doc.text(String(r.label||"").slice(0,15),xx+5,yy-4);
+  });
+  doc.setFont("helvetica","normal");doc.setFontSize(6.5);doc.setTextColor(100,116,139);
+  doc.text("Menor LT",px,py+ph+15);doc.text("Mayor LT",px+pw,py+ph+15,{align:"right"});
+  doc.text("100% cumplimiento",px-8,py,{align:"right"});doc.text("0%",px-8,py+ph,{align:"right"});
+  state.y+=h+12;
+}
+function v235PdfRiskMatrix(doc,state,risks){
+  var h=235;
+  v234PdfEnsure(doc,state,h+12,state.section);
+  var x=state.margin,y=state.y,w=state.contentWidth;
+  doc.setFillColor(255,255,255);doc.setDrawColor(216,226,239);doc.roundedRect(x,y,w,h,8,8,"FD");
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(6,27,70);doc.text("Matriz de riesgos operativos",x+12,y+20);
+  var size=150,gx=x+45,gy=y+45,cell=size/3;
+  var matrixColors=[
+    [[236,253,245],[236,253,245],[255,247,237]],
+    [[236,253,245],[255,247,237],[254,226,226]],
+    [[255,247,237],[254,226,226],[254,226,226]]
+  ];
+  for(var impact=1;impact<=3;impact++){
+    for(var prob=1;prob<=3;prob++){
+      var c=matrixColors[impact-1][prob-1],xx=gx+(prob-1)*cell,yy=gy+(3-impact)*cell;
+      doc.setFillColor(c[0],c[1],c[2]);doc.setDrawColor(203,213,225);doc.rect(xx,yy,cell,cell,"FD");
+    }
+  }
+  var grouped={};
+  (risks||[]).forEach(function(r){
+    var key=r.probability+"|"+r.impact;
+    if(!grouped[key])grouped[key]=[];
+    grouped[key].push(r);
+  });
+  Object.keys(grouped).forEach(function(key){
+    var parts=key.split("|"),prob=Number(parts[0]),impact=Number(parts[1]);
+    var xx=gx+(prob-.5)*cell,yy=gy+(3-impact+.5)*cell;
+    var list=grouped[key];
+    doc.setFillColor(6,27,70);doc.circle(xx,yy,10,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(8);
+    doc.text(String(list.length),xx,yy+3,{align:"center"});
+  });
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(71,85,105);
+  doc.text("Probabilidad →",gx+size/2,gy+size+17,{align:"center"});
+  doc.text("Impacto",gx-27,gy+size/2,{angle:90,align:"center"});
+  var top=(risks||[]).slice(0,6);
+  top.forEach(function(r,i){
+    var yy=y+47+i*27,xx=x+235;
+    var c=r.level==="Alto"?[220,38,38]:(r.level==="Medio"?[217,119,6]:[15,159,110]);
+    doc.setFillColor(c[0],c[1],c[2]);doc.roundedRect(xx,yy,45,15,5,5,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(6.5);doc.text(r.level,xx+22.5,yy+10,{align:"center"});
+    doc.setTextColor(6,27,70);doc.setFontSize(7);doc.text(String(r.risk).slice(0,38),xx+54,yy+10);
+    doc.setTextColor(100,116,139);doc.setFont("helvetica","normal");doc.setFontSize(6);
+    doc.text(String(r.evidence).slice(0,55),xx+54,yy+21);
+  });
+  state.y+=h+12;
+}
+function v235PdfDecisionCards(doc,state,decisions){
+  (decisions||[]).forEach(function(d,i){
+    v234PdfEnsure(doc,state,78,state.section);
+    var x=state.margin,y=state.y,w=state.contentWidth;
+    doc.setFillColor(i%2===0?248:255,250,252);doc.setDrawColor(216,226,239);doc.roundedRect(x,y,w,65,7,7,"FD");
+    doc.setFillColor(242,183,5);doc.roundedRect(x,y,7,65,3,3,"F");
+    doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(10);
+    doc.text(d.title,x+16,y+16);
+    doc.setFontSize(7);doc.setTextColor(100,116,139);doc.text("SEÑAL: "+d.signal,x+16,y+30);
+    doc.setTextColor(51,65,85);doc.setFont("helvetica","normal");doc.setFontSize(8);
+    doc.text(doc.splitTextToSize(d.decision,w-160),x+16,y+43);
+    doc.setFont("helvetica","bold");doc.setTextColor(37,99,235);doc.setFontSize(7);
+    doc.text("Responsable: "+d.owner,x+w-12,y+56,{align:"right"});
+    state.y+=74;
+  });
+}
+
+/* ---------- PDF V235 ---------- */
+async function v232GeneratePdf(meta,analysis){
+  try{
+    await v234LoadPdfLibraries();
+    var PDF=window.jspdf.jsPDF;
+    var doc=new PDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});
+    var state=v234PdfPageState(doc),m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
+
+    /* Portada gráfica */
+    doc.setFillColor(6,27,70);doc.rect(0,0,state.pageWidth,state.pageHeight,"F");
+    doc.setFillColor(15,45,92);doc.triangle(state.pageWidth*.50,0,state.pageWidth,0,state.pageWidth,state.pageHeight*.38,"F");
+    doc.setFillColor(18,55,109);doc.triangle(0,state.pageHeight*.68,0,state.pageHeight,state.pageWidth*.52,state.pageHeight,"F");
+    doc.setFillColor(242,183,5);doc.rect(0,0,14,state.pageHeight,"F");
+    doc.setFillColor(242,183,5);doc.circle(state.pageWidth-78,75,35,"F");
+    doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(14);doc.text("VSM",state.pageWidth-78,80,{align:"center"});
+    doc.setTextColor(242,183,5);doc.setFontSize(9);doc.text(meta.confidentiality.toUpperCase(),52,63);
+    doc.setTextColor(255,255,255);doc.setFontSize(29);
+    var titleLines=doc.splitTextToSize(meta.title,state.pageWidth-112);doc.text(titleLines,52,118);
+    var titleBottom=118+titleLines.length*34;
+    doc.setFont("helvetica","normal");doc.setFontSize(12);doc.setTextColor(219,234,254);
+    doc.text(doc.splitTextToSize(meta.objective,state.pageWidth-112),52,titleBottom+20);
+    var scoreY=titleBottom+130;
+    var scoreStatus=v235Status(analysis.score),sc=scoreStatus.color;
+    doc.setFillColor(255,255,255);doc.setGState(new doc.GState({opacity:.10}));doc.roundedRect(52,scoreY,190,112,12,12,"F");doc.setGState(new doc.GState({opacity:1}));
+    doc.setTextColor(242,183,5);doc.setFont("helvetica","bold");doc.setFontSize(38);doc.text(analysis.score+"%",72,scoreY+58);
+    doc.setFontSize(9);doc.setTextColor(255,255,255);doc.text("ÍNDICE GENERAL",72,scoreY+78);
+    doc.setFillColor(sc[0],sc[1],sc[2]);doc.roundedRect(72,scoreY+88,100,17,6,6,"F");
+    doc.setFontSize(7);doc.text(scoreStatus.label.toUpperCase(),122,scoreY+99,{align:"center"});
+    var metaX=275,metaY=scoreY;
+    [
+      ["Elaborado por",meta.author+" · "+meta.position],
+      ["Área responsable",meta.department],
+      ["Dirigido a",meta.audience],
+      ["Periodo / alcance",meta.periodName||meta.scope]
+    ].forEach(function(item,i){
+      doc.setTextColor(242,183,5);doc.setFont("helvetica","bold");doc.setFontSize(7);doc.text(item[0].toUpperCase(),metaX,metaY+i*29+10);
+      doc.setTextColor(255,255,255);doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.text(doc.splitTextToSize(item[1],255),metaX,metaY+i*29+23);
+    });
+    doc.setTextColor(203,213,225);doc.setFontSize(8);
+    doc.text("Generado el "+meta.generatedAt.toLocaleString("es-CO")+" · "+VERSION,52,state.pageHeight-44);
+    doc.text("Super Admin excluido de productividad y tiempos operativos.",52,state.pageHeight-28);
+
+    /* Tabla de contenido */
+    v234PdfNewPage(doc,state,"Contenido");
+    v234PdfSection(doc,state,"Contenido del informe");
+    [
+      "1. Dashboard ejecutivo","2. Diagnóstico y hallazgos","3. Tendencias del flujo",
+      "4. Desempeño por proceso","5. Desempeño por área","6. Productividad por actor",
+      "7. Novedades, reprocesos y no entregas","8. Confiabilidad y calidad del dato",
+      "9. Matriz de riesgos y Pareto","10. Decisiones sugeridas","11. Plan de acción",
+      "12. Pedidos críticos","13. Metodología y conclusión"
+    ].forEach(function(x,i){
+      v234PdfEnsure(doc,state,30,"Contenido");
+      doc.setFillColor(i%2?248:238,250,252);doc.roundedRect(state.margin,state.y,state.contentWidth,24,5,5,"F");
+      doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(9);doc.text(x,state.margin+10,state.y+16);
+      state.y+=29;
+    });
+
+    /* Dashboard */
+    v234PdfNewPage(doc,state,"Dashboard ejecutivo");
+    v234PdfSection(doc,state,"1. Dashboard ejecutivo");
+    v235PdfGauge(doc,state,analysis.score,analysis.scoreState.label);
+    state.y-=150;
+    v235PdfSignals(doc,state,analysis.signals);
+    v234PdfKpiGrid(doc,state,[
+      {title:"Pedidos cargados",value:String(m.totalLoaded||app.cases.length||0),detail:"Base total"},
+      {title:"Pedidos trazados",value:String(m.cases||0),detail:"Cobertura "+v235Percent(m.cases,Math.max(1,m.totalLoaded||m.cases))+"%"},
+      {title:"WIP actual",value:String(m.wip||0),detail:String(m.lateWip||0)+" fuera de meta"},
+      {title:"Throughput",value:String(m.throughput||0)+"/día",detail:String(m.closed||0)+" cerrados"},
+      {title:"Lead Time P50",value:v225Time(m.leadP50||0),detail:"P90 "+v225Time(m.leadP90||0)},
+      {title:"Picking",value:v225Time(m.pickingAvg||0),detail:"P90 "+v225Time(m.pickingP90||0)},
+      {title:"Confiabilidad",value:Number(r.avg||0)+"%",detail:Number(r.low||0)+" críticos"},
+      {title:"No entregas",value:String(m.noDeliveryCount||0),detail:Number(w.noDeliveryOpen||0)+" abiertas"}
+    ]);
+    v234PdfParagraph(doc,state,"Lectura ejecutiva: "+analysis.scoreState.text,{bold:true});
+
+    /* Diagnóstico */
+    v234PdfSection(doc,state,"2. Diagnóstico y hallazgos");
+    v234PdfParagraph(doc,state,"Fortalezas observadas",{bold:true});
+    v234PdfBulletList(doc,state,analysis.strengths);
+    v234PdfParagraph(doc,state,"Hallazgos prioritarios",{bold:true});
+    v234PdfBulletList(doc,state,analysis.findings);
+    if(meta.notes)v234PdfParagraph(doc,state,"Contexto suministrado: "+meta.notes,{bold:true});
+
+    /* Tendencias */
+    if(meta.includeTrends){
+      v234PdfSection(doc,state,"3. Tendencias del flujo");
+      v235PdfLineChart(doc,state,"Pedidos cerrados por día",m.throughputSeries||[],function(x){return x.day;},function(x){return x.count;},function(x){return x.count+" cierres";});
+      v235PdfDonut(doc,state,"Antigüedad del WIP",m.wipBuckets||[],function(x){return x.label;},function(x){return x.count;});
+      if(analysis.comparison){
+        var c=analysis.comparison;
+        v234PdfKpiGrid(doc,state,[
+          {title:"Casos periodo anterior",value:String(c.previous.cases),detail:"LT P50 "+v225Time(c.previous.p50)},
+          {title:"Casos periodo reciente",value:String(c.recent.cases),detail:"LT P50 "+v225Time(c.recent.p50)},
+          {title:"Variación LT promedio",value:v235PctChange(c.recent.avgLt,c.previous.avgLt)+"%",detail:"Negativo indica mejora"},
+          {title:"Variación cierres",value:v235PctChange(c.recent.cases,c.previous.cases)+"%",detail:"Comparación entre mitades del periodo"}
+        ]);
+      }else{
+        v234PdfParagraph(doc,state,"No existe una muestra suficiente de pedidos cerrados para comparar dos periodos.",{bold:true});
+      }
+    }
+
+    /* Procesos */
+    v234PdfSection(doc,state,"4. Desempeño por proceso");
+    v235PdfQuadrant(doc,state,"Matriz de proceso: Lead Time vs. cumplimiento",analysis.processes);
+    v234PdfBarChart(doc,state,"Lead Time promedio por proceso",analysis.processes.slice().sort(function(a,b){return b.avg-a.avg;}),function(x){return x.avg;},function(x){return x.label;},function(x){return v225Time(x.avg);});
+    v234PdfBarChart(doc,state,"Salud integral por proceso",analysis.processHealth,function(x){return x.health;},function(x){return x.label;},function(x){return x.health+"%";},function(x){return x.healthStatus.cls;});
+    v234PdfTable(doc,state,"Detalle de procesos",
+      ["Proceso","Casos","WIP","Atras.","LT prom.","P50","P90","Cumpl.","Salud"],
+      analysis.processHealth.map(function(x){return [x.label,x.cases||0,x.wip||0,x.wipLate||0,v225Time(x.avg||0),v225Time(x.p50||0),v225Time(x.p90||0),(x.slaPct||0)+"%",x.health+"%"];}),
+      {fontSize:6.5}
+    );
+
+    /* Áreas */
+    v234PdfSection(doc,state,"5. Desempeño por área");
+    v234PdfBarChart(doc,state,"Salud integral por área",analysis.areaHealth,function(x){return x.health;},function(x){return x.label;},function(x){return x.health+"%";},function(x){return x.healthStatus.cls;});
+    v234PdfTable(doc,state,"Detalle por área",
+      ["Área","Casos","WIP","Cerrados","LT prom.","Cumpl.","Confiab.","No entregas","Salud"],
+      analysis.areaHealth.map(function(x){return [x.label,x.cases||0,x.wip||0,x.closed||0,v225Time(x.avg||0),(x.compliance||0)+"%",(x.reliability||0)+"%",x.noDeliveries||0,x.health+"%"];}),
+      {fontSize:6.5}
+    );
+    analysis.areaHealth.forEach(function(a){
+      v234PdfEnsure(doc,state,65,"5. Desempeño por área");
+      var st=a.healthStatus,c=st.color;
+      doc.setFillColor(248,250,252);doc.setDrawColor(216,226,239);doc.roundedRect(state.margin,state.y,state.contentWidth,52,6,6,"FD");
+      doc.setFillColor(c[0],c[1],c[2]);doc.roundedRect(state.margin,state.y,6,52,3,3,"F");
+      doc.setTextColor(6,27,70);doc.setFont("helvetica","bold");doc.setFontSize(9);doc.text(a.label,state.margin+14,state.y+15);
+      doc.setFontSize(7);doc.setTextColor(71,85,105);
+      doc.text("LT "+v225Time(a.avg||0)+" · Cumpl. "+Number(a.compliance||0)+"% · Confiab. "+Number(a.reliability||0)+"% · WIP "+Number(a.wip||0),state.margin+14,state.y+31);
+      doc.setTextColor(c[0],c[1],c[2]);doc.setFont("helvetica","bold");
+      doc.text("Salud "+a.health+"% · "+st.label,state.margin+state.contentWidth-12,state.y+31,{align:"right"});
+      state.y+=60;
+    });
+
+    /* Actores */
+    if(meta.includeActors){
+      v234PdfSection(doc,state,"6. Productividad por actor");
+      v234PdfParagraph(doc,state,"El Super Admin está excluido. El indicador representa carga y actividad trazada; debe complementarse con calidad, complejidad y cumplimiento.",{bold:true});
+      v234PdfBarChart(doc,state,"Trabajo directo por actor",analysis.actors.slice().sort(function(a,b){return b.active-a.active;}).slice(0,15),function(x){return x.active;},function(x){return x.user;},function(x){return v225Time(x.active);});
+      v234PdfTable(doc,state,"Detalle de productividad",
+        ["Actor","Rol","Casos","WIP","Cerrados","Trabajo","Prom.","Cumpl.","Carga"],
+        analysis.actors.slice(0,50).map(function(x){return [x.user,roleTitle(x.role),x.count||0,x.open||0,x.closed||0,v225Time(x.active||0),v225Time(x.directPerCase||0),(x.compliance||0)+"%",(x.directLoadPct||0)+"%"];}),
+        {fontSize:6.1}
+      );
+    }
+
+    /* Esperas */
+    if(meta.includeWaits){
+      v234PdfSection(doc,state,"7. Novedades, reprocesos y no entregas");
+      v234PdfKpiGrid(doc,state,[
+        {title:"Espera en novedades",value:v225Time(w.novelty||0),detail:(w.noveltyOpen||0)+" abiertas"},
+        {title:"Espera en reproceso",value:v225Time(w.rework||0),detail:(w.reworkOpen||0)+" abiertos"},
+        {title:"Espera en no entregas",value:v225Time(w.noDelivery||0),detail:(w.noDeliveryOpen||0)+" abiertas"},
+        {title:"No entregas",value:String(m.noDeliveryCount||0),detail:"Pedidos identificados"}
+      ]);
+      v235PdfDonut(doc,state,"Composición de esperas especiales",[
+        {label:"Novedades",value:w.novelty||0,count:(w.noveltyRows||[]).length},
+        {label:"Reprocesos",value:w.rework||0,count:(w.reworkRows||[]).length},
+        {label:"No entregas",value:w.noDelivery||0,count:(w.noDeliveryRows||[]).length}
+      ],function(x){return x.label;},function(x){return x.value;});
+      v234PdfTable(doc,state,"Trazabilidad de esperas",
+        ["Pedido","Categoría","Área","Proceso","Duración","Abierto","Origen"],
+        (w.all||[]).slice(0,100).map(function(x){return [x.pedido,x.category,v225AreaLabel(x.area),processTitle(x.process),v225Time(x.duration||0),x.open?"Sí":"No",x.source];}),
+        {fontSize:6,columnStyles:{6:{cellWidth:145}}}
+      );
+    }
+
+    /* Confiabilidad */
+    v234PdfSection(doc,state,"8. Confiabilidad y calidad del dato");
+    v234PdfKpiGrid(doc,state,[
+      {title:"Confiabilidad general",value:Number(r.avg||0)+"%",detail:"Meta recomendada 90%"},
+      {title:"Registros confiables",value:String(r.high||0),detail:"≥ 90%"},
+      {title:"Por revisar",value:String(r.medium||0),detail:"70% a 89%"},
+      {title:"Críticos",value:String(r.low||0),detail:"< 70%"},
+      {title:"Responsable identificado",value:Number(r.responsiblePct||0)+"%",detail:"Pedidos con actor"},
+      {title:"Proceso identificado",value:Number(r.processPct||0)+"%",detail:"Etapa registrada"},
+      {title:"Estado identificado",value:Number(r.statusPct||0)+"%",detail:"Estado disponible"},
+      {title:"No trazados",value:String(m.notTraced||0),detail:"Pendientes de QA"}
+    ]);
+    v234PdfParagraph(doc,state,"La confiabilidad mide la integridad mínima del registro; no evalúa por sí sola la calidad del trabajo realizado.");
+
+    /* Riesgos / Pareto */
+    if(meta.includeRisks){
+      v234PdfSection(doc,state,"9. Matriz de riesgos y Pareto");
+      v235PdfRiskMatrix(doc,state,analysis.risks);
+      v234PdfBarChart(doc,state,"Pareto de causas por tiempo asociado",analysis.pareto,function(x){return x.value;},function(x){return x.label;},function(x){return v225Time(x.value)+" · "+x.count+" caso(s)";},function(x,i){return i===0?"bad":"warn";});
+      v234PdfTable(doc,state,"Registro de riesgos",
+        ["Nivel","Riesgo","Fuente","Prob.","Impacto","Evidencia","Tratamiento"],
+        analysis.risks.map(function(x){return [x.level,x.risk,x.source,x.probability,x.impact,x.evidence,x.treatment];}),
+        {fontSize:5.9,columnStyles:{5:{cellWidth:115},6:{cellWidth:135}}}
+      );
+    }
+
+    /* Decisiones */
+    v234PdfSection(doc,state,"10. Decisiones sugeridas");
+    v235PdfDecisionCards(doc,state,analysis.decisions);
+    v234PdfParagraph(doc,state,"Preguntas que deben resolverse en comité",{bold:true});
+    v234PdfBulletList(doc,state,analysis.managementQuestions);
+    v234PdfParagraph(doc,state,"Recomendaciones analíticas",{bold:true});
+    v234PdfBulletList(doc,state,analysis.recommendations);
+
+    /* Plan */
+    if(meta.includeActionPlan){
+      v234PdfTable(doc,state,"11. Plan de acción propuesto",
+        ["Prioridad","Situación","Acción","Responsable sugerido","Meta"],
+        analysis.actions.map(function(x){return [x.priority,x.issue,x.action,x.owner,x.target];}),
+        {fontSize:6.3,columnStyles:{2:{cellWidth:165}}}
+      );
+    }
+
+    /* Pedidos */
+    if(meta.includeOrders){
+      v234PdfTable(doc,state,"12. Pedidos críticos",
+        ["Pedido","OC","Cliente","Proceso","Responsable","Tiempo","Meta","Estado","Próxima acción"],
+        (m.wipRows||[]).slice(0,150).map(function(x){return [x.pedido,x.oc,x.cliente,x.processLabel,x.responsable,v225Time(x.age||0),(x.slaHours||0)+" h",x.late?"Fuera de meta":"Dentro",x.next||""];}),
+        {fontSize:5.6,columnStyles:{2:{cellWidth:85},8:{cellWidth:110}}}
+      );
+    }
+
+    /* Metodología / conclusión */
+    if(meta.includeMethodology){
+      v234PdfTable(doc,state,"13. Metodología y fuentes",
+        ["Elemento","Criterio aplicado"],
+        [
+          ["Jornada","07:00–12:00 y 13:40–17:30; sábados, domingos y festivos excluidos."],
+          ["Lead Time","Tiempo laboral desde el inicio hasta el cierre o corte."],
+          ["P50 / P90","Mediana y percentil 90 de los casos terminados."],
+          ["Trabajo directo","Eventos operativos y acumulados válidos; Super Admin excluido."],
+          ["Reproceso","Exceso sobre la meta después de retornar a una etapa anterior."],
+          ["No entrega","Desde la confirmación de no entrega hasta la solución o cierre."],
+          ["Salud de proceso","Cumplimiento, eficiencia, WIP dentro de meta y estabilidad."],
+          ["Índice general","Cumplimiento, confiabilidad, WIP, cobertura, no entregas y reprocesos."],
+          ["Fuentes","cases, case_events, reportes_novedad, processStats, requirements, noDeliveryReports, stateHistory y flowTrace."]
+        ],
+        {fontSize:6.8,columnStyles:{0:{cellWidth:100}}}
+      );
+    }
+    v234PdfSection(doc,state,"14. Conclusión");
+    v234PdfParagraph(doc,state,v234PdfConclusion(analysis),{size:10,bold:true});
+    v234PdfParagraph(doc,state,"Próximo control recomendado: revisar los indicadores después de ejecutar las acciones de prioridad alta y comparar nuevamente cumplimiento, WIP, confiabilidad y tiempos especiales.");
+    v234PdfParagraph(doc,state,"Elaborado por "+meta.author+" · "+meta.position+" · Dirigido a "+meta.audience+".");
+    v234PdfFooterAll(doc,meta);
+    doc.save(v232FileName(meta,"pdf"));
+  }catch(e){
+    console.error("[V235 Informe PDF]",e);
+    v234OpenPrintFallback(meta,analysis);
+    status("El motor PDF no pudo cargarse. Se abrió la versión imprimible completa para guardar como PDF.","ok");
+  }
+}
+
+/* ---------- CANVAS V235 PARA EXCEL ---------- */
+function v235CanvasRoundRect(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+function v235CanvasGauge(score,label){
+  var canvas=document.createElement("canvas");canvas.width=900;canvas.height=390;var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,900,390);
+  ctx.fillStyle="#061b46";ctx.font="bold 30px Arial";ctx.fillText("Índice general de desempeño",35,50);
+  var cx=210,cy=230,r=115;
+  ctx.lineWidth=28;ctx.strokeStyle="#e2e8f0";ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,2*Math.PI);ctx.stroke();
+  var st=v235Status(score);ctx.strokeStyle=st.cls==="ok"?"#0f9f6e":st.cls==="warn"?"#d97706":"#dc2626";
+  ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.PI*v235Clamp(score,0,100)/100);ctx.stroke();
+  ctx.fillStyle="#061b46";ctx.font="bold 58px Arial";ctx.textAlign="center";ctx.fillText(score+"%",cx,cy+15);
+  ctx.font="bold 20px Arial";ctx.fillStyle="#475569";ctx.fillText(label,cx,cy+55);ctx.textAlign="left";
+  ctx.fillStyle="#f8fafc";v235CanvasRoundRect(ctx,420,85,430,235,18);ctx.fill();
+  ctx.fillStyle="#061b46";ctx.font="bold 23px Arial";ctx.fillText("Lectura",450,125);
+  ctx.fillStyle="#334155";ctx.font="19px Arial";
+  var lines=["El índice integra cumplimiento,","confiabilidad, WIP, cobertura,","no entregas y reprocesos."];
+  lines.forEach(function(t,i){ctx.fillText(t,450,170+i*34);});
+  return canvas.toDataURL("image/png");
+}
+function v235CanvasLine(title,rows,labelFn,valueFn){
+  var canvas=document.createElement("canvas");canvas.width=1100;canvas.height=460;var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,1100,460);ctx.fillStyle="#061b46";ctx.font="bold 28px Arial";ctx.fillText(title,35,45);
+  var px=90,py=90,pw=930,ph=285,vals=(rows||[]).map(function(r){return Number(valueFn(r))||0;});
+  var max=Math.max.apply(Math,[1].concat(vals));
+  ctx.strokeStyle="#e2e8f0";ctx.lineWidth=1;
+  for(var g=0;g<=5;g++){var y=py+ph*g/5;ctx.beginPath();ctx.moveTo(px,y);ctx.lineTo(px+pw,y);ctx.stroke();}
+  if(rows.length>1){
+    ctx.strokeStyle="#2563eb";ctx.lineWidth=5;ctx.beginPath();
+    rows.forEach(function(r,i){var x=px+i*pw/(rows.length-1),y=py+ph-(Number(valueFn(r))||0)/max*ph;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();
+    rows.forEach(function(r,i){
+      var x=px+i*pw/(rows.length-1);
+      var y=py+ph-(Number(valueFn(r))||0)/max*ph;
+      ctx.fillStyle="#f2b705";
+      ctx.beginPath();
+      ctx.arc(x,y,7,0,Math.PI*2);
+      ctx.fill();
+      if(i===0||i===rows.length-1||i%Math.max(1,Math.floor(rows.length/6))===0){
+        ctx.fillStyle="#64748b";
+        ctx.font="14px Arial";
+        ctx.textAlign="center";
+        ctx.fillText(String(labelFn(r)).slice(5),x,py+ph+32);
+      }
+    });
+  }else{ctx.fillStyle="#64748b";ctx.font="20px Arial";ctx.textAlign="center";ctx.fillText("Sin datos suficientes",550,230);}
+  ctx.textAlign="left";return canvas.toDataURL("image/png");
+}
+function v235CanvasDonut(title,rows,labelFn,valueFn){
+  var canvas=document.createElement("canvas");canvas.width=1100;canvas.height=480;var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,1100,480);ctx.fillStyle="#061b46";ctx.font="bold 28px Arial";ctx.fillText(title,35,45);
+  var colors=["#2563eb","#0f9f6e","#f2b705","#d97706","#7c3aed","#dc2626"],total=rows.reduce(function(s,r){return s+(Number(valueFn(r))||0);},0),start=-Math.PI/2,cx=250,cy=265,r=135;
+  rows.forEach(function(row,i){var value=Number(valueFn(row))||0,angle=total?value/total*Math.PI*2:0;ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=48;ctx.beginPath();ctx.arc(cx,cy,r,start,start+angle);ctx.stroke();start+=angle;});
+  ctx.fillStyle="#061b46";ctx.font="bold 36px Arial";ctx.textAlign="center";ctx.fillText(rows.reduce(function(s,r){return s+(Number(r.count)||Number(valueFn(r))||0);},0),cx,cy+12);ctx.font="16px Arial";ctx.fillStyle="#64748b";ctx.fillText("TOTAL",cx,cy+42);ctx.textAlign="left";
+  rows.slice(0,8).forEach(function(row,i){var y=100+i*43;ctx.fillStyle=colors[i%colors.length];ctx.fillRect(500,y,20,20);ctx.fillStyle="#334155";ctx.font="19px Arial";ctx.fillText(String(labelFn(row)).slice(0,30),535,y+17);ctx.fillStyle="#061b46";ctx.font="bold 18px Arial";ctx.textAlign="right";ctx.fillText(v225Time(Number(valueFn(row))||0),1040,y+17);ctx.textAlign="left";});
+  return canvas.toDataURL("image/png");
+}
+function v235CanvasQuadrant(title,rows){
+  var canvas=document.createElement("canvas");canvas.width=1100;canvas.height=560;var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,1100,560);ctx.fillStyle="#061b46";ctx.font="bold 28px Arial";ctx.fillText(title,35,45);
+  var x=100,y=90,w=900,h=390;
+  ctx.fillStyle="#fff7ed";ctx.fillRect(x,y,w/2,h/2);ctx.fillStyle="#ecfdf5";ctx.fillRect(x+w/2,y,w/2,h/2);ctx.fillStyle="#fef2f2";ctx.fillRect(x,y+h/2,w/2,h/2);ctx.fillStyle="#eff6ff";ctx.fillRect(x+w/2,y+h/2,w/2,h/2);
+  ctx.strokeStyle="#94a3b8";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);ctx.beginPath();ctx.moveTo(x+w/2,y);ctx.lineTo(x+w/2,y+h);ctx.moveTo(x,y+h/2);ctx.lineTo(x+w,y+h/2);ctx.stroke();
+  var maxLt=Math.max.apply(Math,[1].concat(rows.map(function(r){return Number(r.avg)||0;})));
+  rows.slice(0,16).forEach(function(r){var xx=x+v235Clamp(Number(r.avg||0)/maxLt*w,0,w),yy=y+h-v235Clamp(Number(r.slaPct||0)/100*h,0,h),st=v235Status(v235HealthScoreProcess(r));ctx.fillStyle=st.cls==="ok"?"#0f9f6e":st.cls==="warn"?"#d97706":"#dc2626";ctx.beginPath();ctx.arc(xx,yy,Math.max(7,Math.min(18,8+Number(r.wip||0))),0,Math.PI*2);ctx.fill();ctx.fillStyle="#334155";ctx.font="bold 13px Arial";ctx.fillText(String(r.label||"").slice(0,18),xx+10,yy-8);});
+  ctx.fillStyle="#64748b";ctx.font="15px Arial";ctx.fillText("Menor Lead Time",x,y+h+35);ctx.textAlign="right";ctx.fillText("Mayor Lead Time",x+w,y+h+35);ctx.textAlign="left";ctx.save();ctx.translate(45,y+h/2);ctx.rotate(-Math.PI/2);ctx.textAlign="center";ctx.fillText("Cumplimiento",0,0);ctx.restore();
+  return canvas.toDataURL("image/png");
+}
+function v235CanvasRiskMatrix(risks){
+  var canvas=document.createElement("canvas");canvas.width=1100;canvas.height=600;var ctx=canvas.getContext("2d");
+  ctx.fillStyle="#ffffff";ctx.fillRect(0,0,1100,600);ctx.fillStyle="#061b46";ctx.font="bold 28px Arial";ctx.fillText("Matriz de riesgos operativos",35,45);
+  var x=90,y=100,size=390,cell=size/3,colors=[["#ecfdf5","#ecfdf5","#fff7ed"],["#ecfdf5","#fff7ed","#fee2e2"],["#fff7ed","#fee2e2","#fee2e2"]];
+  for(var impact=1;impact<=3;impact++){for(var prob=1;prob<=3;prob++){ctx.fillStyle=colors[impact-1][prob-1];ctx.fillRect(x+(prob-1)*cell,y+(3-impact)*cell,cell,cell);ctx.strokeStyle="#cbd5e1";ctx.strokeRect(x+(prob-1)*cell,y+(3-impact)*cell,cell,cell);}}
+  var groups={};(risks||[]).forEach(function(r){var k=r.probability+"|"+r.impact;if(!groups[k])groups[k]=[];groups[k].push(r);});
+  Object.keys(groups).forEach(function(k){var p=k.split("|"),prob=Number(p[0]),impact=Number(p[1]),xx=x+(prob-.5)*cell,yy=y+(3-impact+.5)*cell;ctx.fillStyle="#061b46";ctx.beginPath();ctx.arc(xx,yy,23,0,Math.PI*2);ctx.fill();ctx.fillStyle="#ffffff";ctx.font="bold 20px Arial";ctx.textAlign="center";ctx.fillText(groups[k].length,xx,yy+7);ctx.textAlign="left";});
+  ctx.fillStyle="#64748b";ctx.font="17px Arial";ctx.fillText("Probabilidad →",x+130,y+size+38);ctx.save();ctx.translate(45,y+195);ctx.rotate(-Math.PI/2);ctx.textAlign="center";ctx.fillText("Impacto",0,0);ctx.restore();
+  (risks||[]).slice(0,7).forEach(function(r,i){var yy=95+i*63,xx=560;ctx.fillStyle=r.level==="Alto"?"#dc2626":r.level==="Medio"?"#d97706":"#0f9f6e";v235CanvasRoundRect(ctx,xx,yy,90,28,12);ctx.fill();ctx.fillStyle="#ffffff";ctx.font="bold 14px Arial";ctx.textAlign="center";ctx.fillText(r.level,xx+45,yy+20);ctx.textAlign="left";ctx.fillStyle="#061b46";ctx.font="bold 16px Arial";ctx.fillText(String(r.risk).slice(0,39),xx+110,yy+15);ctx.fillStyle="#64748b";ctx.font="14px Arial";ctx.fillText(String(r.evidence).slice(0,56),xx+110,yy+38);});
+  return canvas.toDataURL("image/png");
+}
+function v235ExcelConditionalPercent(sheet,column,start,end){
+  if(end<start)return;
+  sheet.addConditionalFormatting({
+    ref:column+start+":"+column+end,
+    rules:[
+      {type:"cellIs",operator:"greaterThanOrEqual",formulae:[85],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FFC6EFCE"},fgColor:{argb:"FFC6EFCE"}},font:{color:{argb:"FF006100"}}}},
+      {type:"cellIs",operator:"between",formulae:[65,84.999],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FFFFEB9C"},fgColor:{argb:"FFFFEB9C"}},font:{color:{argb:"FF9C6500"}}}},
+      {type:"cellIs",operator:"lessThan",formulae:[65],style:{fill:{type:"pattern",pattern:"solid",bgColor:{argb:"FFFFC7CE"},fgColor:{argb:"FFFFC7CE"}},font:{color:{argb:"FF9C0006"}}}}
+    ]
+  });
+}
+
+/* ---------- EXCEL V235 ---------- */
+async function v232GenerateExcel(meta,analysis){
+  await v234LoadExcelLibrary();
+  var ExcelJS=window.ExcelJS,m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
+  var workbook=new ExcelJS.Workbook();
+  workbook.creator=meta.author;workbook.lastModifiedBy=meta.author;workbook.created=meta.generatedAt;workbook.modified=meta.generatedAt;
+  workbook.calcProperties.fullCalcOnLoad=true;
+
+  /* Dashboard */
+  var dash=workbook.addWorksheet("Dashboard",{views:[{showGridLines:false}]});
+  dash.properties.tabColor={argb:"FF061B46"};
+  dash.mergeCells("A1:L3");var head=dash.getCell("A1");head.value=meta.title;head.font={bold:true,size:24,color:{argb:"FFFFFFFF"}};head.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF061B46"}};head.alignment={vertical:"middle",horizontal:"left",wrapText:true};
+  dash.mergeCells("A4:L4");dash.getCell("A4").value=(meta.periodName||meta.scope)+" · Elaborado por "+meta.author+" · "+meta.position;dash.getCell("A4").font={italic:true,size:10,color:{argb:"FF475569"}};
+  dash.columns=Array.from({length:12},function(){return {width:14};});
+  var cards=[
+    ["Índice general",analysis.score+"%",analysis.scoreState.label],
+    ["Total cargado",m.totalLoaded||app.cases.length||0,"Pedidos"],
+    ["Trazados",m.cases||0,v235Percent(m.cases,Math.max(1,m.totalLoaded||m.cases))+"% cobertura"],
+    ["WIP",m.wip||0,(m.lateWip||0)+" atrasados"],
+    ["Throughput",m.throughput||0,"por día"],
+    ["LT P50",v234MsHours(m.leadP50||0),"horas"],
+    ["Confiabilidad",Number(r.avg||0)+"%",Number(r.low||0)+" críticos"],
+    ["No entregas",m.noDeliveryCount||0,(w.noDeliveryOpen||0)+" abiertas"]
+  ];
+  cards.forEach(function(c,i){
+    var row=6+Math.floor(i/4)*4,col=1+(i%4)*3;
+    dash.mergeCells(row,col,row+2,col+2);var cell=dash.getCell(row,col);
+    cell.value={richText:[{text:c[0]+"\n",font:{bold:true,size:9,color:{argb:"FF64748B"}}},{text:String(c[1])+"\n",font:{bold:true,size:20,color:{argb:"FF061B46"}}},{text:String(c[2]),font:{size:8,color:{argb:"FF64748B"}}}]};
+    cell.alignment={vertical:"middle",horizontal:"left",wrapText:true};cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF8FAFC"}};cell.border={top:{style:"thin",color:{argb:"FFD8E2EF"}},left:{style:"thin",color:{argb:"FFD8E2EF"}},bottom:{style:"thin",color:{argb:"FFD8E2EF"}},right:{style:"thin",color:{argb:"FFD8E2EF"}}};
+  });
+  v234ExcelAddImage(workbook,dash,v235CanvasGauge(analysis.score,analysis.scoreState.label),{tl:{col:0,row:15},ext:{width:590,height:260}});
+  v234ExcelAddImage(workbook,dash,v235CanvasLine("Pedidos cerrados por día",m.throughputSeries||[],function(x){return x.day;},function(x){return x.count;}),{tl:{col:6,row:15},ext:{width:590,height:260}});
+  v234ExcelAddImage(workbook,dash,v235CanvasQuadrant("Lead Time vs. cumplimiento",analysis.processes),{tl:{col:0,row:31},ext:{width:590,height:310}});
+  v234ExcelAddImage(workbook,dash,v235CanvasRiskMatrix(analysis.risks),{tl:{col:6,row:31},ext:{width:590,height:320}});
+  dash.getCell("A51").value="Conclusión ejecutiva";dash.getCell("A51").font={bold:true,size:14,color:{argb:"FF061B46"}};dash.mergeCells("A52:L56");dash.getCell("A52").value=v234PdfConclusion(analysis);dash.getCell("A52").alignment={wrapText:true,vertical:"top"};dash.getCell("A52").fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFEFF6FF"}};
+  dash.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:1,paperSize:9};
+
+  /* Resumen analítico */
+  var summary=v234ExcelSheet(workbook,"Resumen analítico","Resumen analítico y decisiones",meta.scope,["Tipo","Contenido"],[
+    ["Estado general",analysis.score+"% · "+analysis.scoreState.label],
+    ["Conclusión",v234PdfConclusion(analysis)]
+  ].concat(
+    analysis.strengths.map(function(x){return ["Fortaleza",x];}),
+    analysis.findings.map(function(x){return ["Hallazgo",x];}),
+    analysis.recommendations.map(function(x){return ["Recomendación",x];}),
+    analysis.decisions.map(function(x){return ["Decisión",x.title+" | "+x.signal+" | "+x.decision+" | Responsable: "+x.owner];})
+  ));
+  summary.properties.tabColor={argb:"FFF2B705"};
+
+  /* Tendencias */
+  if(meta.includeTrends){
+    var trendRows=(m.throughputSeries||[]).map(function(x){return [x.day,x.count];});
+    var trends=v234ExcelSheet(workbook,"Tendencias","Tendencias y comparación temporal",meta.scope,["Fecha","Pedidos cerrados"],trendRows);
+    trends.getColumn(1).width=16;trends.getColumn(2).width=20;
+    v234ExcelAddImage(workbook,trends,v235CanvasLine("Pedidos cerrados por día",m.throughputSeries||[],function(x){return x.day;},function(x){return x.count;}),{tl:{col:3,row:3},ext:{width:760,height:330}});
+    v234ExcelAddImage(workbook,trends,v235CanvasDonut("Antigüedad del WIP",m.wipBuckets||[],function(x){return x.label;},function(x){return x.count;}),{tl:{col:3,row:21},ext:{width:760,height:340}});
+    if(analysis.comparison){
+      trends.getCell("A"+(trends.rowCount+3)).value="Comparación temporal";trends.getCell("A"+(trends.rowCount+3)).font={bold:true,size:14,color:{argb:"FF061B46"}};
+      var rr=trends.rowCount+4;
+      [["Indicador","Periodo anterior","Periodo reciente","Variación"],
+       ["Casos cerrados",analysis.comparison.previous.cases,analysis.comparison.recent.cases,v235PctChange(analysis.comparison.recent.cases,analysis.comparison.previous.cases)+"%"],
+       ["LT promedio (h)",v234MsHours(analysis.comparison.previous.avgLt),v234MsHours(analysis.comparison.recent.avgLt),v235PctChange(analysis.comparison.recent.avgLt,analysis.comparison.previous.avgLt)+"%"],
+       ["LT P50 (h)",v234MsHours(analysis.comparison.previous.p50),v234MsHours(analysis.comparison.recent.p50),v235PctChange(analysis.comparison.recent.p50,analysis.comparison.previous.p50)+"%"]].forEach(function(row){trends.addRow(row);});
+      v234ExcelStyleHeader(trends.getRow(rr));
+    }
+  }
+
+  /* Procesos */
+  var process=v234ExcelSheet(workbook,"Procesos","Desempeño y salud por proceso",meta.scope,
+    ["Proceso","Casos","WIP","Atrasados","LT promedio (h)","P50 (h)","P90 (h)","Trabajo (h)","Bloqueo (h)","Cumplimiento (%)","Salud (%)","Estado"],
+    analysis.processHealth.map(function(x){return [x.label,x.cases||0,x.wip||0,x.wipLate||0,v234MsHours(x.avg||0),v234MsHours(x.p50||0),v234MsHours(x.p90||0),v234MsHours(x.cases?x.active/x.cases:0),v234MsHours(x.cases?x.wait/x.cases:0),Number(x.slaPct||0),x.health,x.healthStatus.label];})
+  );
+  v235ExcelConditionalPercent(process,"J",5,process.rowCount);v235ExcelConditionalPercent(process,"K",5,process.rowCount);
+  v234ExcelAddImage(workbook,process,v235CanvasQuadrant("Lead Time vs. cumplimiento",analysis.processes),{tl:{col:0,row:process.rowCount+2},ext:{width:790,height:400}});
+  v234ExcelAddImage(workbook,process,v234CanvasChart("Salud integral por proceso",analysis.processHealth,function(x){return x.health;},function(x){return x.label;},function(x){return x.health+"%";},function(x){return x.healthStatus.cls;}),{tl:{col:7,row:process.rowCount+2},ext:{width:730,height:400}});
+
+  /* Áreas */
+  var areas=v234ExcelSheet(workbook,"Áreas","Desempeño y diagnóstico por área",meta.scope,
+    ["Área","Casos","Intervenciones","WIP","Cerrados","LT promedio (h)","Trabajo (h)","Cumplimiento (%)","Confiabilidad (%)","No entregas","Actores","Salud (%)","Estado"],
+    analysis.areaHealth.map(function(x){return [x.label,x.cases||0,x.area==="ventas"?(x.interventions||0):"",x.wip||0,x.closed||0,v234MsHours(x.avg||0),v234MsHours(x.work||0),Number(x.compliance||0),Number(x.reliability||0),x.noDeliveries||0,x.workers||0,x.health,x.healthStatus.label];})
+  );
+  v235ExcelConditionalPercent(areas,"H",5,areas.rowCount);v235ExcelConditionalPercent(areas,"I",5,areas.rowCount);v235ExcelConditionalPercent(areas,"L",5,areas.rowCount);
+  v234ExcelAddImage(workbook,areas,v234CanvasChart("Salud integral por área",analysis.areaHealth,function(x){return x.health;},function(x){return x.label;},function(x){return x.health+"%";},function(x){return x.healthStatus.cls;}),{tl:{col:0,row:areas.rowCount+2},ext:{width:820,height:410}});
+
+  /* Actores */
+  if(meta.includeActors){
+    var actors=v234ExcelSheet(workbook,"Actores","Productividad por actor","Super Admin excluido de las mediciones.",
+      ["Actor","Rol","Casos","WIP","Cerrados","Trabajo directo (h)","Promedio (h)","Cumplimiento (%)","Carga directa (%)","Procesos"],
+      analysis.actors.map(function(x){return [x.user,roleTitle(x.role),x.count||0,x.open||0,x.closed||0,v234MsHours(x.active||0),v234MsHours(x.directPerCase||0),Number(x.compliance||0),Number(x.directLoadPct||0),x.processList||""];})
+    );
+    v235ExcelConditionalPercent(actors,"H",5,actors.rowCount);
+    v234ExcelAddImage(workbook,actors,v234CanvasChart("Trabajo directo por actor",analysis.actors.slice().sort(function(a,b){return b.active-a.active;}),function(x){return x.active;},function(x){return x.user;},function(x){return v225Time(x.active);}),{tl:{col:0,row:actors.rowCount+2},ext:{width:800,height:480}});
+  }
+
+  /* Esperas y Pareto */
+  if(meta.includeWaits){
+    var waits=v234ExcelSheet(workbook,"Esperas","Novedades, reprocesos y no entregas",meta.scope,
+      ["Pedido","Categoría","Área","Proceso","Inicio","Fin / corte","Duración (h)","Abierto","Origen","Detalle"],
+      (w.all||[]).map(function(x){return [x.pedido,x.category,v225AreaLabel(x.area),processTitle(x.process),x.start?new Date(x.start):"",x.end?new Date(x.end):"",v234MsHours(x.duration||0),x.open?"Sí":"No",x.source,x.detail];})
+    );
+    waits.getColumn(5).numFmt="dd/mm/yyyy hh:mm";waits.getColumn(6).numFmt="dd/mm/yyyy hh:mm";
+    v234ExcelAddImage(workbook,waits,v235CanvasDonut("Composición de esperas",[
+      {label:"Novedades",value:w.novelty||0,count:(w.noveltyRows||[]).length},
+      {label:"Reprocesos",value:w.rework||0,count:(w.reworkRows||[]).length},
+      {label:"No entregas",value:w.noDelivery||0,count:(w.noDeliveryRows||[]).length}
+    ],function(x){return x.label;},function(x){return x.value;}),{tl:{col:0,row:waits.rowCount+2},ext:{width:800,height:350}});
+    v234ExcelAddImage(workbook,waits,v234CanvasChart("Pareto de causas",analysis.pareto,function(x){return x.value;},function(x){return x.label;},function(x){return v225Time(x.value);}),{tl:{col:7,row:waits.rowCount+2},ext:{width:760,height:420}});
+  }
+
+  /* Riesgos */
+  if(meta.includeRisks){
+    var risks=v234ExcelSheet(workbook,"Riesgos","Matriz de riesgos operativos",meta.scope,
+      ["Nivel","Riesgo","Fuente","Probabilidad","Impacto","Puntuación","Evidencia","Tratamiento"],
+      analysis.risks.map(function(x){return [x.level,x.risk,x.source,x.probability,x.impact,x.score,x.evidence,x.treatment];})
+    );
+    v234ExcelAddImage(workbook,risks,v235CanvasRiskMatrix(analysis.risks),{tl:{col:0,row:risks.rowCount+2},ext:{width:930,height:500}});
+  }
+
+  /* Alertas */
+  if(meta.includeAlerts){
+    v234ExcelSheet(workbook,"Alertas","Alertas y riesgos prioritarios",meta.scope,
+      ["Prioridad","Pedido","Proceso","Hallazgo","Acción sugerida"],
+      (m.alertRows||[]).map(function(x){return [x.severity==="bad"?"Alta":"Media",x.pedido||"",x.proceso||"",x.detalle||"",x.accion||""];})
+    );
+  }
+
+  /* Decisiones */
+  v234ExcelSheet(workbook,"Decisiones","Decisiones sugeridas para comité",meta.scope,
+    ["Tema","Señal observada","Decisión sugerida","Responsable"],
+    analysis.decisions.map(function(x){return [x.title,x.signal,x.decision,x.owner];}).concat(
+      analysis.managementQuestions.map(function(x){return ["Pregunta de comité",x,"Definir respuesta y evidencia","Comité de seguimiento"];})
+    )
+  );
+
+  /* Plan */
+  if(meta.includeActionPlan){
+    v234ExcelSheet(workbook,"Plan de acción","Plan de acción propuesto","Generado a partir de las desviaciones observadas.",
+      ["Prioridad","Situación","Acción","Responsable sugerido","Meta","Estado","Fecha compromiso","Avance (%)","Observaciones"],
+      analysis.actions.map(function(x){return [x.priority,x.issue,x.action,x.owner,x.target,"Pendiente","",0,""];})
+    );
+  }
+
+  /* Pedidos */
+  if(meta.includeOrders){
+    v234ExcelSheet(workbook,"Pedidos críticos","Anexo de pedidos críticos",meta.scope,
+      ["Pedido","OC","Cliente","Proceso","Responsable","Tiempo en proceso (h)","Meta (h)","Estado","Bloqueo","Próxima acción","LT total (h)"],
+      (m.wipRows||[]).map(function(x){return [x.pedido,x.oc,x.cliente,x.processLabel,x.responsable,v234MsHours(x.age||0),Number(x.slaHours||0),x.late?"Fuera de meta":"Dentro",x.blocker||"",x.next||"",v234MsHours(x.lead||0)];})
+    );
+  }
+
+  /* Calidad */
+  v234ExcelSheet(workbook,"Calidad del dato","Confiabilidad y calidad del registro",meta.scope,
+    ["Indicador","Resultado","Meta / interpretación"],
+    [
+      ["Confiabilidad general",Number(r.avg||0)+"%","Meta recomendada ≥ 90%"],
+      ["Registros confiables",r.high||0,"Confiabilidad ≥ 90%"],
+      ["Registros por revisar",r.medium||0,"Entre 70% y 89%"],
+      ["Registros críticos",r.low||0,"Menor a 70%"],
+      ["Responsable identificado",Number(r.responsiblePct||0)+"%","Meta 100%"],
+      ["Proceso identificado",Number(r.processPct||0)+"%","Meta 100%"],
+      ["Estado identificado",Number(r.statusPct||0)+"%","Meta 100%"],
+      ["No trazados",m.notTraced||0,"Corregir o completar"]
+    ]
+  );
+
+  /* Metodología */
+  if(meta.includeMethodology){
+    v234ExcelSheet(workbook,"Metodología","Metodología, fórmulas y fuentes","Criterios aplicados por el VSM.",
+      ["Elemento","Criterio aplicado"],
+      [
+        ["Jornada","07:00–12:00 y 13:40–17:30; se excluyen sábados, domingos y festivos."],
+        ["Lead Time","Tiempo laboral desde el inicio hasta el cierre o corte."],
+        ["P50 / P90","Mediana y percentil 90."],
+        ["Trabajo directo","Actividad operativa válida; Super Admin excluido."],
+        ["Reproceso","Exceso sobre la meta luego de retornar a una etapa anterior."],
+        ["No entrega","Desde confirmación hasta solución o cierre."],
+        ["Salud de proceso","45% cumplimiento, 20% eficiencia, 25% WIP dentro de meta y 10% estabilidad."],
+        ["Salud de área","45% cumplimiento, 30% confiabilidad, 15% control de WIP y 10% control de no entregas."],
+        ["Índice general","Cumplimiento, confiabilidad, WIP, cobertura, no entregas y reprocesos."],
+        ["Fuentes","cases, case_events, reportes_novedad, processStats, requirements, noDeliveryReports, stateHistory y flowTrace."]
+      ]
+    );
+  }
+
+  /* Conclusiones */
+  v234ExcelSheet(workbook,"Conclusiones","Conclusiones y recomendaciones",meta.scope,
+    ["Tipo","Contenido"],
+    [["Conclusión general",v234PdfConclusion(analysis)]].concat(
+      analysis.strengths.map(function(x){return ["Fortaleza",x];}),
+      analysis.findings.map(function(x){return ["Hallazgo",x];}),
+      analysis.recommendations.map(function(x){return ["Recomendación",x];})
+    )
+  );
+
+  workbook.eachSheet(function(sheet){
+    if(sheet.name!=="Dashboard")sheet.views=[{state:"frozen",ySplit:4}];
+    sheet.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,paperSize:9};
+    sheet.headerFooter={oddHeader:"&CElectroingeniería · "+meta.title,oddFooter:"&L"+meta.author+" · "+meta.department+"&RPágina &P de &N"};
+  });
+  var buffer=await workbook.xlsx.writeBuffer();
+  v234DownloadBlob(new Blob([buffer],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),v232FileName(meta,"xlsx"));
 }
 
 function bindBase(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}

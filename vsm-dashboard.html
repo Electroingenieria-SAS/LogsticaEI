@@ -330,14 +330,14 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V234 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V235 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
 <div class="report-modal" id="smartReportModal" aria-hidden="true">
     <section class="report-dialog" role="dialog" aria-modal="true" aria-labelledby="smartReportTitle">
       <header class="report-head">
         <div>
-          <h2 id="smartReportTitle">Generador de informes inteligentes</h2>
-          <p>El análisis se construirá con los datos, filtros y métricas visibles en el VSM.</p>
+          <h2 id="smartReportTitle">Generador de informes analíticos y gráficos</h2>
+          <p>El informe incluirá diagnóstico, gráficas, tendencias, riesgos, conclusiones y plan de acción con los datos visibles en el VSM.</p>
         </div>
         <button class="report-close" id="btnCloseSmartReport" type="button" aria-label="Cerrar">×</button>
       </header>
@@ -415,11 +415,13 @@
             <label class="report-check"><input type="checkbox" id="reportIncludeActionPlan" checked> <span>Generar plan de acción priorizado.</span></label>
             <label class="report-check"><input type="checkbox" id="reportIncludeAlerts" checked> <span>Incluir alertas, riesgos y pedidos críticos.</span></label>
             <label class="report-check"><input type="checkbox" id="reportIncludeWaits" checked> <span>Incluir novedades, reprocesos y no entregas.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeTrends" checked> <span>Incluir tendencias, comparación temporal y antigüedad del WIP.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeRisks" checked> <span>Incluir matriz de riesgos, Pareto de causas y decisiones sugeridas.</span></label>
           </div>
         </div>
 
         <footer class="report-foot">
-          <small>Los datos se toman del tablero con los filtros actuales. El PDF y el Excel se construyen con texto, tablas y gráficas reales. No se modifica Firebase.</small>
+          <small>El PDF y el Excel incluirán dashboard ejecutivo, gráficas, matriz de riesgos, análisis, conclusiones y anexos. No se modifica Firebase.</small>
           <div class="report-foot-actions">
             <button class="btn soft" id="btnCancelSmartReport" type="button">Cancelar</button>
             <button class="btn report" id="btnGenerateSmartReport" type="submit">Generar informe</button>
@@ -429,6 +431,6 @@
     </section>
   </div>
 
-  <script src="./vsm-dashboard.js?v=234"></script>
+  <script src="./vsm-dashboard.js?v=235"></script>
 </body>
 </html>
