@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v200-disabled";
+var CACHE_VERSION = "ei-trazabilidad-v203-recepcion-pedidos-dos-botones-pdf-csv";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){
