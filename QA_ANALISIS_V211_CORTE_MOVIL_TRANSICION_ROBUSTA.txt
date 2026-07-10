@@ -1,0 +1,48 @@
+V211 - Revisión a fondo: Corte móvil y transición de estado
+
+Hallazgos de riesgo:
+1. El móvil podía quedar bloqueado por permisos/rol aunque el usuario fuera Fabián Duque o auxiliar_corte.
+2. El flujo dependía del handler general; en móvil cualquier desincronización podía dejar bloqueado Iniciar, Finalizar o Registrar.
+3. Registrar/cumplido necesitaba una ruta defensiva para pasar a Alistamiento aun si el estado intermedio no quedó perfecto.
+4. Firestore debía permitir actualización por rol corte/Fabián.
+5. La vista simple sin cronómetro debía conservar No necesita corte y Medida completa.
+
+Corrección:
+1. Se agrega transición móvil directa para:
+   - startCut
+   - finishCut
+   - registerCut
+2. Se mantiene el flujo normal para:
+   - noCutNeeded
+   - completeMeasure
+   - autorizaciones/permisos
+3. StartCut:
+   - valida tamaño total del carreto/chipa.
+   - valida metros a cortar.
+   - valida aprobación si aplica.
+   - marca EN_CORTE.
+   - persiste CUT_STARTED.
+4. FinishCut:
+   - si el móvil quedó desincronizado, no bloquea por startedAt faltante; corrige y finaliza.
+   - marca PENDIENTE_REGISTRO.
+   - persiste CUT_FINISHED_PENDING_REGISTER.
+5. RegisterCut/cumplido:
+   - valida bodega, calidad y foto/evidencia.
+   - marca FINALIZADO.
+   - libera el pedido a Alistamiento.
+   - genera alerta de carreto disponible.
+   - actualiza checklist.
+   - registra evento CUT_AVAILABLE_FOR_PALLETIZING.
+   - sube foto si hay archivo; si falla Drive, el corte no se revierte.
+6. Se conserva V210:
+   - sin cronómetro grande visible.
+   - vista móvil compacta.
+7. Se conserva V209:
+   - permisos Fabián Duque / auxiliar_corte.
+
+Alcance:
+- Corte móvil.
+- No se toca Recepción de pedidos.
+- No se toca PDF/CSV.
+- No se toca stickers.
+- No se toca PC.

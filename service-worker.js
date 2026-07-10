@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v210-corte-movil-simple-sin-cronometro";
+var CACHE_VERSION = "ei-trazabilidad-v211-corte-movil-transicion-robusta";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){
