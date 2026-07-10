@@ -3,27 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Centro Operativo VSM · Capacidad y Áreas</title>
+  <title>VSM Operativo · Decisiones, capacidad y tiempos</title>
   <meta name="theme-color" content="#061b46">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%23061b46%27/%3E%3Ctext x=%2732%27 y=%2739%27 font-size=%2720%27 text-anchor=%27middle%27 fill=%27%23f2b705%27 font-family=%27Arial%27%3EVSM%3C/text%3E%3C/svg%3E">
   <style>
     :root{
       --blue:#061b46;--blue2:#0f2d5c;--gold:#f2b705;--bg:#eef3f9;--card:#fff;
       --line:#d8e2ef;--text:#102033;--muted:#64748b;--ok:#0f9f6e;--warn:#d97706;
-      --bad:#dc2626;--info:#2563eb;--shadow:0 12px 34px rgba(15,23,42,.07)
+      --bad:#dc2626;--info:#2563eb;--purple:#7c3aed;--shadow:0 12px 34px rgba(15,23,42,.07)
     }
     *{box-sizing:border-box}
     html{scroll-behavior:smooth}
     body{margin:0;font-family:"Century Gothic",Arial,sans-serif;background:var(--bg);color:var(--text)}
     button,input,select{font:inherit}
-    .shell{max-width:1760px;margin:auto;padding:18px}
+    .shell{max-width:1780px;margin:auto;padding:18px}
     .top{
       display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
       padding:22px 24px;border-radius:26px;color:#fff;
       background:linear-gradient(135deg,var(--blue),var(--blue2));box-shadow:0 20px 50px rgba(6,27,70,.20)
     }
-    .top h1{margin:0;font-size:1.65rem}.top p{margin:7px 0 0;max-width:850px;line-height:1.45;opacity:.88}
-    .actions,.quick-actions,.range-buttons{display:flex;gap:8px;flex-wrap:wrap}
+    .top h1{margin:0;font-size:1.65rem}.top p{margin:7px 0 0;max-width:980px;line-height:1.5;opacity:.9}
+    .actions,.quick-actions,.range-buttons,.pager{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .btn{
       min-height:42px;border:0;border-radius:13px;padding:9px 13px;font-weight:900;cursor:pointer;
       text-decoration:none;display:inline-flex;align-items:center;justify-content:center;background:#fff;color:var(--blue);
@@ -36,7 +36,7 @@
     .notice{border-radius:17px;padding:12px 14px;margin:14px 0;background:#ecfdf5;border:1px solid #bbf7d0;color:#065f46}
     .notice.bad{background:#fef2f2;border-color:#fecaca;color:#991b1b}
     .notice.ok{background:#ecfdf5;border-color:#bbf7d0;color:#065f46}
-    .filters,.card,.chart-card,.process-card,.alert-card{
+    .filters,.card,.chart-card,.process-card,.alert-card,.coverage-card{
       background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)
     }
     .filters{margin-top:16px;padding:16px}
@@ -45,12 +45,17 @@
     .filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
     .field span{display:block;margin-bottom:6px;color:var(--muted);font-size:.75rem;font-weight:900}
     .input,.select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:13px;padding:9px 10px;background:#fff;color:var(--text)}
-    .filter-summary{margin-top:12px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:.82rem}
+    .filter-summary{margin-top:12px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:.82rem;line-height:1.45}
     .loading{display:none;align-items:center;gap:9px;margin:14px 2px}.loading.show{display:flex}
     .spin{width:18px;height:18px;border:3px solid #dbe4f0;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
     .section-head{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:22px 2px 11px}
     .section-head h2{margin:0;color:var(--blue);font-size:1.18rem}.section-head span{font-size:.8rem;color:var(--muted)}
+    .coverage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+    .coverage-card{padding:12px;min-width:0}
+    .coverage-card span{display:block;color:var(--muted);font-size:.69rem;font-weight:900;text-transform:uppercase}
+    .coverage-card strong{display:block;color:var(--blue);font-size:1.25rem;margin-top:4px}
+    .coverage-card small{display:block;color:var(--muted);margin-top:4px;line-height:1.35}
     .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:13px}
     .kpi{padding:14px;min-width:0;position:relative;overflow:hidden}
     .kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--blue)}
@@ -65,78 +70,76 @@
     .focus-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
     .focus-row div{padding:8px;border-radius:13px;background:#f8fafc;border:1px solid #edf2f7;min-width:0}
     .focus-row span{display:block;font-size:.68rem;color:var(--muted);font-weight:900}.focus-row strong{display:block;margin-top:3px;color:var(--blue);font-size:.85rem;overflow-wrap:anywhere}
-    .flow-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+    .flow-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px}
     .process-card{padding:14px;min-width:0;position:relative;overflow:hidden}
     .process-card:before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,var(--blue),var(--gold))}
     .process-card.late:before{background:var(--bad)}
     .process-title{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
     .process-title h3{margin:0;color:var(--blue);font-size:.92rem}.process-title b{font-size:.72rem;border-radius:999px;padding:4px 7px;background:#eef2ff;color:#1e3a8a}
     .process-main{display:flex;justify-content:space-between;align-items:end;gap:8px;margin-top:13px}
-    .process-main strong{font-size:1.25rem;color:var(--blue)}.process-main span{font-size:.73rem;color:var(--muted)}
+    .process-main strong{font-size:1.18rem;color:var(--blue)}.process-main span{font-size:.71rem;color:var(--muted)}
     .process-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
-    .process-stats div{padding:7px;border-radius:11px;background:#f8fafc;text-align:center}
-    .process-stats span{display:block;font-size:.64rem;color:var(--muted);font-weight:900}.process-stats b{display:block;margin-top:2px;color:var(--blue);font-size:.78rem}
+    .process-stats div{padding:7px;border-radius:11px;background:#f8fafc;text-align:center;min-width:0}
+    .process-stats span{display:block;font-size:.62rem;color:var(--muted);font-weight:900}.process-stats b{display:block;margin-top:2px;color:var(--blue);font-size:.76rem;overflow-wrap:anywhere}
     .progress{height:9px;margin-top:10px;border-radius:999px;background:#e8eef6;overflow:hidden}
     .progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--gold))}
+    .status-chip{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:.67rem;font-weight:900;white-space:nowrap}
+    .status-chip.ok{background:#ecfdf5;color:#065f46}.status-chip.warn{background:#fff7ed;color:#9a3412}.status-chip.bad{background:#fef2f2;color:#991b1b}
     .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}
     .chart-card{padding:15px;min-width:0}.chart-card h3{margin:0 0 11px;color:var(--blue);font-size:1rem}
-    .chart-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(130px,2.1fr) minmax(70px,auto);gap:8px;align-items:center;margin:8px 0;font-size:.78rem}
+    .chart-row{display:grid;grid-template-columns:minmax(120px,1fr) minmax(130px,2.1fr) minmax(76px,auto);gap:8px;align-items:center;margin:8px 0;font-size:.78rem}
     .chart-row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chart-track{height:13px;border-radius:999px;background:#edf2f7;overflow:hidden}
     .chart-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--gold))}
-    .chart-track i.ok{background:var(--ok)}.chart-track i.bad{background:var(--bad)}.chart-track i.warn{background:var(--warn)}
+    .chart-track i.ok{background:var(--ok)}.chart-track i.bad{background:var(--bad)}.chart-track i.warn{background:var(--warn)}.chart-track i.info{background:var(--info)}
     .stack{height:18px;display:flex;border-radius:999px;overflow:hidden;background:#edf2f7}
-    .stack i{display:block;height:100%}.stack .va{background:var(--ok)}.stack .wait{background:var(--warn)}.stack .capacity{background:var(--info)}.stack .dead{background:#7c3aed}
+    .stack i{display:block;height:100%}.stack .work{background:var(--ok)}.stack .block{background:var(--warn)}.stack .queue{background:var(--info)}.stack .unclassified{background:var(--purple)}
     .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:.75rem;color:var(--muted)}
-    .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.dot.va{background:var(--ok)}.dot.wait{background:var(--warn)}.dot.capacity{background:var(--info)}.dot.dead{background:#7c3aed}
+    .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.dot.work{background:var(--ok)}.dot.block{background:var(--warn)}.dot.queue{background:var(--info)}.dot.unclassified{background:var(--purple)}
     .alert-card{padding:14px}.alert-list{display:grid;gap:8px}
     .alert-item{display:grid;grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) auto;gap:10px;align-items:center;border:1px solid #edf2f7;border-radius:14px;padding:9px 10px;background:#fff}
     .alert-item.bad{border-color:#fecaca;background:#fff7f7}.alert-item.warn{border-color:#fed7aa;background:#fffaf3}
     .alert-item strong{color:var(--blue)}.alert-item small{display:block;color:var(--muted);margin-top:2px}
     .badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:.7rem;font-weight:900;background:#eef2ff;color:#1e3a8a;white-space:nowrap}
     .badge.ok{background:#ecfdf5;color:#065f46}.badge.warn{background:#fff7ed;color:#9a3412}.badge.bad{background:#fef2f2;color:#991b1b}
-    .results-wrap{width:100%;overflow:visible}.table-wrap{width:100%;max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:17px;background:#fff}
-    table{width:100%;border-collapse:collapse;min-width:1100px}th,td{padding:9px 10px;border-bottom:1px solid #edf2f7;text-align:left;font-size:.79rem;vertical-align:top;line-height:1.35}
+    .model-box{padding:14px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;line-height:1.55;font-size:.82rem}
+    .results-wrap{width:100%;overflow:visible}
+    .table-wrap{width:100%;max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:17px;background:#fff}
+    table{width:100%;border-collapse:collapse;min-width:1180px}
+    th,td{padding:9px 10px;border-bottom:1px solid #edf2f7;text-align:left;font-size:.77rem;vertical-align:top;line-height:1.35}
     th{position:sticky;top:0;z-index:2;background:#f8fafc;color:var(--blue)}
     .muted{color:var(--muted)}.pill{display:inline-flex;border-radius:999px;padding:4px 8px;background:#eef2ff;color:#1e3a8a;font-size:.72rem;font-weight:900}
-    .time-tags{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}.time-tag{border-radius:10px;padding:5px;border:1px solid #edf2f7;font-size:.67rem}.time-tag b{display:block}.time-tag.va{background:#f0fdf4}.time-tag.wait{background:#fff7ed}.time-tag.dead{background:#fef2f2}
+    .pager{justify-content:space-between;margin:10px 0}
+    .pager-info{color:var(--muted);font-size:.8rem}
     .footer{margin:20px 2px 5px;color:var(--muted);font-size:.78rem;line-height:1.45}
-    @media(max-width:1000px){
+    @media(max-width:1100px){
       .top{display:block}.actions{margin-top:14px}.chart-grid{grid-template-columns:1fr}
       .alert-item{grid-template-columns:1fr}.section-head{display:block}.section-head span{display:block;margin-top:4px}
     }
-    @media(max-width:700px){
-      .shell{padding:9px}.top,.filters,.card,.chart-card,.process-card,.alert-card{border-radius:17px}
+    @media(max-width:720px){
+      .shell{padding:9px}.top,.filters,.card,.chart-card,.process-card,.alert-card,.coverage-card{border-radius:17px}
       .actions .btn,.quick-actions .btn{width:100%}.range-buttons{display:grid;grid-template-columns:1fr 1fr}
       .chart-row{grid-template-columns:1fr}.focus-row,.process-stats{grid-template-columns:1fr}
-      table{min-width:980px}
+      .process-main{display:grid;grid-template-columns:1fr}
+      .pager{display:grid;grid-template-columns:1fr}.pager .btn{width:100%}
+      table{min-width:1040px}
     }
   </style>
-<style>
-  .area-status{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:.68rem;font-weight:900}
-  .area-status.ok{background:#ecfdf5;color:#065f46}
-  .area-status.warn{background:#fff7ed;color:#9a3412}
-  .area-status.bad{background:#fef2f2;color:#991b1b}
-  .formula-box{padding:12px;border-radius:15px;background:#f8fafc;border:1px solid #e2e8f0;line-height:1.55;font-size:.82rem}
-  .method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
-  .method-grid article{padding:10px;border-radius:14px;background:#fff;border:1px solid #edf2f7}
-  .method-grid strong{display:block;color:#061b46;margin-bottom:4px}
-</style>
 </head>
 <body>
   <main class="shell">
     <section class="top">
       <div>
-        <h1>Centro operativo VSM</h1>
-        <p>Lead Time observado, trabajo directo, bloqueos, colas por capacidad y transferencias, calculados dentro de la jornada laboral 7:00–12:00 y 13:40–17:30.</p>
+        <h1>VSM operativo para toma de decisiones</h1>
+        <p>Base completa de pedidos, tiempos laborales por proceso, análisis por área y usuario, WIP, throughput, bloqueos, capacidad y trazabilidad. Jornada: 7:00–12:00 y 13:40–17:30, excluyendo sábados, domingos y festivos colombianos.</p>
       </div>
       <div class="actions">
-        <button class="btn primary" id="btnLoad">Actualizar datos</button>
-        <button class="btn" id="btnLoadAll">Cargar histórico</button>
+        <button class="btn primary" id="btnLoad">Actualizar base completa</button>
+        <button class="btn" id="btnLoadAll">Recargar histórico completo</button>
         <button class="btn dark" id="btnExport" disabled>Exportar Excel</button>
       </div>
     </section>
 
-    <div id="status" class="notice ok">Inicializando centro operativo...</div>
+    <div id="status" class="notice ok">Inicializando y cargando el histórico completo...</div>
 
     <section class="filters">
       <div class="filter-head">
@@ -154,34 +157,32 @@
         <label class="field"><span>Desde</span><input class="input" type="date" id="fFrom"></label>
         <label class="field"><span>Hasta</span><input class="input" type="date" id="fTo"></label>
         <label class="field"><span>Tipo de pedido</span><select class="select" id="fOrderType"><option value="">Todos</option><option value="normal">Normal</option><option value="pve">PVE</option></select></label>
-        <label class="field"><span>Proceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label><label class="field"><span>Área</span><select class="select" id="fArea">
-          <option value="">Todas</option>
-          <option value="ventas">Ventas</option>
-          <option value="compras">Compras</option>
-          <option value="logistica">Logística</option>
-          <option value="facturacion">Facturación</option>
-          <option value="cartera">Cartera / Caja</option>
-          <option value="despacho">Despacho</option>
+        <label class="field"><span>Área</span><select class="select" id="fArea">
+          <option value="">Todas</option><option value="ventas">Ventas</option><option value="compras">Compras</option>
+          <option value="logistica">Logística</option><option value="facturacion">Facturación</option>
+          <option value="cartera">Cartera / Caja</option><option value="despacho">Despacho</option>
         </select></label>
+        <label class="field"><span>Proceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label>
         <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">WIP / abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera o bloqueo</option><option value="cancelled">Cancelados / anulados</option></select></label>
         <label class="field"><span>Cumplimiento</span><select class="select" id="fSla"><option value="">Todos</option><option value="late">Fuera de meta</option><option value="ontime">Dentro de meta</option></select></label>
         <label class="field"><span>Meta en horas hábiles</span><input class="input" type="number" id="fThreshold" min="0.25" step="0.25" value="8"></label>
         <label class="field"><span>Usuario / responsable</span><select class="select" id="fUser"><option value="">Todos</option></select></label>
-        <label class="field"><span>Buscar</span><input class="input" id="fSearch" placeholder="Pedido, OC, cliente o asesor"></label>
+        <label class="field"><span>Buscar</span><input class="input" id="fSearch" placeholder="Pedido, OC, cliente, asesor o responsable"></label>
         <label class="field"><span>Vista principal</span><select class="select" id="fView">
-          <option value="principal">Centro operativo</option>
+          <option value="principal">Todos los pedidos filtrados</option>
           <option value="wip">WIP y atrasos</option>
-          <option value="areas">Áreas, carga y capacidad</option><option value="procesos">Rendimiento por proceso</option>
+          <option value="areas">Áreas, capacidad y carga</option>
+          <option value="procesos">Rendimiento por proceso</option>
           <option value="picking">Picking / alistamiento</option>
           <option value="cortes">Cortes</option>
-          <option value="usuarios">Productividad por usuario</option>
+          <option value="usuarios">Carga y productividad por usuario</option>
           <option value="usuario_proceso">Usuario por proceso</option>
-          <option value="pedidos">Todos los pedidos</option>
           <option value="novedades">Novedades y reportes</option>
           <option value="cancelados">Cancelados / anulados</option>
           <option value="not_traced">No trazados / QA</option>
         </select></label>
-        <label class="field"><span>Cantidad inicial</span><select class="select" id="fLimit"><option>300</option><option selected>600</option><option>1000</option><option>1500</option></select></label>
+        <label class="field"><span>Filas por página</span><select class="select" id="fPageSize"><option>50</option><option selected>100</option><option>200</option><option>500</option></select></label>
+        <select id="fLimit" style="display:none"><option selected>5000</option></select>
       </div>
 
       <div class="quick-actions" style="margin-top:12px">
@@ -195,43 +196,49 @@
 
     <div class="loading" id="loading"><span class="spin"></span><strong>Procesando datos...</strong><span id="progress" class="muted"></span></div>
 
-    <div class="section-head"><h2>Resumen operativo</h2><span>Lectura rápida de la carga y los tiempos laborales.</span></div>
+    <div class="section-head"><h2>Cobertura de la información</h2><span>La cantidad total cargada no se confunde con la cantidad trazada por el VSM.</span></div>
+    <section id="coverageBand" class="coverage-grid"></section>
+
+    <div class="section-head"><h2>KPIs para toma de decisiones</h2><span>Volumen, tiempos, WIP, cumplimiento, capacidad y calidad de datos.</span></div>
     <section id="summary" class="kpi-grid"></section>
 
-    <div class="section-head"><h2>Tiempos críticos</h2><span>Picking, corte, recepción y facturación.</span></div>
+    <div class="section-head"><h2>Tiempos críticos</h2><span>Picking, corte, recepción, facturación y Lead Time.</span></div>
     <section id="operationalFocus" class="focus-grid"></section>
 
-    <div class="section-head"><h2>Capacidad y colas por área</h2><span>Demanda, utilización, WIP, variabilidad y espera modelada.</span></div>
+    <div class="section-head"><h2>Revisión por área</h2><span>Demanda, WIP, throughput, utilización, bloqueos y capacidad.</span></div>
     <section id="areaBoard" class="flow-board"></section>
 
-    <section id="modelPanel" class="alert-card" style="margin-top:14px"></section>
-
-    <div class="section-head"><h2>Flujo por proceso</h2><span>Promedio, P50, P90, WIP y cumplimiento de meta.</span></div>
+    <div class="section-head"><h2>Revisión por proceso</h2><span>Promedio, P50, P90, trabajo directo, bloqueo y cumplimiento.</span></div>
     <section id="processFlow" class="flow-board"></section>
 
-    <div class="section-head"><h2>Gráficas operativas</h2><span>Cuellos, WIP, cumplimiento y throughput.</span></div>
+    <div class="section-head"><h2>Revisión por usuario</h2><span>Carga directa, casos atendidos, WIP y throughput. No se atribuye la espera del pedido al trabajador.</span></div>
+    <section id="userBoard" class="flow-board"></section>
+
+    <div class="section-head"><h2>Gráficas operativas</h2><span>Lectura centralizada para informes y decisiones.</span></div>
     <section id="powerCharts" class="chart-grid"></section>
 
     <section id="quickBars" style="margin-top:14px"></section>
     <section id="ltProductivityAnalysis" style="margin-top:14px"></section>
     <section id="deepKpis" class="kpi-grid" style="margin-top:14px"></section>
 
-    <div class="section-head"><h2>Alertas y acciones</h2><span>Pedidos que requieren intervención.</span></div>
+    <div class="section-head"><h2>Alertas y acciones</h2><span>Pedidos y áreas que requieren intervención.</span></div>
     <section id="alertsBoard" class="alert-card"></section>
 
     <section class="kpi-grid" style="margin-top:14px">
       <article class="card" style="padding:15px"><h3 style="margin:0 0 8px;color:var(--blue)">Cuello de botella</h3><div id="bottleneck"></div></article>
       <article class="card" style="padding:15px">
-        <h3 style="margin:0 0 8px;color:var(--blue)">Lectura del tablero</h3>
-        <p class="muted" style="margin:0;line-height:1.5">El Lead Time observado no se usa como productividad personal. La espera se separa en bloqueo explícito, cola probable por capacidad y transferencia/no clasificado. P50 es la mediana y P90 representa el percentil 90.</p>
+        <h3 style="margin:0 0 8px;color:var(--blue)">Lectura metodológica</h3>
+        <div class="model-box">Lead Time observado = trabajo directo + bloqueo explícito + cola estimada por capacidad + transferencia o tiempo no clasificado. La espera por atender otros pedidos se analiza como carga del área, no como improductividad individual.</div>
       </article>
     </section>
 
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
+    <div id="pagerTop" class="pager"></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
+    <div id="pagerBottom" class="pager"></div>
 
-    <p class="footer">V223 · VSM de capacidad, colas y áreas. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V224 · VSM operativo para decisiones. Los indicadores muestran por separado la base total, los pedidos filtrados, los trazados y los que necesitan mejorar su trazabilidad.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=223"></script>
+  <script src="./vsm-dashboard.js?v=224"></script>
 </body>
 </html>

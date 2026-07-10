@@ -762,7 +762,7 @@ service cloud.firestore {
       );
     }
 
-    // V220: permite las transiciones operativas de Corte a cualquier usuario
+    // V221: permite las transiciones operativas de Corte a cualquier usuario
     // autenticado de la aplicación, sin depender de una autoescritura users/{uid}.
     // La autorización queda restringida a documentos que ya contienen cortes y
     // únicamente a campos propios del flujo Corte -> Alistamiento.
@@ -869,7 +869,7 @@ service cloud.firestore {
       allow create: if activeUser() && !isAuditRole()
         && validCasePayload();
 
-      // V220: Fabián puede actualizar directamente cualquier caso operativo.
+      // V221: Fabián puede actualizar directamente cualquier caso operativo.
       // El resto de usuarios conserva la validación normal.
       allow update: if isFabianCutDirect()
         || (
