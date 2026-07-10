@@ -1,0 +1,34 @@
+V207 - CSV sigue el ciclo completo del PDF
+
+Problema:
+- El CSV se estaba guardando por una ruta simplificada y no seguía el ciclo operativo completo del lector PDF.
+
+Corrección:
+- Se reemplaza openReceptionPdf(id) para que PDF y CSV compartan el mismo flujo:
+  1. Leer archivo.
+  2. Mostrar editor de líneas.
+  3. Confirmar compromiso de mercancía.
+  4. collectReceptionItemsFromForm().
+  5. applyReceptionCutDecisions().
+  6. confirmReceptionCutDecision().
+  7. applyReceptionDecisionConfirmation().
+  8. mergePdfExtractionIntoCase().
+  9. autoCreateCutsFromItems().
+  10. applyReceptionChecklistFromPdf().
+  11. uploadReceptionPdfToDrive().
+  12. appendEvidence().
+  13. persistCase().
+  14. renderDetail(id).
+
+CSV:
+- Para CSV_RECEPCION_PEDIDOS_V207, mergePdfItemsIntoCase conserva filas físicas independientes y no deduplica.
+- Sigue entrando al mismo ciclo del PDF porque la llamada permanece dentro de mergePdfExtractionIntoCase().
+
+AudioContext:
+- Se reduce el spam de consola de playBeep: solo intenta audio después de gesto de usuario.
+
+Alcance:
+- Recepción de pedidos / openReceptionPdf(id).
+- No se toca Corte.
+- No se toca stickers.
+- No se toca Recepción de mercancía.
