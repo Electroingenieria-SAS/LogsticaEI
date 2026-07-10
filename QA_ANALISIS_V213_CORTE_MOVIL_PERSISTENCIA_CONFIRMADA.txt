@@ -1,0 +1,34 @@
+V213 - Corte móvil con persistencia confirmada para PC y demás usuarios
+
+Problema:
+- En móvil parecía actualizar, pero en PC y otros usuarios no se veía.
+- Eso indica mutación local sin confirmación real de Firestore.
+- Si la escritura fallaba, el pedido podía desaparecer localmente de la bandeja del auxiliar, pero no cambiar realmente.
+
+Corrección:
+1. Cada transición móvil de Corte ahora hace escritura confirmada:
+   - set(cases/{id})
+   - get(cases/{id})
+   - validar estado esperado en el documento remoto
+   - crear evento
+   - solo entonces cerrar drawer / refrescar bandeja
+2. Si Firestore no confirma:
+   - se restaura snapshot local anterior
+   - el pedido vuelve a aparecer en la bandeja
+   - se muestra alerta clara
+3. Transiciones confirmadas:
+   - Iniciar: espera cut.status = EN_CORTE.
+   - Finalizar: espera cut.status = PENDIENTE_REGISTRO.
+   - Registrar/cumplido: espera cut.status = FINALIZADO y currentProcess = alistamiento.
+4. Se agregan marcas:
+   - lastMobileCutWriteVersion = V213
+   - lastMobileCutWriteAt
+   - lastConfirmedWriteAttemptAt
+   - updatedBy / updatedByName
+5. firestore.rules permite esos campos y refuerza actualización por rol de corte/Fabián.
+
+Alcance:
+- Corte móvil / persistencia real.
+- No se toca Recepción de pedidos.
+- No se toca PDF/CSV.
+- No se toca stickers.

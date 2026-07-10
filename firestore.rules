@@ -406,6 +406,12 @@ service cloud.firestore {
         'status',
         'createdAt',
         'updatedAt',
+        'lastMobileCutWriteAt',
+        'lastMobileCutWriteVersion',
+        'lastConfirmedWriteAttemptBy',
+        'lastConfirmedWriteAttemptAt',
+        'updatedByName',
+        'updatedBy',
 
         'requirementType',
         'requirements',
