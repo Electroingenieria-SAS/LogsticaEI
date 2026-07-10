@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v220-regla-directa-uid-fabian";
+var EI_CANONICAL_APP_VERSION = "v221-cargues-movil-galeria-archivos-10";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -67,16 +67,16 @@ var state = {
   notifications: { enabled: true, memory: {}, queue: [], queueTimer: null, lastSoundAt: 0 }
 };
 
-function ensureV220UiFixes(){
-  if(document.getElementById("ei-v220-regla-directa-uid-fabian"))return;
+function ensureV221UiFixes(){
+  if(document.getElementById("ei-v221-cargues-movil-galeria-archivos-10"))return;
   var st=document.createElement("style");
-  st.id="ei-v220-regla-directa-uid-fabian";
+  st.id="ei-v221-cargues-movil-galeria-archivos-10";
   st.textContent='\
 \
 \
 \
 @media(max-width:790px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
-/* V220_MOBILE_CLEAN */\
+/* V221_MOBILE_CLEAN */\
 @media(max-width:790px){\
   body{background:#eef3f8!important;overflow-x:hidden!important;}\
   .sidebar{display:none!important;}\
@@ -652,7 +652,7 @@ function isFabianDuqueAuthUser(u){
   return raw.indexOf("f.duque@ei.com.co")>=0 || raw.indexOf("f.duque")>=0 || raw.indexOf("fabian duque")>=0;
 }
 function ensureKnownCutProfile(fbUser){
-  // V220: preparación exclusivamente en memoria.
+  // V221: preparación exclusivamente en memoria.
   // No se escribe users/{uid}; esa escritura no es necesaria para operar Corte
   // y estaba generando Missing or insufficient permissions.
   if(!fbUser || !isFabianDuqueAuthUser(fbUser))return Promise.resolve(false);
@@ -683,7 +683,7 @@ function ensureKnownCutProfile(fbUser){
     try{sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));}catch(e){}
     return Promise.resolve(true);
   }catch(e){
-    console.warn("[V220] No se pudo preparar el perfil runtime de Corte.",e);
+    console.warn("[V221] No se pudo preparar el perfil runtime de Corte.",e);
     return Promise.resolve(false);
   }
 }
@@ -1294,7 +1294,7 @@ function forceCajaPvcPveToCarteraNow(){
   if(!state.user || !(canSeeAll()||isAdminRoleValue(state.user.role)||currentUserIsAdminOrSuper()||normalizeRole(state.user.role)==="caja"||normalizeRole(state.user.role)==="cartera")){alert("Solo Caja, Cartera o roles de gestión pueden normalizar Caja/Cartera.");return;}
   var jobs=[],count=0;
   (state.cases||[]).forEach(function(c){
-    if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V220: PVC/PVE debe estar en Cartera.")){
+    if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V221: PVC/PVE debe estar en Cartera.")){
       count++;
       jobs.push(persistCase(c,{type:"FINANCIAL_ROUTE_NORMALIZED_TO_CARTERA",detail:"Pedido "+orderKindCode(c)+" movido de Caja a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}));
     }
@@ -1315,12 +1315,12 @@ function autoNormalizeLoadedPvcPveFromCajaToCartera(reason){
   var jobs=[],count=0;
   (state.cases||[]).forEach(function(c){
     if(!c||!canNormalizeCajaCarteraSilently(c))return;
-    if(migrateCajaToCarteraIfNeeded(c,reason||"Normalización automática V220: PVC/PVE no puede permanecer en Caja.")){
+    if(migrateCajaToCarteraIfNeeded(c,reason||"Normalización automática V221: PVC/PVE no puede permanecer en Caja.")){
       count++;
       c.visibleRoles=financialVisibleRolesForOrder(c);
       c.targetRoles=financialVisibleRolesForOrder(c);
       jobs.push(db.collection("cases").doc(c.id).set(c,{merge:true}).then(function(){
-        return createEvent({type:"AUTO_CARTERA_REDIRECT_V220",caseId:c.id,process:"cartera",detail:"PVC/PVE detectado en Caja y redirigido automáticamente a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}).catch(function(){return null;});
+        return createEvent({type:"AUTO_CARTERA_REDIRECT_V221",caseId:c.id,process:"cartera",detail:"PVC/PVE detectado en Caja y redirigido automáticamente a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}).catch(function(){return null;});
       }).catch(function(e){console.warn("No se pudo normalizar a Cartera",c.id,e);return null;}));
     }
   });
@@ -1872,7 +1872,7 @@ function clearPwaCachesAndReload(){
 }
 function ensureMobileFreshVersion(){
   try{
-    var version="v220-regla-directa-uid-fabian";
+    var version="v221-cargues-movil-galeria-archivos-10";
     var key="ei_mobile_app_version";
     var old=localStorage.getItem(key)||"";
     localStorage.setItem(key,version);
@@ -2309,12 +2309,12 @@ function loadData(){
     state.reports=filterReportsForCurrentUser(res[6]||[]);
     state.inventoryChips=res[7]||[];
     state.dataLoading=false;
-    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera("Normalización al cargar datos V220: PVC/PVE debe ir a Cartera.");
+    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera("Normalización al cargar datos V221: PVC/PVE debe ir a Cartera.");
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
     }
     return normalizePromise.then(function(moved){
-      if(moved>0)console.info("[V220] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+      if(moved>0)console.info("[V221] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
     });
   }).catch(function(e){
     state.dataLoading=false;
@@ -3246,7 +3246,7 @@ function autoMigrateLegacyProcesses(){
   state.cases.forEach(function(c){
     var changed=false;
     if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))changed=true;
-    if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Migración automática V220: PVE existente debe pasar por Compras antes de Recepción"))changed=true;
+    if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Migración automática V221: PVE existente debe pasar por Compras antes de Recepción"))changed=true;
     if(repairDeliveryTypeInMemory(c,"Corrección automática al cargar la app"))changed=true;
     if(repairDeliveryRouteAssignmentInMemory(c,"Corrección automática de asignación Duvan/Javier al cargar la app"))changed=true;
     if(changed)migrated.push(c);
@@ -3281,7 +3281,7 @@ function forceExistingPveToPurchasesNow(){
       var before=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
       var label=pveMigrationCandidateLabel(c);
       if(label!=="migrable_a_compras")skipped[label]=Number(skipped[label]||0)+1;
-      if(forcePveCaseToPurchasesInMemory(c,"Migración manual V220: PVE existente enviado a Compras antes de Recepción")){
+      if(forcePveCaseToPurchasesInMemory(c,"Migración manual V221: PVE existente enviado a Compras antes de Recepción")){
         var after=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
         if(before!==after){
           changedDocs.push(c);
@@ -3427,7 +3427,7 @@ function mobileFullMenuHtml(){
 
 function loadWarningsHtml(){
   if(!state.loadWarnings || !state.loadWarnings.length)return "";
-  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique las reglas V220 y recargue la PWA.</small></div>';
+  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique las reglas V221 y recargue la PWA.</small></div>';
 }
 
 
@@ -3452,9 +3452,9 @@ function applyLowResolutionMode(){
   }catch(e){}
 }
 function ensureLowResolutionResponsiveCss(){
-  if(document.getElementById("ei-v220-regla-directa-uid-fabian")){applyLowResolutionMode();return;}
+  if(document.getElementById("ei-v221-cargues-movil-galeria-archivos-10")){applyLowResolutionMode();return;}
   var st=document.createElement("style");
-  st.id="ei-v220-regla-directa-uid-fabian";
+  st.id="ei-v221-cargues-movil-galeria-archivos-10";
   st.textContent='\
 :root{--ei-sidebar-w:260px;--ei-card-pad:18px;--ei-gap:16px;--ei-font-scale:1;}\
 .app-layout{min-height:100dvh;}\
@@ -3551,7 +3551,7 @@ function openRouteSafely(route){
   catch(e){showError("Error al abrir el módulo "+route+": "+((e&&e.message)||e));}
 }
 
-function ensureV220ViewportFinalFix(){
+function ensureV221ViewportFinalFix(){
   try{
     var st=document.getElementById("ei195-viewport-final-fix");
     if(!st){
@@ -3678,14 +3678,14 @@ function ensureV220ViewportFinalFix(){
     z-index:16000!important;
   }
 }`;
-  }catch(e){console.warn("No se pudo aplicar V220 viewport fix",e);}
+  }catch(e){console.warn("No se pudo aplicar V221 viewport fix",e);}
 }
 
 function layout(content){
   cleanupProtectedToast();
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
-  ensureV220ViewportFinalFix();
+  ensureV221ViewportFinalFix();
   var rs=routes();
   var bottom=mobileItems().slice(0,4);
   appEl.innerHTML='<div class="app-layout ei191-shell"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top ei191-top ei193-top-clean"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title mobile-title-hidden" aria-hidden="true"></div><button class="mobile-menu-btn ei191-menu" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header><main class="main ei191-main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav ei191-bottom">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'<button class="ei192-bottom-menu" data-action="openMobileMenu" aria-label="Abrir menú"><b><i></i><i></i><i></i></b><span>Menú</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
@@ -3743,7 +3743,7 @@ function temporaryProfileFromAuth(fbUser,reason){
   };
   state.route=defaultRoute(state.user.role);
   state.loadWarnings=state.loadWarnings||[];
-  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió para no parar el proceso. Publique reglas V220 y cree/verifique el perfil operativo.");
+  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió para no parar el proceso. Publique reglas V221 y cree/verifique el perfil operativo.");
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   console.warn("Perfil temporal activado",reason);
   return true;
@@ -4504,6 +4504,112 @@ function mobileFileInputAttrs(extraAccept,allowMultiple){
 function mobileCameraHintHtml(){
   return '<small class="muted mobile-upload-hint">En celular puede usar cámara, galería o archivo. Mínimo 1 y máximo 10 archivos cuando aplique.</small>';
 }
+
+
+/* ============================================================
+   V221_CARGUES_MOVIL_CAMARA_GALERIA_ARCHIVOS_10
+   Regla general:
+   - cámara, galería o explorador de archivos
+   - selección múltiple
+   - máximo 10 archivos
+   - se aplica al DOM ya renderizado para no romper plantillas dinámicas
+============================================================ */
+function eiV221NormalizeMobileFileInput(input){
+  if(!input || input.type!=="file")return;
+  if(input.getAttribute("data-mobile-upload")!=="true")return;
+  try{input.removeAttribute("capture");}catch(e){}
+  input.multiple=true;
+  input.setAttribute("data-max-files","10");
+  input.setAttribute("accept","image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt");
+  if(!input.getAttribute("data-ei221-bound")){
+    input.setAttribute("data-ei221-bound","true");
+    input.addEventListener("change",function(){
+      var files=Array.prototype.slice.call(input.files||[]);
+      var label=input.closest("label");
+      var counter=label&&label.querySelector(".ei221-file-counter");
+      if(files.length>10){
+        alert("Puede seleccionar máximo 10 archivos. Se conservarán los primeros 10.");
+        try{
+          var dt=new DataTransfer();
+          files.slice(0,10).forEach(function(file){dt.items.add(file);});
+          input.files=dt.files;
+          files=files.slice(0,10);
+        }catch(e){
+          input.value="";
+          files=[];
+        }
+      }
+      if(counter){
+        counter.textContent=files.length
+          ? files.length+" archivo(s) seleccionado(s) de máximo 10."
+          : "Puede tomar fotos, elegir de la galería o seleccionar archivos. Máximo 10.";
+      }
+    });
+  }
+  var label=input.closest("label");
+  if(label && !label.querySelector(".ei221-file-counter")){
+    var hint=document.createElement("small");
+    hint.className="muted mobile-upload-hint ei221-file-counter";
+    hint.textContent="Puede tomar fotos, elegir de la galería o seleccionar archivos. Máximo 10.";
+    label.appendChild(hint);
+  }
+}
+function eiV221EnhanceMobileUploads(root){
+  root=root||document;
+  var inputs=root.querySelectorAll?root.querySelectorAll('input[type="file"][data-mobile-upload="true"]'):[];
+  Array.prototype.forEach.call(inputs,eiV221NormalizeMobileFileInput);
+}
+function eiV221Files(input,label,required){
+  var files=Array.prototype.slice.call((input&&input.files)||[]).filter(function(f){return f&&f.name;});
+  label=label||"archivos";
+  if(required!==false && !files.length){
+    alert("Seleccione o tome mínimo 1 "+label+".");
+    try{input&&input.focus();}catch(e){}
+    return null;
+  }
+  if(files.length>10){
+    alert("Máximo se permiten 10 "+label+".");
+    return null;
+  }
+  return files;
+}
+function eiV221GalleryFromUploads(uploads){
+  return (uploads||[]).map(function(x){return galleryFileFromUpload(x.upload||x,x.file);});
+}
+function eiV221PrimaryWithGallery(uploads){
+  uploads=uploads||[];
+  if(!uploads.length)return null;
+  var first=uploads[0].upload||uploads[0];
+  var firstFile=uploads[0].file||{};
+  return {
+    url:first.url||first.driveUrl||"",
+    fileId:first.fileId||first.driveId||"",
+    fileName:first.fileName||first.name||firstFile.name||"",
+    mimeType:first.mimeType||firstFile.type||"",
+    folder:first.folderPath||first.folder||"",
+    uploadedAt:first.uploadedAt||now(),
+    galleryFiles:eiV221GalleryFromUploads(uploads),
+    totalFiles:uploads.length
+  };
+}
+function eiV221UploadGallery(files,c,opts,statusEl){
+  files=(files||[]).slice(0,10);
+  return uploadFilesToDriveGallery(files,c,opts||{},statusEl);
+}
+try{
+  eiV221EnhanceMobileUploads(document);
+  var eiV221Observer=new MutationObserver(function(records){
+    records.forEach(function(record){
+      Array.prototype.forEach.call(record.addedNodes||[],function(node){
+        if(node&&node.nodeType===1){
+          if(node.matches&&node.matches('input[type="file"][data-mobile-upload="true"]'))eiV221NormalizeMobileFileInput(node);
+          eiV221EnhanceMobileUploads(node);
+        }
+      });
+    });
+  });
+  eiV221Observer.observe(document.documentElement,{childList:true,subtree:true});
+}catch(e){}
 
 function galleryFileFromUpload(up,file){
   return {
@@ -5320,8 +5426,10 @@ function createCase(fd){
   var created=now(), orderKind=orderKindCodeFromValue(fd.get("orderKind")||"PVN",fd.get("reference")||""), reference=fd.get("reference")||"", p=firstProcessForSalesOrder(orderKind,reference), def=processes[p], priority=fd.get("priorityMode")==="gerencia";
   var retained=fd.get("priorityMode")==="retenido_caja", financialDest=financialProcessForOrder({orderKind:orderKind,reference:reference});
   if(retained){p=financialDest;def=processes[p];priority=false;}
-  var supportFile=fd.get("retainedSupport");
-  if(retained && (!supportFile || !supportFile.name)){alert("Debe anexar pantallazo, imagen o PDF de la conversación/gestión comercial para pedidos retenidos.");return;}
+  var supportFiles=(typeof fd.getAll==="function"?fd.getAll("retainedSupport"):[fd.get("retainedSupport")]).filter(function(f){return f&&f.name;});
+  if(supportFiles.length>10){alert("Puede adjuntar máximo 10 soportes.");return;}
+  var supportFile=supportFiles[0]||null;
+  if(retained && !supportFiles.length){alert("Debe anexar pantallazo, imagen, PDF o archivo de la conversación/gestión comercial para pedidos retenidos.");return;}
   var assignedRole=retained?financialDest:(priority?"gerencia":primaryOwnerRole(p));
   var assignedName=retained?processTitle(financialDest):(priority?"Gerencia":processOwnerTitle(p));
   var routeDetail=p==="compras"?"Pedido PVE registrado por ventas y enviado a Compras":(retained?"Pedido retenido por ventas y enviado a "+processTitle(financialDest):"Pedido registrado por ventas y enviado a recepción");
@@ -5332,16 +5440,32 @@ function createCase(fd){
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   resetChecklistForProcess(c,p);
   addStateHistory(c,"creacion",routeDetail,{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
-  ensurePvePurchasingMetadata(c,"Creación V220: pedido PVE debe pasar por Compras antes de Recepción");
+  ensurePvePurchasingMetadata(c,"Creación V221: pedido PVE debe pasar por Compras antes de Recepción");
   var finish=function(){
     return persistCase(c,{type:"CASE_CREATED",detail:routeDetail,targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();});
   };
   var chain=Promise.resolve();
   if(retained){
-    chain=inlineFinancialSupportFile(supportFile,c,fd.get("priorityReason")||fd.get("description")||"Soporte retenido financiero").then(function(up){
+    var retainedDetail=fd.get("priorityReason")||fd.get("description")||"Soporte retenido financiero";
+    chain=inlineFinancialSupportFile(supportFile,c,retainedDetail).then(function(up){
       c.financialSupport=up;
       c.salesHold.supportInline=up;
-      appendEvidence(c,up,"Soporte de conversación/gestión comercial para "+processTitle(financialDest));
+      appendEvidence(c,up,"Soporte principal de conversación/gestión comercial para "+processTitle(financialDest));
+      if(supportFiles.length<=1)return [];
+      return eiV221UploadGallery(supportFiles.slice(1),c,{
+        processName:processTitle(financialDest),
+        processKey:financialDest,
+        evidenceType:"SOPORTES_ADICIONALES_CARTERA_VENTAS",
+        fileNamePrefix:"SOPORTE_RETENIDO"
+      }).then(function(uploads){
+        c.financialSupportGallery=eiV221GalleryFromUploads(uploads);
+        appendEvidenceGallery(c,uploads,"Soportes adicionales de conversación/gestión comercial para "+processTitle(financialDest),{
+          processKey:financialDest,
+          processName:processTitle(financialDest),
+          evidenceType:"SOPORTES_ADICIONALES_CARTERA_VENTAS"
+        });
+        return uploads;
+      });
     });
   }
   chain.then(finish).catch(function(e){showError((e&&e.message)||e||"No se pudo crear el pedido.");});
@@ -5386,12 +5510,12 @@ function renderDetail(id){
   if(!caseRelevantToCurrentUser(c) && !userIsGlobalVisibilityRole()){layout(header("Acceso no disponible","Este pedido o requerimiento pertenece a otra área o no está delegado a su usuario.",'<button class="btn" data-route="dashboard">Volver al inicio</button>')+'<div class="empty">No se muestra para evitar confusiones operativas.</div>');return;}
   cacheDetailCase(c);
   var correctedOnOpen=false;
-  if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V220: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
+  if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V221: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
   if(caseLooksBlockedInSales(c)){
-    if(releaseAnyCaseIfResolvedByReqOrReport(c,"Corrección automática V220: requerimiento o novedad/reporte ya respondido/cerrado.","Corrección automática V220"))correctedOnOpen=true;
+    if(releaseAnyCaseIfResolvedByReqOrReport(c,"Corrección automática V221: requerimiento o novedad/reporte ya respondido/cerrado.","Corrección automática V221"))correctedOnOpen=true;
   }
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
-  if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Corrección automática V220 al abrir detalle: PVE debe pasar por Compras"))correctedOnOpen=true;
+  if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Corrección automática V221 al abrir detalle: PVE debe pasar por Compras"))correctedOnOpen=true;
   if(repairDeliveryTypeInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
   var beforeReceptionFlow=JSON.stringify(c.documentFlow||{});
   normalizeReceptionDocumentFlow(c);
@@ -5418,7 +5542,7 @@ function renderDetail(id){
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(canManageNoDelivery(c))actions+='<button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Gestionar no entrega</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canOperate)actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar PDF o CSV recepción · V220</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canOperate)actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar PDF o CSV recepción · V221</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canOperate)actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-success" data-action="alistPartial" data-id="'+c.id+'">Crear envío parcial</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
     if(c.currentProcess==="alistamiento"&&canManageAlistamientoAssignment(c))actions+='<button class="btn btn-gold" data-action="assignAlistamiento" data-id="'+c.id+'">Cambiar asignación alistamiento</button>';
     if(c.currentProcess==="recepcion_pedidos"&&canAssignAlistamientoFromReception(c)&&actions.indexOf('data-action="assignAlistamiento"')===-1)actions+='<button class="btn btn-gold" data-action="assignAlistamiento" data-id="'+c.id+'">Enviar a alistamiento y asignar</button>';
@@ -5495,7 +5619,7 @@ function casePdfUrl(c){
   return c && c.documentFlow && c.documentFlow.receptionPdfDriveUrl ? c.documentFlow.receptionPdfDriveUrl : "";
 }
 function casePdfLoadedAt(c){
-  return c && eiV220IsReceptionSupportLoaded(c) ? c.documentFlow.receptionFileLoadedAt : "";
+  return c && eiV221IsReceptionSupportLoaded(c) ? c.documentFlow.receptionFileLoadedAt : "";
 }
 function pdfDocumentCard(c, compact){
   var url=casePdfUrl(c), loaded=casePdfLoadedAt(c), title=compact?"PDF del pedido":"Documento oficial del pedido";
@@ -5928,25 +6052,25 @@ function receptionLineHasLocationData(it){
 function mergePdfItemsIntoCase(c, parsed){
   parsed=parsed||{};
 
-  // V220: CSV se procesa dentro de la función original.
+  // V221: CSV se procesa dentro de la función original.
   // No se crea ningún wrapper global que dependa del ámbito de esta función.
-  if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V220"){
+  if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V221"){
     var incomingCsv=(parsed.items||[]).map(function(it,idx){
       var copy=Object.assign({},it);
       copy.id=uid("LIN");
       copy.estado=copy.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO";
-      copy.origen="CSV_RECEPCION_PEDIDOS_V220";
-      copy.generatedBy="CSV_RECEPCION_PEDIDOS_V220";
+      copy.origen="CSV_RECEPCION_PEDIDOS_V221";
+      copy.generatedBy="CSV_RECEPCION_PEDIDOS_V221";
       copy.createdAt=now();
       copy.csvPhysicalRowNumber=idx+1;
-      copy.detectionReason=(copy.detectionReason||"")+" · CSV V220 conservado como fila física independiente.";
+      copy.detectionReason=(copy.detectionReason||"")+" · CSV V221 conservado como fila física independiente.";
       return copy;
     });
 
     c.orderItems=c.orderItems||[];
     c.orderItems=c.orderItems.filter(function(it){
       var origin=String(it.origen||it.generatedBy||it.detectionReason||"").toUpperCase();
-      return origin.indexOf("CSV_RECEPCION_PEDIDOS_V220")<0;
+      return origin.indexOf("CSV_RECEPCION_PEDIDOS_V221")<0;
     });
     incomingCsv.forEach(function(it){c.orderItems.push(it);});
     return incomingCsv.length;
@@ -5955,7 +6079,7 @@ function mergePdfItemsIntoCase(c, parsed){
   var incoming=(parsed && parsed.items) ? parsed.items : [];
   c.orderItems=c.orderItems||[];
 
-  // V220: la clave de una línea de recepción incluye ubicación/bodega/extensiones.
+  // V221: la clave de una línea de recepción incluye ubicación/bodega/extensiones.
   // Antes, si el PDF traía 3 carretos iguales con distinta ubicación, se fusionaban en una sola línea.
   var incomingBaseCounts={};
   incoming.forEach(function(it){
@@ -6021,7 +6145,7 @@ function repairReceptionLinesFromPdfExtraction(c){
     c.documentFlow=c.documentFlow||{};
     c.documentFlow.receptionLinesRepairAt=now();
     c.documentFlow.receptionLinesRepairBy=state.user?state.user.name:"";
-    c.documentFlow.receptionLinesRepairDetail="Corrección automática V220: se restauraron líneas iguales con ubicaciones distintas para que todos los carretos completos pasen a alistamiento.";
+    c.documentFlow.receptionLinesRepairDetail="Corrección automática V221: se restauraron líneas iguales con ubicaciones distintas para que todos los carretos completos pasen a alistamiento.";
     try{applyReceptionChecklistFromPdf(c,c.pdfExtraction||{});}catch(e){}
     try{applyAlistamientoAutoChecklist(c);}catch(e){}
     return true;
@@ -6341,23 +6465,23 @@ function applyReceptionCutDecisions(parsed, fd){
 
 
 /* ============================================================
-   V220 - Recepción de pedidos: dos botones separados PDF / CSV
+   V221 - Recepción de pedidos: dos botones separados PDF / CSV
    Alcance único:
    - Ventana PC openReceptionPdf(id).
    - No toca Corte.
    - No toca stickers.
    - No toca Recepción de mercancía.
 ============================================================ */
-function eiV220NormHeader(v){
+function eiV221NormHeader(v){
   return stripAccents(String(v||'').toLowerCase()).replace(/[^a-z0-9]+/g,'').trim();
 }
-function eiV220DetectDelimiter(line){
+function eiV221DetectDelimiter(line){
   line=String(line||'');
   var sc=(line.match(/;/g)||[]).length, cm=(line.match(/,/g)||[]).length, tb=(line.match(/\t/g)||[]).length;
   if(tb>=sc && tb>=cm)return '\t';
   return sc>=cm?';':',';
 }
-function eiV220SplitCsvLine(line,delim){
+function eiV221SplitCsvLine(line,delim){
   var out=[], cur='', q=false;
   line=String(line||'');
   for(var i=0;i<line.length;i++){
@@ -6370,17 +6494,17 @@ function eiV220SplitCsvLine(line,delim){
   out.push(cur);
   return out.map(function(x){return String(x||'').trim();});
 }
-function eiV220CsvRows(text){
+function eiV221CsvRows(text){
   var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).filter(function(l){return String(l||'').trim();});
   if(!lines.length)return [];
   var headerLine=lines.find(function(l){
-    var n=eiV220NormHeader(l);
+    var n=eiV221NormHeader(l);
     return n.indexOf('referencia')>=0 && n.indexOf('descripcion')>=0 && n.indexOf('cantidad')>=0;
   });
   if(!headerLine)return [];
   var start=lines.indexOf(headerLine);
-  var delim=eiV220DetectDelimiter(headerLine);
-  var headers=eiV220SplitCsvLine(headerLine,delim).map(eiV220NormHeader);
+  var delim=eiV221DetectDelimiter(headerLine);
+  var headers=eiV221SplitCsvLine(headerLine,delim).map(eiV221NormHeader);
   function idx(names){for(var i=0;i<headers.length;i++){if(names.indexOf(headers[i])>=0)return i;}return -1;}
   var iRef=idx(['referencia','ref','codigo','codigoreferencia','material','item']);
   var iDesc=idx(['descripcion','descripcionmaterial','desc','materialdescripcion','nombre','nombrematerial']);
@@ -6391,7 +6515,7 @@ function eiV220CsvRows(text){
   var iPag=idx(['pagina','page']);
   var rows=[];
   for(var r=start+1;r<lines.length;r++){
-    var cols=eiV220SplitCsvLine(lines[r],delim);
+    var cols=eiV221SplitCsvLine(lines[r],delim);
     var ref=iRef>=0?cols[iRef]:'';
     var desc=iDesc>=0?cols[iDesc]:'';
     var qty=iQty>=0?cols[iQty]:'';
@@ -6401,26 +6525,26 @@ function eiV220CsvRows(text){
     var pag=iPag>=0?cols[iPag]:'';
     if(!ref || !desc || !qty || !unit)continue;
     var it={
-      id:'CSV-V220-'+String(rows.length+1).padStart(4,'0'),
+      id:'CSV-V221-'+String(rows.length+1).padStart(4,'0'),
       referencia:String(ref).replace(/\D/g,''),
       descripcion:String(desc||'').trim(),
-      cantidad:eiV220NormalizeCsvQty(qty),
+      cantidad:eiV221NormalizeCsvQty(qty),
       unidad:String(unit||'').replace(/\./g,'').toUpperCase().trim(),
       ubicacion:String(loc||'').toUpperCase().trim(),
       bodega:String(bod||'').trim(),
       sourcePage:pag||'',
       sourceRowIndex:rows.length+1,
       pdfPhysicalRowNumber:rows.length+1,
-      generatedBy:'CSV_RECEPCION_PEDIDOS_V220',
-      origen:'CSV_RECEPCION_PEDIDOS_V220',
-      detectionReason:'Fila cargada desde CSV V220 en Recepción de pedidos.'
+      generatedBy:'CSV_RECEPCION_PEDIDOS_V221',
+      origen:'CSV_RECEPCION_PEDIDOS_V221',
+      detectionReason:'Fila cargada desde CSV V221 en Recepción de pedidos.'
     };
     try{it=recalcReceptionItemFlags(it);}catch(e){}
     rows.push(it);
   }
   return rows;
 }
-function eiV220ReadTextFile(file){
+function eiV221ReadTextFile(file){
   return new Promise(function(resolve,reject){
     var reader=new FileReader();
     reader.onload=function(){resolve(String(reader.result||''));};
@@ -6428,8 +6552,8 @@ function eiV220ReadTextFile(file){
     reader.readAsText(file,'utf-8');
   });
 }
-function eiV220ParsedFromCsv(text,c,fileName){
-  var items=eiV220CsvRows(text);
+function eiV221ParsedFromCsv(text,c,fileName){
+  var items=eiV221CsvRows(text);
   if(!items.length)throw new Error('El CSV no tiene columnas reconocibles. Use: referencia;descripcion;cantidad;unidad;ubicacion;bodega');
   return {
     orderNumber:(c&&c.reference)||String(fileName||'').replace(/\.[^.]+$/,''),
@@ -6448,16 +6572,16 @@ function eiV220ParsedFromCsv(text,c,fileName){
     meterItems:items.filter(function(x){return x.requiereCorte;}).length,
     pages:Math.max.apply(null,items.map(function(x){return Number(x.sourcePage)||1;})),
     raw:String(text||'').slice(0,10000),
-    extractionMode:'CSV_RECEPCION_PEDIDOS_V220',
+    extractionMode:'CSV_RECEPCION_PEDIDOS_V221',
     csvForcedRows:items.length
   };
 }
-function eiV220ApplyCsvItemsToCase(c,parsed){
+function eiV221ApplyCsvItemsToCase(c,parsed){
   var incoming=(parsed.items||[]).map(function(it,idx){
     var copy=Object.assign({},it);
     copy.id=uid('LIN');
     copy.estado=copy.requiereCorte ? 'PENDIENTE_CORTE' : 'PENDIENTE_ALISTAMIENTO';
-    copy.origen='CSV_RECEPCION_PEDIDOS_V220';
+    copy.origen='CSV_RECEPCION_PEDIDOS_V221';
     copy.createdAt=now();
     copy.csvPhysicalRowNumber=idx+1;
     return copy;
@@ -6465,7 +6589,7 @@ function eiV220ApplyCsvItemsToCase(c,parsed){
   c.orderItems=c.orderItems||[];
   c.orderItems=c.orderItems.filter(function(it){
     var origin=String(it.origen||it.generatedBy||it.detectionReason||'').toUpperCase();
-    return origin.indexOf('CSV_RECEPCION_PEDIDOS_V220')<0;
+    return origin.indexOf('CSV_RECEPCION_PEDIDOS_V221')<0;
   });
   incoming.forEach(function(it){c.orderItems.push(it);});
   return incoming.length;
@@ -6476,8 +6600,8 @@ function eiV220ApplyCsvItemsToCase(c,parsed){
 
 
 
-/* V220 - Helper seguro para abrir/cerrar drawer de Recepción de pedidos */
-function eiV220CloseReceptionDrawer(){
+/* V221 - Helper seguro para abrir/cerrar drawer de Recepción de pedidos */
+function eiV221CloseReceptionDrawer(){
   try{
     var d=qs("#drawer");
     if(d){
@@ -6487,7 +6611,7 @@ function eiV220CloseReceptionDrawer(){
     }
   }catch(e){}
 }
-function eiV220OpenDrawerHtml(html){
+function eiV221OpenDrawerHtml(html){
   var d=qs("#drawer");
   if(!d)throw new Error("No se encontró el contenedor drawer.");
   d.innerHTML=html;
@@ -6499,16 +6623,16 @@ function eiV220OpenDrawerHtml(html){
     if(t===d || (t && t.closest && t.closest('[data-action="closeDrawer"],[data-action="closeReceptionDrawer"]'))){
       ev.preventDefault();
       ev.stopPropagation();
-      eiV220CloseReceptionDrawer();
+      eiV221CloseReceptionDrawer();
     }
   };
   try{
     document.onkeydown=function(ev){
-      if(ev && ev.key==="Escape" && d.classList.contains("open"))eiV220CloseReceptionDrawer();
+      if(ev && ev.key==="Escape" && d.classList.contains("open"))eiV221CloseReceptionDrawer();
     };
   }catch(e){}
 }
-function eiV220NormalizeCsvQty(v){
+function eiV221NormalizeCsvQty(v){
   var s=String(v||'').trim();
   if(!s)return '';
   s=s.replace(/\s+/g,'');
@@ -6524,8 +6648,8 @@ function eiV220NormalizeCsvQty(v){
 }
 
 
-/* V220 - Helper local para guardar datos del pedido sin depender de applyParsedPedidoToCase */
-function eiV220ApplyParsedPedidoToCase(c,parsed){
+/* V221 - Helper local para guardar datos del pedido sin depender de applyParsedPedidoToCase */
+function eiV221ApplyParsedPedidoToCase(c,parsed){
   parsed=parsed||{};
   var changed=[];
   function put(field,value,label){
@@ -6557,7 +6681,7 @@ function eiV220ApplyParsedPedidoToCase(c,parsed){
   c.updatedAt=now();
   return changed;
 }
-function eiV220EnsureReceptionDecision(c,parsed){
+function eiV221EnsureReceptionDecision(c,parsed){
   c.receptionDecisionConfirmation=c.receptionDecisionConfirmation||{};
   if(!c.receptionDecisionConfirmation.decision){
     c.receptionDecisionConfirmation={
@@ -6566,7 +6690,7 @@ function eiV220EnsureReceptionDecision(c,parsed){
       at:now(),
       by:state.user.uid,
       byName:state.user.name,
-      source:'RECEPCION_PEDIDOS_V220'
+      source:'RECEPCION_PEDIDOS_V221'
     };
   }
   c.receptionDecisionLog=c.receptionDecisionLog||[];
@@ -6577,8 +6701,8 @@ function eiV220EnsureReceptionDecision(c,parsed){
 
 
 
-/* V220 - PDF y CSV son soporte válido para Recepción de pedidos */
-function eiV220IsReceptionSupportLoaded(c){
+/* V221 - PDF y CSV son soporte válido para Recepción de pedidos */
+function eiV221IsReceptionSupportLoaded(c){
   c=c||{};
   var df=c.documentFlow||{};
   return !!(
@@ -6596,7 +6720,7 @@ function eiV220IsReceptionSupportLoaded(c){
     c.csvReception
   );
 }
-function eiV220MarkReceptionSupport(c,up,mode,fileName,parsed){
+function eiV221MarkReceptionSupport(c,up,mode,fileName,parsed){
   c.documentFlow=c.documentFlow||{};
   mode=String(mode||'').toUpperCase();
   c.documentFlow.receptionSupportLoaded=true;
@@ -6645,9 +6769,9 @@ function eiV220MarkReceptionSupport(c,up,mode,fileName,parsed){
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
   var parsed=null,fileName="",selectedFile=null,previewUrl="",loadedMode="";
-  drawer('<section class="modal modal-wide ei207-reception-modal" style="width:min(1180px,96vw);max-width:96vw;max-height:92vh;overflow:auto;border-radius:24px"><div class="modal-head"><div><h3>Recepción de pedidos · cargar PDF o CSV · V220</h3><p>PDF y CSV usan el mismo ciclo: compromiso, decisión de corte, líneas, cortes automáticos, checklist, evidencia y evento.</p></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+
+  drawer('<section class="modal modal-wide ei207-reception-modal" style="width:min(1180px,96vw);max-width:96vw;max-height:92vh;overflow:auto;border-radius:24px"><div class="modal-head"><div><h3>Recepción de pedidos · cargar PDF o CSV · V221</h3><p>PDF y CSV usan el mismo ciclo: compromiso, decisión de corte, líneas, cortes automáticos, checklist, evidencia y evento.</p></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+
     '<form class="form" id="recPdfForm">'+
-    '<div class="notice success"><strong>V220:</strong> escoja una carga. El CSV conserva todas las filas físicas y al guardar sigue el mismo ciclo operativo del PDF.</div>'+
+    '<div class="notice success"><strong>V221:</strong> escoja una carga. El CSV conserva todas las filas físicas y al guardar sigue el mismo ciclo operativo del PDF.</div>'+
     '<div class="grid2">'+
     '<label class="field"><span>1. Cargar PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf,.pdf"></label>'+
     '<label class="field"><span>2. Cargar CSV de líneas</span><input class="input" type="file" name="csv" id="receptionCsvInput" accept="text/csv,.csv,text/plain,.txt"><small class="muted">Formato: referencia;descripcion;cantidad;unidad;ubicacion;bodega</small></label>'+
@@ -6710,9 +6834,9 @@ function openReceptionPdf(id){
       qs("#pdfPreviewFrame").src="";
       qs("#receptionPdfStatus").innerHTML="Leyendo CSV de líneas físicas...";
       qs("#pdfExtractPreview").innerHTML="";
-      eiV220ReadTextFile(f).then(function(text){
-        parsed=eiV220ParsedFromCsv(text,c,f.name);
-        parsed.extractionMode="CSV_RECEPCION_PEDIDOS_V220";
+      eiV221ReadTextFile(f).then(function(text){
+        parsed=eiV221ParsedFromCsv(text,c,f.name);
+        parsed.extractionMode="CSV_RECEPCION_PEDIDOS_V221";
         showParsedResult("CSV");
       }).catch(function(e){
         qs("#receptionPdfStatus").innerHTML="No fue posible leer el CSV. "+esc(e.message||e);
@@ -6729,9 +6853,9 @@ function openReceptionPdf(id){
     parsed.items=collectReceptionItemsFromForm(fd,false);
     if(!parsed.items.length){alert("Debe quedar al menos una línea del pedido. Corrija la extracción o agregue una línea manual.");return;}
     parsed.items.forEach(function(it,idx){
-      if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V220"){
-        it.origen="CSV_RECEPCION_PEDIDOS_V220";
-        it.generatedBy="CSV_RECEPCION_PEDIDOS_V220";
+      if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V221"){
+        it.origen="CSV_RECEPCION_PEDIDOS_V221";
+        it.generatedBy="CSV_RECEPCION_PEDIDOS_V221";
         it.csvPhysicalRowNumber=idx+1;
       }
     });
@@ -6753,13 +6877,13 @@ function openReceptionPdf(id){
     c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
     c.documentFlow.lastReceptionDecisionConfirmedAt=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.confirmedAt;
     c.documentFlow.lastReceptionDecisionSummary=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.detail;
-    if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V220"){
-      c.documentFlow.extractionMode="CSV_RECEPCION_PEDIDOS_V220";
+    if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V221"){
+      c.documentFlow.extractionMode="CSV_RECEPCION_PEDIDOS_V221";
     }
     var added=autoCreateCutsFromItems(c,state.user.name);
     applyReceptionChecklistFromPdf(c,parsed);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
-      eiV220MarkReceptionSupport(c,up,loadedMode||parsed.extractionMode,fileName,parsed);
+      eiV221MarkReceptionSupport(c,up,loadedMode||parsed.extractionMode,fileName,parsed);
       c.documentFlow.receptionSupportDriveUrl=up.url;
       c.documentFlow.receptionSupportDriveId=up.fileId;
       c.documentFlow.receptionSupportDriveFolder=up.folderPath||up.folder;
@@ -7094,7 +7218,7 @@ function cutFinalOk(cut){return !!(cut && cut.finishedAt);}
 function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
-  ensureCutCaseFlagsV220(c);
+  ensureCutCaseFlagsV221(c);
   var cut=findCut(c,cutId);if(!cut)return;
   var canOperate=canOperateCutModule();
   if(!canOperate){alert("No tiene permiso para operar este corte.");return;}
@@ -7160,7 +7284,7 @@ function openCutModule(id,cutId){
       '<label><input type="checkbox" name="tramoRotulado" '+(cut.tramoRotulado!==false?'checked':'')+'> Tramo rotulado</label>'+ 
       '<label><input type="checkbox" name="evidenciaRegistro" '+(cut.evidenciaRegistro!==false?'checked':'')+'> Evidencia/registro realizado</label>'+ 
     '</div><div class="cut-grid cut-grid-1">'+
-      '<label class="field"><span>Foto del carreto rotulado obligatoria para registrar</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" data-mobile-upload="true" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+(cut.carretoRotuladoUrl?'Foto del carreto rotulado cargada: '+fmtDate(cut.carretoRotuladoAt)+(cut.carretoRotuladoUrl?' · Drive OK':''):(cut.carretoRotuladoPendingUpload?'Foto del carreto tomada. Pendiente subir a Drive; el flujo no se bloquea.':'Cuando finalice el corte, tome una sola foto del carreto rotulado y pulse Registrar corte.'))+'</small></label>'+ 
+      '<label class="field"><span>Fotos o archivos del carreto rotulado obligatorios para registrar</span><input class="input" type="file" id="cutCarretoPhoto" accept="image/*" capture="environment" data-mobile-upload="true" '+((!cut.finishedAt||finished)&&!cut.carretoRotuladoPendingUpload?'disabled':'')+'><small>'+(cut.carretoRotuladoUrl?'Foto del carreto rotulado cargada: '+fmtDate(cut.carretoRotuladoAt)+(cut.carretoRotuladoUrl?' · Drive OK':''):(cut.carretoRotuladoPendingUpload?'Foto del carreto tomada. Pendiente subir a Drive; el flujo no se bloquea.':'Cuando finalice el corte, puede tomar fotos, elegir de la galería o seleccionar archivos del carreto rotulado. Máximo 10.'))+'</small></label>'+ 
     '</div><div class="top-actions"><button type="button" class="btn btn-primary" data-cut-action="startCut" '+((started||finished)?'disabled':'')+'>Iniciar corte</button><button type="button" class="btn btn-gold" data-cut-action="finishCut" '+((!started||finished)?'disabled':'')+'>Finalizar corte</button><button type="button" class="btn btn-success" data-cut-action="registerCut" '+((!cutFinalOk(cut)||finished)?'disabled':'')+'>Registrar corte / cumplido</button><button type="button" class="btn" data-cut-action="saveCutDraft">Guardar avance</button>'+((cut.carretoRotuladoPendingUpload)?'<button type="button" class="btn btn-gold" data-cut-action="retryCutUploads">Reintentar foto pendiente</button>':'')+'</div></fieldset>'+ 
   '</form>';
   drawer(modal("Corte de cable · registro simple",info+form));
@@ -7207,7 +7331,7 @@ function syncCutSourceLineToAlistamiento(c,cut,mode){
     });
   }catch(e){}
 }
-function ensureCutCaseFlagsV220(c){
+function ensureCutCaseFlagsV221(c){
   try{
     if(!c)return;
     c.hasCuts=true;
@@ -7329,7 +7453,7 @@ function finishCutWithoutPhysicalProcess(c,cut,mode){
 }
 function handleCutAction(c,cut,action){
   applyCutFormValues(cut);
-  ensureCutCaseFlagsV220(c);
+  ensureCutCaseFlagsV221(c);
   var calc=cutCalc(cut), rule=calc.rule;
   if(action==="saveCutDraft"){
     cut.status=cut.status||"PENDIENTE_CORTE";
@@ -7583,7 +7707,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V220</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V221</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -7647,8 +7771,8 @@ function forceReleaseOneSalesBlock(id){
   if(!canForceReleaseSalesBlocks()){alert("No tiene permiso para liberar bloqueos de Ventas.");return;}
   if(!caseLooksBlockedInSales(c)){alert("Este pedido no aparece bloqueado en Ventas.");return;}
   if(!caseHasSalesResolutionSignal(c) && !confirm("No encontré respuesta/cierre asociado, ¿desea liberarlo manualmente de todas formas?"))return;
-  if(!releaseCaseFromSalesBlock(c,"Liberación manual V220 por rol autorizado.","Liberación manual V220")){alert("No fue posible liberar este pedido.");return;}
-  persistCase(c,{type:"SALES_BLOCK_MANUAL_RELEASED",detail:"Liberación manual V220: pedido devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}).then(loadData).then(function(){renderDetail(id);alert("Pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess)+".");}).catch(function(e){showError((e&&e.message)||e||"No se pudo liberar el pedido.");});
+  if(!releaseCaseFromSalesBlock(c,"Liberación manual V221 por rol autorizado.","Liberación manual V221")){alert("No fue posible liberar este pedido.");return;}
+  persistCase(c,{type:"SALES_BLOCK_MANUAL_RELEASED",detail:"Liberación manual V221: pedido devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}).then(loadData).then(function(){renderDetail(id);alert("Pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess)+".");}).catch(function(e){showError((e&&e.message)||e||"No se pudo liberar el pedido.");});
 }
 function caseLooksBlockedInSales(c){
   if(!c)return false;
@@ -7732,9 +7856,9 @@ function forceReleaseResolvedSalesBlocksNow(){
   (state.cases||[]).forEach(function(c){
     if(!caseLooksBlockedInSales(c))return;
     if(!caseHasSalesResolutionSignal(c))return;
-    if(releaseCaseFromSalesBlock(c,"Reparación V220: requerimiento o novedad/reporte respondido/cerrado. Incluye liberación aunque exista requerimiento y reporte al mismo tiempo.","Reparación V220")){
+    if(releaseCaseFromSalesBlock(c,"Reparación V221: requerimiento o novedad/reporte respondido/cerrado. Incluye liberación aunque exista requerimiento y reporte al mismo tiempo.","Reparación V221")){
       changed.push(c);
-      promises.push(persistCase(c,{type:"SALES_BLOCK_FORCE_RELEASED_V220",detail:"Reparación V220: pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}));
+      promises.push(persistCase(c,{type:"SALES_BLOCK_FORCE_RELEASED_V221",detail:"Reparación V221: pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}));
     }
   });
   if(!changed.length){alert("No se encontraron pedidos con requerimiento/novedad ya respondida o cerrada para liberar de Ventas.");return;}
@@ -7820,16 +7944,16 @@ function modal(title,body){
 }
 
 
-function ensureV220CutUiFixes(){
-  if(document.getElementById('ei-v220-regla-directa-uid-fabian'))return;
-  var st=document.createElement('style');st.id='ei-v220-regla-directa-uid-fabian';
+function ensureV221CutUiFixes(){
+  if(document.getElementById('ei-v221-cargues-movil-galeria-archivos-10'))return;
+  var st=document.createElement('style');st.id='ei-v221-cargues-movil-galeria-archivos-10';
   st.textContent='.cut-simple-head{gap:10px}.cut-quick-note{font-size:.95rem}.cut-full fieldset{margin-top:12px;padding:14px;border-radius:18px}.cut-full legend{font-weight:900;color:#061b46}.cut-full .top-actions{gap:8px;flex-wrap:wrap}.cut-full .top-actions .btn{min-height:42px}.cut-full .btn[data-cut-action="noCutNeeded"]{font-weight:900}.cut-timer-card{padding:12px}.compact-lines-table td,.compact-lines-table th{vertical-align:top}.drawer .modal{max-width:min(1040px,96vw)}@media(max-width:720px){.drawer .modal{width:96vw;max-height:94vh;border-radius:22px}.modal-head{position:sticky;top:0;z-index:3;background:#fff}.cut-full fieldset{padding:12px}.cut-full .top-actions{display:grid;grid-template-columns:1fr;gap:8px}.cut-full .top-actions .btn{width:100%;justify-content:center}.cut-grid,.cut-grid-2,.cut-grid-3,.cut-grid-4{grid-template-columns:1fr!important}.cut-simple-head{grid-template-columns:1fr!important}.cut-timer{font-size:1.5rem}}';
   document.head.appendChild(st);
 }
 
 function drawer(html){
-  ensureV220UiFixes();
-  ensureV220CutUiFixes();
+  ensureV221UiFixes();
+  ensureV221CutUiFixes();
   var d=qs('#drawer');
   if(!d){d=document.createElement('div');d.id='drawer';d.className='drawer';document.body.appendChild(d);}
   d.innerHTML=html||'';
@@ -8180,7 +8304,12 @@ function openReceptionGoodsModal(){
   if(!canAccessReceptionGoods()){alert("No tiene permiso para recepción de mercancía.");return;}
   var checks=receptionChecklist().map(function(c,i){return '<label class="check-card"><input type="checkbox" name="chk_'+i+'"> '+esc(c)+'</label>';}).join('');
   drawer(modal("Nuevo ingreso de mercancía",'<form class="form" id="receptionGoodsForm"><div class="notice"><strong>Chequeo de ingreso:</strong> cargue el soporte y deje trazabilidad. Si el estado queda <strong>Retenido</strong>, la app abrirá la novedad de recepción en Auditoría.</div><div class="grid grid-2"><label class="field"><span>Número documento *</span><input class="input" name="documentNumber" required placeholder="Factura, remisión, OC o guía"></label><label class="field"><span>Orden de compra / PVE</span><input class="input" name="purchaseOrder" placeholder="OC que quedará impresa en el sticker"></label></div><div class="grid grid-2"><label class="field"><span>Proveedor / tercero *</span><input class="input" name="supplier" required></label><label class="field"><span>Tipo de ingreso</span><select class="select" name="receiptType"><option value="Compra proveedor">Compra proveedor</option><option value="Traslado">Traslado</option><option value="Devolución">Devolución</option><option value="Proyecto">Proyecto</option><option value="Otro">Otro</option></select></label></div><div class="grid grid-2"><label class="field"><span>Documento soporte *</span><input class="input" type="file" name="support" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" required data-mobile-upload="true"></label><label class="field"><span>Uso del sticker</span><input class="input" value="Se imprimirá y pegará en la mercancía cuando el ingreso quede Conforme" readonly></label></div><div class="grid grid-2"><label class="field"><span>Placa / transportadora</span><input class="input" name="carrier"></label><label class="field"><span>Responsable entrega</span><input class="input" name="deliveredBy"></label></div><fieldset><legend>Chequeos de ingreso</legend><div class="grid grid-2">'+checks+'</div></fieldset><label class="field"><span>Hallazgo / novedad</span><textarea class="textarea" name="finding" placeholder="Diferencias, daño, faltante, documento ilegible, riesgo de calidad, observación SST o inventario."></textarea></label><label class="field"><span>Acción inmediata</span><textarea class="textarea" name="action" placeholder="Retener, separar mercancía, solicitar corrección, validar con proveedor, liberar ingreso."></textarea></label><label class="field"><span>Conformidad *</span><select class="select" name="conformity" required>'+receptionConformityOptionsHtml()+'</select></label><button class="btn btn-primary" type="submit">Guardar ingreso</button></form>'));
-  qs("#receptionGoodsForm").onsubmit=function(e){e.preventDefault();saveReceptionGoods(new FormData(e.target),e.target.support.files&&e.target.support.files[0]);};
+  qs("#receptionGoodsForm").onsubmit=function(e){
+    e.preventDefault();
+    var files=eiV221Files(e.target.support,"archivos de soporte",true);
+    if(!files)return;
+    saveReceptionGoods(new FormData(e.target),files);
+  };
 }
 function buildReceptionGoodsNoveltyText(r){
   var checks=Object.keys(r.checklist||{}).map(function(k){return "- "+k+": "+(r.checklist[k]==='ok'?"OK":"Pendiente");}).join("\n");
@@ -8254,18 +8383,52 @@ function createReceptionGoodsReport(r,text,status){
     return createEvent({type:"REPORT_CREATED",detail:"Reporte generado para Jefe Logístico y Gerencia: "+rep.title,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;}).then(function(){return rep;});
   });
 }
-function saveReceptionGoods(fd,file){
-  if(!file){alert("Debe cargar el documento soporte.");return;}
+function saveReceptionGoods(fd,files){
+  files=(files||[]).slice(0,10);
+  if(!files.length){alert("Debe cargar mínimo un documento, foto o archivo de soporte.");return;}
   var savedReceptionResult=null;
   var id=uid("REC");
   var fakeCase={id:id,caseNumber:id,reference:fd.get("documentNumber")||id,pedido:fd.get("documentNumber")||id,currentProcess:"reception_goods"};
   var selected=fd.get("conformity")||"Conforme";
-  uploadFileToDrive(file,fakeCase,{processName:"Recepción de mercancía",processKey:"reception_goods",fileName:(fd.get("documentNumber")||id)+"_soporte_"+file.name,evidenceType:"DOCUMENTO_INGRESO"}).then(function(up){
+  eiV221UploadGallery(files,fakeCase,{
+    processName:"Recepción de mercancía",
+    processKey:"reception_goods",
+    fileNamePrefix:(fd.get("documentNumber")||id)+"_soporte",
+    evidenceType:"DOCUMENTO_INGRESO"
+  }).then(function(uploads){
+    var primary=eiV221PrimaryWithGallery(uploads);
     var checklist={};receptionChecklist().forEach(function(c,i){checklist[c]=fd.get("chk_"+i)?"ok":"pending";});
     var finding=String(fd.get("finding")||"").trim();
-    var doc={id:id,documentNumber:fd.get("documentNumber")||"",purchaseOrder:fd.get("purchaseOrder")||fd.get("documentNumber")||"",supplier:fd.get("supplier")||"",receiptType:fd.get("receiptType")||"",carrier:fd.get("carrier")||"",deliveredBy:fd.get("deliveredBy")||"",checklist:checklist,conformity:selected,findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:["jefe_logistica","gerencia"]}]:[],actionPlan:fd.get("action")||"",support:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()},status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",createdAt:now(),updatedAt:now(),createdBy:state.user.uid,createdByName:state.user.name,createdByRole:state.user.role,visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]};
+    var doc={
+      id:id,
+      documentNumber:fd.get("documentNumber")||"",
+      purchaseOrder:fd.get("purchaseOrder")||fd.get("documentNumber")||"",
+      supplier:fd.get("supplier")||"",
+      receiptType:fd.get("receiptType")||"",
+      carrier:fd.get("carrier")||"",
+      deliveredBy:fd.get("deliveredBy")||"",
+      checklist:checklist,
+      conformity:selected,
+      findings:finding?[{id:uid("HAL"),detail:finding,action:fd.get("action")||"",createdAt:now(),createdBy:state.user.uid,createdByName:state.user.name,reportTo:["jefe_logistica","gerencia"]}]:[],
+      actionPlan:fd.get("action")||"",
+      support:primary,
+      supportGallery:primary&&primary.galleryFiles||[],
+      supportCount:uploads.length,
+      status:receptionConformityIsNovelty(selected)?"RETENIDO":"CERRADO",
+      createdAt:now(),
+      updatedAt:now(),
+      createdBy:state.user.uid,
+      createdByName:state.user.name,
+      createdByRole:state.user.role,
+      visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]
+    };
     return db.collection("recepciones_mercancia").doc(id).set(doc).then(function(){
-      return createEvent({type:"GOODS_RECEPTION_CREATED",detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;}).then(function(){return doc;});
+      return createEvent({
+        type:"GOODS_RECEPTION_CREATED",
+        detail:"Ingreso de mercancía registrado: "+doc.documentNumber+" · "+doc.supplier+" · "+uploads.length+" archivo(s)"+(receptionConformityIsNovelty(selected)?" · RETENIDO":(finding?" · Observación":"")),
+        targetRole:"jefe_logistica",
+        visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]
+      }).catch(function(){return null;}).then(function(){return doc;});
     });
   }).then(function(doc){
     if(receptionConformityIsNovelty(doc.conformity)){
@@ -8305,7 +8468,7 @@ function openReceptionGoods(id){
   if(receptionIsOpen(r) && canCloseReceptionNovelty())actions+='<button class="btn btn-success" data-action="closeReceptionGoods" data-id="'+esc(r.id)+'">Cerrar retenido con evidencia</button>';
   if(receptionConformityIsNovelty(r.conformity) && receptionIsOpen(r))actions+='<button class="btn btn-gold" data-action="reportReceptionGoods" data-id="'+esc(r.id)+'">Diligenciar novedad en Auditoría</button>';
   if(canDeleteReceptionGoods())actions+='<button class="btn btn-danger" data-action="deleteReceptionGoods" data-id="'+esc(r.id)+'">Eliminar ingreso</button>';
-  drawer(modal("Ingreso de mercancía",'<section class="grid grid-2"><article class="card"><h3>'+esc(r.documentNumber||r.id)+'</h3><p>'+esc(r.supplier||'')+'</p><p>'+esc(r.receiptType||'')+' · '+esc(r.conformity||'')+' · '+esc(r.status||'')+'</p></article><article class="card"><h3>Soporte</h3>'+(r.support&&r.support.url?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.support.url)+'">Abrir documento</a>':'<span>Sin soporte</span>')+'</article></section><section class="card" style="margin-top:12px"><h3>Chequeos</h3><ul>'+checks+'</ul></section><section class="card" style="margin-top:12px"><h3>Hallazgo / novedad de recepción</h3><div class="notice warning"><strong>Reporte a Jefe Logístico y Gerencia:</strong> esta novedad queda visible para ambos en la bandeja Reportes. Ellos pueden revisar y comentar, pero el cierre definitivo del retenido solo se realiza desde Recepción con evidencia.</div>'+findings+closure+'<div class="top-actions">'+actions+'</div></section>'));
+  drawer(modal("Ingreso de mercancía",'<section class="grid grid-2"><article class="card"><h3>'+esc(r.documentNumber||r.id)+'</h3><p>'+esc(r.supplier||'')+'</p><p>'+esc(r.receiptType||'')+' · '+esc(r.conformity||'')+' · '+esc(r.status||'')+'</p></article><article class="card"><h3>Soportes</h3>'+(r.support&&r.support.url?'<a class="btn btn-small btn-primary" target="_blank" rel="noopener" href="'+esc(r.support.url)+'">Abrir soporte principal</a>':'<span>Sin soporte</span>')+galleryLinksHtml((r.support&&r.support.galleryFiles)||r.supportGallery||[])+'</article></section><section class="card" style="margin-top:12px"><h3>Chequeos</h3><ul>'+checks+'</ul></section><section class="card" style="margin-top:12px"><h3>Hallazgo / novedad de recepción</h3><div class="notice warning"><strong>Reporte a Jefe Logístico y Gerencia:</strong> esta novedad queda visible para ambos en la bandeja Reportes. Ellos pueden revisar y comentar, pero el cierre definitivo del retenido solo se realiza desde Recepción con evidencia.</div>'+findings+closure+'<div class="top-actions">'+actions+'</div></section>'));
 }
 function reportReceptionGoods(id){
   var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
@@ -8323,22 +8486,67 @@ function closeReceptionGoods(id){
   if(!receptionIsOpen(r) && !canDeleteReceptionGoods()){alert("Este ingreso ya está cerrado y no puede editarse.");return;}
   drawer(modal("Cerrar novedad retenida",'<form class="form" id="closeReceptionGoodsForm"><div class="notice danger"><strong>Cierre obligatorio con evidencia:</strong> indique la decisión tomada y adjunte soporte. Después de cerrar, no podrá editarse nuevamente, salvo por Super Admin.</div><label class="field"><span>Estado final *</span><select class="select" name="finalStatus" required><option value="Devuelto">Devuelto</option><option value="Ajustado">Ajustado</option><option value="Conforme">Conforme nuevamente</option></select></label><label class="field"><span>Decisión tomada / comentario *</span><textarea class="textarea" name="decision" required placeholder="Explique qué se decidió con la mercancía retenida, quién autorizó y qué acción se ejecutó."></textarea></label><label class="field"><span>Evidencia de cierre *</span><input class="input" type="file" name="closureEvidence" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" required data-mobile-upload="true"></label><button class="btn btn-success" type="submit">Cerrar caso con evidencia</button></form>'));
   var form=qs("#closeReceptionGoodsForm");
-  if(form)form.onsubmit=function(e){e.preventDefault();submitCloseReceptionGoods(id,new FormData(form),form.closureEvidence.files&&form.closureEvidence.files[0]);};
+  if(form)form.onsubmit=function(e){
+    e.preventDefault();
+    var files=eiV221Files(form.closureEvidence,"evidencias de cierre",true);
+    if(!files)return;
+    submitCloseReceptionGoods(id,new FormData(form),files);
+  };
 }
-function submitCloseReceptionGoods(id,fd,file){
+function submitCloseReceptionGoods(id,fd,files){
   var r=(state.receptions||[]).filter(function(x){return x.id===id;})[0];if(!r)return;
-  if(!file){alert("Debe subir evidencia de cierre.");return;}
+  files=(files||[]).slice(0,10);
+  if(!files.length){alert("Debe subir mínimo una evidencia de cierre.");return;}
   var finalStatus=fd.get("finalStatus")||"Conforme";
   var decision=String(fd.get("decision")||"").trim();
   if(!decision){alert("Debe escribir la decisión tomada.");return;}
   var fakeCase={id:id,caseNumber:id,reference:r.documentNumber||id,pedido:r.documentNumber||id,currentProcess:"reception_goods"};
-  uploadFileToDrive(file,fakeCase,{processName:"Recepción de mercancía",processKey:"reception_goods",fileName:(r.documentNumber||id)+"_cierre_"+file.name,evidenceType:"EVIDENCIA_CIERRE_RECEPCION"}).then(function(up){
-    var payload={status:"CERRADO",conformity:finalStatus,finalDecisionStatus:finalStatus,finalDecisionComment:decision,closedAt:now(),closedBy:state.user.uid,closedByName:state.user.name,updatedAt:now(),updatedBy:state.user.uid,closureLocked:true,closureEvidence:{url:up.url,fileId:up.fileId,fileName:up.fileName||up.name||file.name,mimeType:up.mimeType||file.type,folder:up.folderPath||up.folder,uploadedAt:now()}};
+  eiV221UploadGallery(files,fakeCase,{
+    processName:"Recepción de mercancía",
+    processKey:"reception_goods",
+    fileNamePrefix:(r.documentNumber||id)+"_cierre",
+    evidenceType:"EVIDENCIA_CIERRE_RECEPCION"
+  }).then(function(uploads){
+    var primary=eiV221PrimaryWithGallery(uploads);
+    var payload={
+      status:"CERRADO",
+      conformity:finalStatus,
+      finalDecisionStatus:finalStatus,
+      finalDecisionComment:decision,
+      closedAt:now(),
+      closedBy:state.user.uid,
+      closedByName:state.user.name,
+      updatedAt:now(),
+      updatedBy:state.user.uid,
+      closureLocked:true,
+      closureEvidence:primary,
+      closureEvidenceGallery:primary&&primary.galleryFiles||[],
+      closureEvidenceCount:uploads.length
+    };
     return db.collection("recepciones_mercancia").doc(id).update(payload).then(function(){return payload;});
   }).then(function(payload){
     var linked=(state.reports||[]).filter(function(rep){return rep.sourceModule==="recepcion_mercancia" && rep.sourceId===id && rep.status!=="CERRADO";});
-    var updates=linked.map(function(rep){return db.collection("reportes_novedad").doc(rep.id).update({status:"CERRADO",finalStatus:payload.finalDecisionStatus,closureComment:payload.finalDecisionComment,closedAt:payload.closedAt,closedBy:payload.closedBy,closedByName:payload.closedByName,closureEvidence:payload.closureEvidence,updatedAt:now()});});
-    return Promise.all(updates).then(function(){return createEvent({type:"GOODS_RECEPTION_CLOSED",detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus,targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]}).catch(function(){return null;});});
+    var updates=linked.map(function(rep){
+      return db.collection("reportes_novedad").doc(rep.id).update({
+        status:"CERRADO",
+        finalStatus:payload.finalDecisionStatus,
+        closureComment:payload.finalDecisionComment,
+        closedAt:payload.closedAt,
+        closedBy:payload.closedBy,
+        closedByName:payload.closedByName,
+        closureEvidence:payload.closureEvidence,
+        closureEvidenceGallery:payload.closureEvidenceGallery,
+        updatedAt:now()
+      });
+    });
+    return Promise.all(updates).then(function(){
+      return createEvent({
+        type:"GOODS_RECEPTION_CLOSED",
+        detail:"Novedad de recepción cerrada: "+(r.documentNumber||id)+" · "+payload.finalDecisionStatus+" · "+payload.closureEvidenceCount+" archivo(s)",
+        targetRole:"jefe_logistica",
+        visibleRoles:["admin","super_admin","super_administrador","lider_recepcion","jefe_logistica","gerencia"]
+      }).catch(function(){return null;});
+    });
   }).then(loadData).then(function(){closeDrawer();renderReceptionGoods();}).catch(function(e){showError((e&&e.message)||e||"No se pudo cerrar la novedad retenida.");});
 }
 function deleteReceptionGoods(id){
@@ -8531,7 +8739,7 @@ function forceStrictTraceCorrectionNow(){
         mixedNotesQuarantinedAt:stamp,
         mixedNotesQuarantinedBy:state.user.uid,
         mixedNotesQuarantinedByName:state.user.name,
-        lastUpdateType:"CORRECCION_FORZADA_TRAZABILIDAD_V220",
+        lastUpdateType:"CORRECCION_FORZADA_TRAZABILIDAD_V221",
         updatedAt:stamp
       };
       if(wrongMerge){
@@ -8568,7 +8776,7 @@ function forceStrictTraceCorrectionNow(){
   var msg="Se corregirán "+reportsFixed+" reporte(s) y "+casesFixed+" pedido(s). Se sacarán de la vista operativa "+entriesRemoved+" nota(s) y "+caseEntriesRemoved+" traza(s) cruzadas, dejando copia en cuarentena. ¿Continuar?";
   if(!confirm(msg))return;
   Promise.all(reportJobs.concat(caseJobs)).then(function(){
-    return createEvent({type:"FORCED_TRACE_CORRECTION_V220",detail:"Corrección forzada de trazabilidad: "+reportsFixed+" reportes, "+casesFixed+" pedidos, "+entriesRemoved+" notas y "+caseEntriesRemoved+" trazas en cuarentena.",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
+    return createEvent({type:"FORCED_TRACE_CORRECTION_V221",detail:"Corrección forzada de trazabilidad: "+reportsFixed+" reportes, "+casesFixed+" pedidos, "+entriesRemoved+" notas y "+caseEntriesRemoved+" trazas en cuarentena.",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
   }).then(loadData).then(function(){renderReports();alert("Listo. Se corrigió la trazabilidad cruzada. Las notas/trazas retiradas quedaron en cuarentena, no eliminadas.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo forzar la corrección de trazabilidad.");});
 }
 function repairMixedReportThreadsNow(){
@@ -9242,7 +9450,7 @@ function downloadKpiExcel(){
   var totalHoras=0, vaHoras=0, esperaHoras=0, reqHoras=0, nvaHoras=0;
   var head='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px;vertical-align:top}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}.total-hours{font-weight:bold;background:#eaf2ff}</style></head><body>'+
     '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+' · <strong>Pedidos:</strong> '+data.length+'</p>'+ 
-    '<div class="note"><strong>V220:</strong> exportación por lotes para evitar que el navegador se quede sin responder. La primera tabla sigue siendo la base del informe: DEMORA EXACTA POR PEDIDO.</div>';
+    '<div class="note"><strong>V221:</strong> exportación por lotes para evitar que el navegador se quede sin responder. La primera tabla sigue siendo la base del informe: DEMORA EXACTA POR PEDIDO.</div>';
   parts.push(head);
   function buildCaseMetrics(){
     return excelAsyncAppendRows([],data,'Cálculo de demora por pedido',function(c){
@@ -9477,11 +9685,11 @@ function renderIndicators(){
   var link='./vsm-dashboard.html?v=158';
   var canExportSiesa=(state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role)));
   layout(header("VSM ERP · Normal / PVE","Panel liviano con VSM normal y VSM PVE separados, más normalización de horas por pedido/día.",'<a class="btn btn-primary" href="'+link+'" target="_blank" rel="opener">Abrir VSM optimizado</a>'+(canExportSiesa?'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>':''))+
-    '<section class="notice success"><strong>V220:</strong> el VSM tiene vista principal por tarjetas, más espaciado visual, conciliación completa y filtros más claros. El tablero independiente conserva calendario laboral colombiano, novedades/reportes y tiempos de respuesta. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, productividad por usuario consolidado, usuario por proceso, VA, espera, NVA/tiempo muerto, P50/P90, throughput y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
+    '<section class="notice success"><strong>V221:</strong> el VSM tiene vista principal por tarjetas, más espaciado visual, conciliación completa y filtros más claros. El tablero independiente conserva calendario laboral colombiano, novedades/reportes y tiempos de respuesta. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, productividad por usuario consolidado, usuario por proceso, VA, espera, NVA/tiempo muerto, P50/P90, throughput y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
     '<section class="grid grid-3" style="margin-top:16px">'+
       '<article class="card kpi"><span>Modo de carga</span><strong style="font-size:1.25rem">Por lotes</strong><small>No congela la app principal.</small></article>'+ 
       '<article class="card kpi"><span>Indicadores base</span><strong style="font-size:1.25rem">VSM + LT</strong><small>Proceso, usuario, pedido, esperas y requerimientos.</small></article>'+ 
-      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V220</strong><small>Tablas separadas para informe completo.</small></article>'+ 
+      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V221</strong><small>Tablas separadas para informe completo.</small></article>'+ 
     '</section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="opener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=146" target="_blank" rel="opener">Abrir y preparar exportación</a></div></section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Fórmulas aplicadas en el tablero</h3><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Fórmula funcional</th></tr></thead><tbody>'+ 
@@ -9560,7 +9768,7 @@ function applyPersonalAssignment(c,next,assignmentUsers){
 }
 function assignToProcess(c,next,detail,assignmentUsers){
   if(c && next==="recepcion_pedidos" && pveShouldBeForcedToPurchases(c)){
-    ensurePvePurchasingMetadata(c,"Bloqueo V220: ningún PVE sin liberar por Compras puede entrar directo a Recepción");
+    ensurePvePurchasingMetadata(c,"Bloqueo V221: ningún PVE sin liberar por Compras puede entrar directo a Recepción");
     next="compras";
     detail="PVE sin liberación de Compras. Se redirige primero a Compras antes de Recepción.";
     assignmentUsers=null;
@@ -10506,12 +10714,16 @@ function openSalesSeparation(id){
 
 function openSalesNoDelivery(id){
   var c=caseById(id);if(!c)return;
-  drawer(modal('Novedad de no entrega a logística','<form class="form" id="noDeliveryForm"><div class="notice danger"><strong>Estado no entregado:</strong> registre la novedad cuando el cliente informe que no recibió el producto. El pedido pasará al estado <strong>No entregado</strong> y quedará en Requerimientos visible para Logística/Líder/Jefe/Gerencia/Super Admin.</div><label class="field"><span>Detalle de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Cliente, factura/guía, transportadora, fecha esperada, contacto y qué solicita el cliente."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple data-mobile-upload="true"></label><small class="muted">Puede adjuntar hasta 10 archivos; el soporte principal se tomará del primero si este flujo aún no requiere galería.</small><button class="btn btn-primary" type="submit">Marcar como no entregado y enviar a requerimientos</button></form>'));
+  drawer(modal('Novedad de no entrega a logística','<form class="form" id="noDeliveryForm"><div class="notice danger"><strong>Estado no entregado:</strong> registre la novedad cuando el cliente informe que no recibió el producto. El pedido pasará al estado <strong>No entregado</strong> y quedará en Requerimientos visible para Logística/Líder/Jefe/Gerencia/Super Admin.</div><label class="field"><span>Detalle de la novedad *</span><textarea class="textarea" name="detail" required placeholder="Cliente, factura/guía, transportadora, fecha esperada, contacto y qué solicita el cliente."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple data-mobile-upload="true"></label><small class="muted">Puede tomar fotos, elegir de la galería o seleccionar hasta 10 archivos. Todos quedarán en la evidencia.</small><button class="btn btn-primary" type="submit">Marcar como no entregado y enviar a requerimientos</button></form>'));
   qs('#noDeliveryForm').onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target),file=fd.get('file'),detail=String(fd.get('detail')||'');
+    var fd=new FormData(e.target),files=eiV221Files(e.target.file,"soportes",false)||[],detail=String(fd.get('detail')||'');
     var chain=Promise.resolve();
-    if(file&&file.name){chain=uploadFileToDrive(file,c,{processKey:'ventas',processName:'Ventas - no entrega',evidenceType:'NO_ENTREGA',fileName:file.name}).then(function(up){appendEvidence(c,up,'Soporte novedad no entrega: '+detail);});}
+    if(files.length){
+      chain=eiV221UploadGallery(files,c,{processKey:'ventas',processName:'Ventas - no entrega',evidenceType:'NO_ENTREGA',fileNamePrefix:'NO_ENTREGA'}).then(function(uploads){
+        appendEvidenceGallery(c,uploads,'Soportes novedad no entrega: '+detail,{processKey:'ventas',processName:'Ventas - no entrega',evidenceType:'NO_ENTREGA'});
+      });
+    }
     chain.then(function(){
       var targetProcess=noDeliveryProcess(c), visible=noDeliveryVisibleRoles();
       stopActive(c);stopWait(c);
@@ -10545,12 +10757,16 @@ function openNoDeliveryManagement(id){
   if(!canManageNoDelivery(c)){alert('No tiene permiso para gestionar esta no entrega.');return;}
   var cajaOnly=c.status==='devolucion_caja' && normalizeRole(state.user.role)==='caja';
   var options=cajaOnly?'<option value="close_solution">Caja resuelve devolución y cierra gestión</option>':'<option value="logistics_solution">Gestionar entrega / reprogramar despacho</option><option value="close_solution">Cerrar no entrega solucionada</option><option value="refund_box">Solicitar devolución de dinero a Caja</option>';
-  drawer(modal('Gestionar pedido no entregado','<form class="form" id="manageNoDeliveryForm"><div class="notice danger"><strong>'+esc(c.reference||c.id)+'</strong><br>Este pedido está marcado como no entregado. Registre la decisión tomada y deje soporte si aplica.</div><label class="field"><span>Decisión</span><select class="select" name="decision">'+options+'</select></label><label class="field"><span>Solución / detalle *</span><textarea class="textarea" name="detail" required placeholder="Ej.: se reprograma entrega con transportadora, se confirma entrega, se autoriza devolución de dinero a Caja, etc."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple data-mobile-upload="true"></label><small class="muted">Puede adjuntar hasta 10 archivos; el soporte principal se tomará del primero si este flujo aún no requiere galería.</small><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
+  drawer(modal('Gestionar pedido no entregado','<form class="form" id="manageNoDeliveryForm"><div class="notice danger"><strong>'+esc(c.reference||c.id)+'</strong><br>Este pedido está marcado como no entregado. Registre la decisión tomada y deje soporte si aplica.</div><label class="field"><span>Decisión</span><select class="select" name="decision">'+options+'</select></label><label class="field"><span>Solución / detalle *</span><textarea class="textarea" name="detail" required placeholder="Ej.: se reprograma entrega con transportadora, se confirma entrega, se autoriza devolución de dinero a Caja, etc."></textarea></label><label class="field"><span>Soporte opcional</span><input class="input" type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple data-mobile-upload="true"></label><small class="muted">Puede tomar fotos, elegir de la galería o seleccionar hasta 10 archivos. Todos quedarán en la evidencia.</small><button class="btn btn-primary" type="submit">Guardar gestión</button></form>'));
   qs('#manageNoDeliveryForm').onsubmit=function(e){
     e.preventDefault();
-    var fd=new FormData(e.target),decision=String(fd.get('decision')||''),detail=String(fd.get('detail')||''),file=fd.get('file');
+    var fd=new FormData(e.target),decision=String(fd.get('decision')||''),detail=String(fd.get('detail')||''),files=eiV221Files(e.target.file,"soportes",false)||[];
     var chain=Promise.resolve();
-    if(file&&file.name){chain=uploadFileToDrive(file,c,{processKey:c.currentProcess||'despacho_nacional',processName:'Gestión no entrega',evidenceType:'NO_ENTREGA_GESTION',fileName:file.name}).then(function(up){appendEvidence(c,up,'Gestión no entrega: '+detail);});}
+    if(files.length){
+      chain=eiV221UploadGallery(files,c,{processKey:c.currentProcess||'despacho_nacional',processName:'Gestión no entrega',evidenceType:'NO_ENTREGA_GESTION',fileNamePrefix:'NO_ENTREGA_GESTION'}).then(function(uploads){
+        appendEvidenceGallery(c,uploads,'Gestión no entrega: '+detail,{processKey:c.currentProcess||'despacho_nacional',processName:'Gestión no entrega',evidenceType:'NO_ENTREGA_GESTION'});
+      });
+    }
     chain.then(function(){
       c.noDeliveryReports=c.noDeliveryReports||[];
       var report=c.noDeliveryReports.length?c.noDeliveryReports[c.noDeliveryReports.length-1]:null;
@@ -10783,7 +10999,7 @@ function exportSalesReport(){
     .then(function(){appendSummary();return appendDetail();})
     .then(function(){parts.push('</tbody></table></body></html>');downloadHtmlExcelParts('registro_ventas_demora_v133_'+new Date().toISOString().slice(0,10)+'.xls',parts);});
 }
-function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess=isPveOrder(child)?'compras':'recepcion_pedidos';child.status='asignado';ensurePvePurchasingMetadata(child,'Reenvío de faltante V220: PVE pasa primero a Compras');child.assignedRole=primaryOwnerRole(child.currentProcess);child.assignedName=processOwnerTitle(child.currentProcess);child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};(processes[child.currentProcess]||processes.recepcion_pedidos).checklist.forEach(function(x){child.checklist[x]=(x==='Pedido registrado por ventas'||x==='Orden PVE recibida desde ventas')?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
+function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess=isPveOrder(child)?'compras':'recepcion_pedidos';child.status='asignado';ensurePvePurchasingMetadata(child,'Reenvío de faltante V221: PVE pasa primero a Compras');child.assignedRole=primaryOwnerRole(child.currentProcess);child.assignedName=processOwnerTitle(child.currentProcess);child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};(processes[child.currentProcess]||processes.recepcion_pedidos).checklist.forEach(function(x){child.checklist[x]=(x==='Pedido registrado por ventas'||x==='Orden PVE recibida desde ventas')?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
@@ -10916,7 +11132,7 @@ function renderCutDiagnostics(){
   ];
   layout(header("Diagnóstico Corte","Verificación rápida de perfil, permisos y carga para el usuario de Corte.",'<button class="btn btn-gold" data-action="forceRefreshCases">Probar carga de pedidos</button>')+
     '<section class="card"><h3>Perfil detectado</h3><div class="table-wrap"><table><tbody>'+rows.map(function(r){return '<tr><th>'+esc(r[0])+'</th><td>'+esc(r[1])+'</td></tr>';}).join("")+'</tbody></table></div></section>'+
-    '<section class="notice"><strong>Uso:</strong> si aquí el rol no sale como auxiliar_corte o no cargan casos, debe publicarse firestore.rules V220 y verificar el documento users del UID real.</section>');
+    '<section class="notice"><strong>Uso:</strong> si aquí el rol no sale como auxiliar_corte o no cargan casos, debe publicarse firestore.rules V221 y verificar el documento users del UID real.</section>');
 }
 function render(){
   var force=state.__forceRenderOnce===true;
@@ -12887,10 +13103,10 @@ bindActions = function(){
 };
 
 
-/* V220: lectura reforzada de PDF SIESA con cantidades 20.000,00 y filas multilinea; no elimina lector V92. */
-function eiV220QtyRegex(){return /^\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?$|^\d+(?:[.,]\d+)?$/;}
-function eiV220CleanDescTail(s){return eiV92CleanText(String(s||'').replace(/\$\s*[\d.,]+.*$/g,'').replace(/\b(?:VALOR|UNIT|PARCIAL|SUBTOTAL|IVA|TOTAL)\b.*$/ig,''));}
-function eiV220ParseSiesaRowsFromRawText(raw){
+/* V221: lectura reforzada de PDF SIESA con cantidades 20.000,00 y filas multilinea; no elimina lector V92. */
+function eiV221QtyRegex(){return /^\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?$|^\d+(?:[.,]\d+)?$/;}
+function eiV221CleanDescTail(s){return eiV92CleanText(String(s||'').replace(/\$\s*[\d.,]+.*$/g,'').replace(/\b(?:VALOR|UNIT|PARCIAL|SUBTOTAL|IVA|TOTAL)\b.*$/ig,''));}
+function eiV221ParseSiesaRowsFromRawText(raw){
   var text=String(raw||'').replace(/\r/g,'\n');
   var rows=[];
   var unitRx='(?:'+orderUnitPattern()+')';
@@ -12901,9 +13117,9 @@ function eiV220ParseSiesaRowsFromRawText(raw){
   var m;
   while((m=rx.exec(text))){
     var unit=m[1], reference=m[2], desc=m[3], cantidad=m[4], ubic=m[5];
-    desc=eiV220CleanDescTail(desc).replace(/\s+/g,' ').trim();
+    desc=eiV221CleanDescTail(desc).replace(/\s+/g,' ').trim();
     desc=desc.replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
-    if(eiV92ReferenceOk(reference) && desc && cantidad && ubic){rows.push({referencia:reference,descripcion:desc,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V220_RAW'});}
+    if(eiV92ReferenceOk(reference) && desc && cantidad && ubic){rows.push({referencia:reference,descripcion:desc,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V221_RAW'});}
   }
   // Fallback para textos extraídos por columnas donde referencia/descripcion/ubicación/cantidad quedan separados.
   if(!rows.length){
@@ -12918,15 +13134,15 @@ function eiV220ParseSiesaRowsFromRawText(raw){
       }
     }
     var locs=[], qtys=[], units=[];
-    lines.forEach(function(l){if(/^[A-Z]\d{5,6}$/.test(l))locs.push(l); if(eiV220QtyRegex().test(l))qtys.push(l); if(new RegExp('^'+unitRx+'$','i').test(l))units.push(l);});
+    lines.forEach(function(l){if(/^[A-Z]\d{5,6}$/.test(l))locs.push(l); if(eiV221QtyRegex().test(l))qtys.push(l); if(new RegExp('^'+unitRx+'$','i').test(l))units.push(l);});
     refRows.forEach(function(r,idx){
       var cantidad=qtys[idx]||qtys[0]||'', unit=units[idx]||units[0]||'M', ubic=locs[idx]||'';
-      if(r.referencia && r.descripcion && cantidad && unit)rows.push({referencia:r.referencia,descripcion:r.descripcion,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V220_COLUMN_TEXT'});
+      if(r.referencia && r.descripcion && cantidad && unit)rows.push({referencia:r.referencia,descripcion:r.descripcion,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V221_COLUMN_TEXT'});
     });
   }
   return eiV92DedupeItems(rows);
 }
-var eiV220LegacyParseRows = eiV92ParseSiesaRows;
+var eiV221LegacyParseRows = eiV92ParseSiesaRows;
 eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
   var lines=eiV92GroupLines(words,5);
   var header=eiV92FindHeaderLine(lines);
@@ -12938,7 +13154,7 @@ eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
   var ubicMin=pageWidth*0.60, ubicMax=pageWidth*0.70;
   var qtyMin=pageWidth*0.69, qtyMax=pageWidth*0.77;
   var unitMin=pageWidth*0.75, unitMax=pageWidth*0.84;
-  var qtyRx=eiV220QtyRegex();
+  var qtyRx=eiV221QtyRegex();
   var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
   var rows=[];
   for(var li=0;li<lines.length;li++){
@@ -12955,41 +13171,41 @@ eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
       var cont=eiV92LineTextInRange(next,descMin,descMax);
       if(cont && !/^(PARQUE|INDUSTRIAL)$/i.test(cont))desc+=' '+cont;
     }
-    desc=eiV220CleanDescTail(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
+    desc=eiV221CleanDescTail(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
     var ubic=eiV92LineTextInRange(line,ubicMin,ubicMax);
     if(!desc)return;
-    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum,mode:'V220_GEOMETRY'});
+    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum,mode:'V221_GEOMETRY'});
   }
   return rows;
 };
-var eiV220ReadPdfFileBase = readPdfFile;
+var eiV221ReadPdfFileBase = readPdfFile;
 readPdfFile = function(file){
-  return eiV220ReadPdfFileBase(file).then(function(text){
-    var rawRows=eiV220ParseSiesaRowsFromRawText(text);
+  return eiV221ReadPdfFileBase(file).then(function(text){
+    var rawRows=eiV221ParseSiesaRowsFromRawText(text);
     if(!rawRows.length)return text;
     var existing=[]; try{existing=extractPedidoItems(text)||[];}catch(e){existing=[];}
-    var merged=eiV92DedupeItems((existing||[]).concat(rawRows.map(function(m,i){return eiV92MaterialToApp(m,i,'V220_RAW_TEXT');})));
+    var merged=eiV92DedupeItems((existing||[]).concat(rawRows.map(function(m,i){return eiV92MaterialToApp(m,i,'V221_RAW_TEXT');})));
     if(merged.length <= existing.length)return text;
     var clean=String(text||'').replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
-    var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V220_MERGE'));}).join('\n');
-    var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V220',materialesExtraidos:merged.length,rawExtraidos:rawRows.length,nota:'Incluye soporte para cantidades con miles 20.000,00 y filas SIESA multilinea.'});
+    var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V221_MERGE'));}).join('\n');
+    var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V221',materialesExtraidos:merged.length,rawExtraidos:rawRows.length,nota:'Incluye soporte para cantidades con miles 20.000,00 y filas SIESA multilinea.'});
     return markers+'\n'+audit+'\n'+clean;
   });
 };
 
 
-/* V220 QA ERP final: refuerzo conservador sin cambiar flujo.
+/* V221 QA ERP final: refuerzo conservador sin cambiar flujo.
    - El planificador de cortes reutiliza la sincronización robusta de Recepción.
    - No necesita corte / Medida completa no quedan pendientes en SIESA.
    - Se agrega verificación de salud operativa en consola para detectar funciones críticas faltantes. */
-function eiV220OperationalHealthCheck(){
+function eiV221OperationalHealthCheck(){
   var required=["autoCreateCutsFromItems","normalizeReceptionLinesForFlow","cutSourceKeyFromItem","renderAfterLiveChange","caseRelevantToCurrentUser","uploadFileToDrive","extractPedido","readPdfFile"];
   var missing=required.filter(function(name){try{return typeof eval(name)!=="function";}catch(e){return true;}});
-  if(missing.length){console.error("QA ERP V220 · funciones críticas faltantes:",missing);}
-  else{console.info("QA ERP V220 · funciones críticas disponibles.");}
+  if(missing.length){console.error("QA ERP V221 · funciones críticas faltantes:",missing);}
+  else{console.info("QA ERP V221 · funciones críticas disponibles.");}
   return missing;
 }
-var eiV220LegacyOpenCutsPlanner = openCutsPlanner;
+var eiV221LegacyOpenCutsPlanner = openCutsPlanner;
 openCutsPlanner = function(id){
   var c=caseById(id);if(!c)return;
   if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}
@@ -13031,12 +13247,12 @@ openCutsPlanner = function(id){
     c.hasCuts=(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);});
     var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();
     applyAlistamientoAutoChecklist(c);
-    persistCase(c,{type:"CUT_REQUESTS_SYNCED_V220",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    persistCase(c,{type:"CUT_REQUESTS_SYNCED_V221",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 };
-try{eiV220OperationalHealthCheck();}catch(e){console.warn("QA ERP V220 no pudo ejecutarse",e);}
+try{eiV221OperationalHealthCheck();}catch(e){console.warn("QA ERP V221 no pudo ejecutarse",e);}
 
-/* V220 - tamaño popup Recepción de pedidos PC */
+/* V221 - tamaño popup Recepción de pedidos PC */
 try{
   if(!document.getElementById("ei205-reception-modal-css")){
     var st=document.createElement("style");
@@ -13047,14 +13263,14 @@ try{
 }catch(e){}
 
 /* ============================================================
-   V220_CORTE_MOVIL_REHECHO_FUNCIONAL
+   V221_CORTE_MOVIL_REHECHO_FUNCIONAL
    Corte móvil operativo directo.
    Motivo:
    - El flujo móvil estaba fallando incluso con No necesita corte y Medida completa.
    - Se reemplaza la operación móvil por un flujo directo, con escritura real en Firestore.
    - PC conserva su flujo normal.
 ============================================================ */
-function eiV220CutIdentityText(){
+function eiV221CutIdentityText(){
   var u=state.user||{};
   var arr=[u.uid,u.id,u.userId,u.authUid,u.profileUid,u.email,u.name,u.displayName,u.role,u.rawRole];
   if(Array.isArray(u.uidAliases))arr=arr.concat(u.uidAliases);
@@ -13069,9 +13285,9 @@ function eiV220CutIdentityText(){
   }catch(e){}
   return stripAccents(arr.map(function(x){return String(x||"").toLowerCase();}).join(" "));
 }
-function eiV220IsCutUser(){
+function eiV221IsCutUser(){
   var r=normalizeRole(state.user&&state.user.role);
-  var raw=eiV220CutIdentityText();
+  var raw=eiV221CutIdentityText();
   return r==="auxiliar_corte" ||
          r==="operario_corte" ||
          r==="operario_de_corte" ||
@@ -13082,10 +13298,10 @@ function eiV220IsCutUser(){
          raw.indexOf("fabian duque")>=0 ||
          raw.indexOf("fabian")>=0;
 }
-function eiV220RepairCutUser(){
+function eiV221RepairCutUser(){
   try{
     if(!state.user)return;
-    if(eiV220IsCutUser()){
+    if(eiV221IsCutUser()){
       state.user.role="auxiliar_corte";
       state.user.rawRole=state.user.rawRole||"auxiliar_corte";
       state.user.email=state.user.email||"f.duque@ei.com.co";
@@ -13098,21 +13314,21 @@ function eiV220RepairCutUser(){
     }
   }catch(e){}
 }
-function eiV220CanOperateCut(){
-  eiV220RepairCutUser();
+function eiV221CanOperateCut(){
+  eiV221RepairCutUser();
   var r=normalizeRole(state.user&&state.user.role);
-  return eiV220IsCutUser() ||
+  return eiV221IsCutUser() ||
          r==="jefe_logistica" ||
          r==="gerencia" ||
          isAdminRoleValue(r) ||
          currentUserIsSuperAdmin();
 }
-isCutWorkerUser=function(){return eiV220CanOperateCut();};
-isCutRuntimeUser=function(){return eiV220IsCutUser();};
-canOperateCutModule=function(){return eiV220CanOperateCut();};
+isCutWorkerUser=function(){return eiV221CanOperateCut();};
+isCutRuntimeUser=function(){return eiV221IsCutUser();};
+canOperateCutModule=function(){return eiV221CanOperateCut();};
 
-function eiV220Clone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return Object.assign({},o||{});}}
-function eiV220ReplaceCase(c){
+function eiV221Clone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return Object.assign({},o||{});}}
+function eiV221ReplaceCase(c){
   if(!c||!c.id)return;
   state.cases=state.cases||[];
   var found=false;
@@ -13121,7 +13337,7 @@ function eiV220ReplaceCase(c){
   }
   if(!found)state.cases.unshift(c);
 }
-function eiV220ReadFormIntoCut(cut){
+function eiV221ReadFormIntoCut(cut){
   try{if(qs("#cutFullForm"))applyCutFormValues(cut);}catch(e){}
   cut.tipoPedido=cut.tipoPedido||"VENTAS";
   cut.siesaBodega=cut.siesaBodega||((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"PENDIENTE_VALIDAR");
@@ -13129,9 +13345,9 @@ function eiV220ReadFormIntoCut(cut){
   if(cut.tramoRotulado===undefined)cut.tramoRotulado=true;
   if(cut.evidenciaRegistro===undefined)cut.evidenciaRegistro=true;
 }
-function eiV220PrepareCaseCut(c,cut){
+function eiV221PrepareCaseCut(c,cut){
   if(!c||!cut)return;
-  eiV220RepairCutUser();
+  eiV221RepairCutUser();
   c.hasCuts=true;
   c.visibleRoles=Array.isArray(c.visibleRoles)?c.visibleRoles:[];
   ["auxiliar_corte","auxiliar_de_corte","operario_corte","operario_de_corte","corte","cortes","jefe_logistica","admin","super_admin","coordinador_logistico","lider_logistico","aux_logistica"].forEach(function(r){
@@ -13146,9 +13362,9 @@ function eiV220PrepareCaseCut(c,cut){
   cut.takenByUid=cut.takenByUid||state.user.uid;
   cut.takenByName=cut.takenByName||state.user.name;
   cut.takenAt=cut.takenAt||now();
-  eiV220ReadFormIntoCut(cut);
+  eiV221ReadFormIntoCut(cut);
 }
-function eiV220PersistCutCase(c,cut,event,expected){
+function eiV221PersistCutCase(c,cut,event,expected){
   if(!db||!c||!c.id){
     alert("No hay conexión a Firestore. No se puede guardar el corte.");
     return Promise.reject(new Error("Sin Firestore."));
@@ -13156,10 +13372,10 @@ function eiV220PersistCutCase(c,cut,event,expected){
   c.updatedAt=now();
   c.updatedBy=state.user&&state.user.uid;
   c.updatedByName=state.user&&state.user.name;
-  c.lastMobileCutWriteVersion="V220";
+  c.lastMobileCutWriteVersion="V221";
   c.lastMobileCutWriteAt=now();
   if(cut){
-    cut.lastMobileCutWriteVersion="V220";
+    cut.lastMobileCutWriteVersion="V221";
     cut.lastMobileCutWriteAt=now();
   }
   event=event||{};
@@ -13177,8 +13393,8 @@ function eiV220PersistCutCase(c,cut,event,expected){
     if(expected&&expected.currentProcess && remote.currentProcess!==expected.currentProcess){
       throw new Error("El pedido no quedó en "+expected.currentProcess+" en Firestore.");
     }
-    eiV220ReplaceCase(remote);
-    return createEvent(enrichCaseEvent(remote,event)).catch(function(e){console.warn("[V220] Caso guardado; evento no creado",e);}).then(function(){return remote;});
+    eiV221ReplaceCase(remote);
+    return createEvent(enrichCaseEvent(remote,event)).catch(function(e){console.warn("[V221] Caso guardado; evento no creado",e);}).then(function(){return remote;});
   }).catch(function(e){
     var msg=(e&&e.message)||String(e||"");
     var authEmail="",authUid="";
@@ -13188,15 +13404,15 @@ function eiV220PersistCutCase(c,cut,event,expected){
     }catch(x){}
     alert(
       "Firestore rechazó la actualización real del corte. " +
-      "Firestore sigue rechazando la escritura. Verifique en consola el projectId mostrado por [V220 Firebase] y publique allí firestore.rules V220.\n\n" +
+      "Firestore sigue rechazando la escritura. Verifique en consola el projectId mostrado por [V221 Firebase] y publique allí firestore.rules V221.\n\n" +
       "Usuario autenticado: "+(authEmail||"sin correo")+"\nUID: "+(authUid||"sin UID")+"\n\n" +
       "Detalle: "+msg
     );
-    try{console.error("[V220 corte móvil · permiso Firestore]",e,{authEmail:authEmail,authUid:authUid,caseId:c&&c.id,cutId:cut&&cut.id,event:event,expected:expected});}catch(x){}
+    try{console.error("[V221 corte móvil · permiso Firestore]",e,{authEmail:authEmail,authUid:authUid,caseId:c&&c.id,cutId:cut&&cut.id,event:event,expected:expected});}catch(x){}
     throw e;
   });
 }
-function eiV220ValidateNumbers(cut,needFinal){
+function eiV221ValidateNumbers(cut,needFinal){
   var total=cutParseDecimal(cut.disponibleAntes);
   var sol=cutParseDecimal(cut.metrosSolicitados||cut.metrajeFinal);
   if(!Number.isFinite(total)||total<=0){alert("Ingrese el tamaño total del carreto / chipa.");return false;}
@@ -13207,7 +13423,7 @@ function eiV220ValidateNumbers(cut,needFinal){
   }
   return true;
 }
-function eiV220SendCutToAlistamiento(c,cut,mode){
+function eiV221SendCutToAlistamiento(c,cut,mode){
   syncCutSourceLineToAlistamiento(c,cut,mode||"CORTE_REGISTRADO");
   var pending=(c.cutRequests||[]).filter(function(x){return !cutIsOperationallyDone(x)&&x.id!==cut.id;});
   c.cutReturnAlerts=c.cutReturnAlerts||[];
@@ -13241,8 +13457,8 @@ function eiV220SendCutToAlistamiento(c,cut,mode){
   if(c.checklist["Pedido listo para facturación"]!==undefined)c.checklist["Pedido listo para facturación"]="pending";
   return pending;
 }
-function eiV220MobileNoCut(c,cut){
-  eiV220PrepareCaseCut(c,cut);
+function eiV221MobileNoCut(c,cut){
+  eiV221PrepareCaseCut(c,cut);
   cut.status="FINALIZADO";
   cut.noNecesitaCorte=true;
   cut.noCutNeeded=true;
@@ -13255,13 +13471,13 @@ function eiV220MobileNoCut(c,cut){
   cut.finishedByName=cut.finishedByName||state.user.name;
   cut.metrajeFinal=cut.metrajeFinal||cut.metrosSolicitados||"";
   refreshCutStats(c);
-  var pending=eiV220SendCutToAlistamiento(c,cut,"NO_NECESITA_CORTE");
-  var event={type:"CUT_NO_NEEDED_MOBILE",cutId:cut.id,detail:"No necesita corte confirmado desde móvil V220: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Liberado a Alistamiento."),targetRole:primaryOwnerRole("alistamiento")};
-  return eiV220PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(){closeDrawer();renderCutsQueue();});
+  var pending=eiV221SendCutToAlistamiento(c,cut,"NO_NECESITA_CORTE");
+  var event={type:"CUT_NO_NEEDED_MOBILE",cutId:cut.id,detail:"No necesita corte confirmado desde móvil V221: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Liberado a Alistamiento."),targetRole:primaryOwnerRole("alistamiento")};
+  return eiV221PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(){closeDrawer();renderCutsQueue();});
 }
-function eiV220MobileCompleteMeasure(c,cut){
-  eiV220PrepareCaseCut(c,cut);
-  if(!eiV220ValidateNumbers(cut,false))return;
+function eiV221MobileCompleteMeasure(c,cut){
+  eiV221PrepareCaseCut(c,cut);
+  if(!eiV221ValidateNumbers(cut,false))return;
   cut.status="FINALIZADO";
   cut.medidaCompleta=true;
   cut.cutResolutionMode="MEDIDA_COMPLETA";
@@ -13275,13 +13491,13 @@ function eiV220MobileCompleteMeasure(c,cut){
   var dis=cutParseDecimal(cut.disponibleAntes), fin=cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados);
   if(Number.isFinite(dis)&&Number.isFinite(fin))cut.remanenteReal=cutNormalizeDecimal(dis-fin);
   refreshCutStats(c);
-  var pending=eiV220SendCutToAlistamiento(c,cut,"MEDIDA_COMPLETA");
-  var event={type:"CUT_COMPLETE_MEASURE_MOBILE",cutId:cut.id,detail:"Medida completa confirmada desde móvil V220: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Liberado a Alistamiento."),targetRole:primaryOwnerRole("alistamiento")};
-  return eiV220PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(){closeDrawer();renderCutsQueue();});
+  var pending=eiV221SendCutToAlistamiento(c,cut,"MEDIDA_COMPLETA");
+  var event={type:"CUT_COMPLETE_MEASURE_MOBILE",cutId:cut.id,detail:"Medida completa confirmada desde móvil V221: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Liberado a Alistamiento."),targetRole:primaryOwnerRole("alistamiento")};
+  return eiV221PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(){closeDrawer();renderCutsQueue();});
 }
-function eiV220MobileStart(c,cut){
-  eiV220PrepareCaseCut(c,cut);
-  if(!eiV220ValidateNumbers(cut,false))return;
+function eiV221MobileStart(c,cut){
+  eiV221PrepareCaseCut(c,cut);
+  if(!eiV221ValidateNumbers(cut,false))return;
   if(!cutCanMeasure(cut)){
     var calc=cutCalc(cut), rule=calc.rule||{};
     alert("El corte está bloqueado por cálculo o aprobación pendiente. "+(rule.message||""));
@@ -13297,12 +13513,12 @@ function eiV220MobileStart(c,cut){
   c.currentProcess="corte_cable";
   c.status="en_proceso";
   procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
-  var event={type:"CUT_STARTED",cutId:cut.id,detail:"Corte iniciado desde móvil V220: "+(cut.code||cut.id),targetRole:"auxiliar_corte"};
-  return eiV220PersistCutCase(c,cut,event,{cutStatus:"EN_CORTE"}).then(function(){closeDrawer();openCutModule(c.id,cut.id);});
+  var event={type:"CUT_STARTED",cutId:cut.id,detail:"Corte iniciado desde móvil V221: "+(cut.code||cut.id),targetRole:"auxiliar_corte"};
+  return eiV221PersistCutCase(c,cut,event,{cutStatus:"EN_CORTE"}).then(function(){closeDrawer();openCutModule(c.id,cut.id);});
 }
-function eiV220MobileFinish(c,cut){
-  eiV220PrepareCaseCut(c,cut);
-  if(!eiV220ValidateNumbers(cut,false))return;
+function eiV221MobileFinish(c,cut){
+  eiV221PrepareCaseCut(c,cut);
+  if(!eiV221ValidateNumbers(cut,false))return;
   if(!cut.startedAt)cut.startedAt=cut.lastStartedAt||cut.takenAt||now();
   var extra=cut.startedAt?msSince(cut.startedAt):0;
   cut.durationMs=Number(cut.durationMs||0)+extra;
@@ -13317,12 +13533,12 @@ function eiV220MobileFinish(c,cut){
   var dis=cutParseDecimal(cut.disponibleAntes), fin=cutParseDecimal(cut.metrajeFinal||cut.metrosSolicitados);
   if(Number.isFinite(dis)&&Number.isFinite(fin))cut.remanenteReal=cutNormalizeDecimal(dis-fin);
   refreshCutStats(c);
-  var event={type:"CUT_FINISHED_PENDING_REGISTER",cutId:cut.id,detail:"Corte finalizado desde móvil V220. Pendiente registrar/cumplir: "+(cut.code||cut.id),targetRole:"auxiliar_corte"};
-  return eiV220PersistCutCase(c,cut,event,{cutStatus:"PENDIENTE_REGISTRO"}).then(function(){closeDrawer();openCutModule(c.id,cut.id);});
+  var event={type:"CUT_FINISHED_PENDING_REGISTER",cutId:cut.id,detail:"Corte finalizado desde móvil V221. Pendiente registrar/cumplir: "+(cut.code||cut.id),targetRole:"auxiliar_corte"};
+  return eiV221PersistCutCase(c,cut,event,{cutStatus:"PENDIENTE_REGISTRO"}).then(function(){closeDrawer();openCutModule(c.id,cut.id);});
 }
-function eiV220MobileRegister(c,cut){
-  eiV220PrepareCaseCut(c,cut);
-  if(!eiV220ValidateNumbers(cut,true))return;
+function eiV221MobileRegister(c,cut){
+  eiV221PrepareCaseCut(c,cut);
+  if(!eiV221ValidateNumbers(cut,true))return;
   if(!cut.finishedAt){
     cut.finishedAt=now();
     cut.completedAt=cut.finishedAt;
@@ -13330,18 +13546,27 @@ function eiV220MobileRegister(c,cut){
     cut.finishedByName=state.user.name;
   }
   if(!cutQualityOk(cut)){alert("Falta confirmar corte uniforme, tramo rotulado y evidencia/registro realizado.");return;}
-  var carretoFile=qs("#cutCarretoPhoto")&&qs("#cutCarretoPhoto").files&&qs("#cutCarretoPhoto").files[0];
-  var hasCarretoEvidence=!!(cut.carretoRotuladoAt||cut.carretoRotuladoUrl||cut.fotoFinalAt||cut.fotoFinalUrl||cut.carretoRotuladoPendingUpload);
-  if(!carretoFile&&!hasCarretoEvidence){alert("Debe anexar la foto del carreto rotulado antes de registrar el corte / cumplido.");return;}
+  var carretoInput=qs("#cutCarretoPhoto");
+  var carretoFiles=eiV221Files(carretoInput,"fotos o archivos del carreto",false)||[];
+  var hasCarretoEvidence=!!(
+    cut.carretoRotuladoAt||
+    cut.carretoRotuladoUrl||
+    cut.fotoFinalAt||
+    cut.fotoFinalUrl||
+    cut.carretoRotuladoPendingUpload||
+    (cut.carretoGalleryFiles&&cut.carretoGalleryFiles.length)
+  );
+  if(!carretoFiles.length&&!hasCarretoEvidence){alert("Debe anexar mínimo una foto o archivo del carreto rotulado antes de registrar el corte / cumplido.");return;}
   var carretoAt=now();
-  if(carretoFile){
+  if(carretoFiles.length){
     cut.carretoRotuladoAt=carretoAt;
     cut.carretoRotuladoBy=state.user.uid;
     cut.carretoRotuladoByName=state.user.name;
-    cut.carretoRotuladoFileName=carretoFile.name||"carreto_rotulado.jpg";
+    cut.carretoRotuladoFileName=carretoFiles[0].name||"carreto_rotulado.jpg";
     cut.carretoRotuladoPendingUpload=true;
     cut.carretoRotuladoUploadError="";
-    try{setCutLocalFile(c.id,cut.id,"carreto",carretoFile);}catch(e){}
+    cut.carretoSelectedCount=carretoFiles.length;
+    try{setCutLocalFile(c.id,cut.id,"carreto",carretoFiles[0]);}catch(e){}
   }
   cut.status="FINALIZADO";
   cut.registeredAt=now();
@@ -13350,41 +13575,68 @@ function eiV220MobileRegister(c,cut){
   cut.registeredByName=state.user.name;
   cut.siesaExportStatus=cut.siesaExportStatus||"PENDIENTE";
   refreshCutStats(c);
-  var pending=eiV220SendCutToAlistamiento(c,cut,"CORTE_REGISTRADO");
-  var event={type:"CUT_AVAILABLE_FOR_PALLETIZING",cutId:cut.id,detail:"Corte registrado/cumplido desde móvil V220: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Todos los cortes quedaron registrados."),targetRole:primaryOwnerRole("alistamiento")};
-  return eiV220PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(remote){
+  var pending=eiV221SendCutToAlistamiento(c,cut,"CORTE_REGISTRADO");
+  var event={
+    type:"CUT_AVAILABLE_FOR_PALLETIZING",
+    cutId:cut.id,
+    detail:"Corte registrado/cumplido desde móvil V221: "+(cut.referencia||cut.descripcion||cut.code||cut.id)+(pending.length?". Quedan cortes pendientes.":". Todos los cortes quedaron registrados.")+(carretoFiles.length?" · "+carretoFiles.length+" archivo(s) seleccionados.":""),
+    targetRole:primaryOwnerRole("alistamiento")
+  };
+  return eiV221PersistCutCase(c,cut,event,{cutStatus:"FINALIZADO",currentProcess:"alistamiento"}).then(function(remote){
     closeDrawer();renderCutsQueue();
     try{enforceSiesaExportIfNeeded(remote||c);}catch(e){}
     try{upsertCutInventoryChip(remote||c,cut).then(function(rec){if(rec){state.inventoryChips=sortByUpdated(uniqueById([rec].concat(state.inventoryChips||[])));}}).catch(function(){});}catch(e){}
-    if(carretoFile){
-      uploadCutPhotoToDrive(carretoFile,remote||c,cut,"carreto",carretoAt).then(function(up){
-        cut.carretoRotuladoUrl=up.url;
-        cut.carretoRotuladoDriveId=up.fileId;
-        cut.carretoRotuladoFolder=up.folderPath||up.folder;
-        cut.carretoRotuladoFileName=up.fileName||carretoFile.name;
+    if(carretoFiles.length){
+      eiV221UploadGallery(carretoFiles,remote||c,{
+        processName:"Corte",
+        processKey:"corte_cable",
+        evidenceType:"FOTO_CARRETO_ROTULADO_CORTE",
+        fileNamePrefix:(cut.code||cut.id)+"_carreto_rotulado",
+        fastCutUpload:true,
+        silentToken:true,
+        timeoutMs:45000
+      }).then(function(uploads){
+        var primary=eiV221PrimaryWithGallery(uploads);
+        cut.carretoRotuladoUrl=primary.url;
+        cut.carretoRotuladoDriveId=primary.fileId;
+        cut.carretoRotuladoFolder=primary.folder;
+        cut.carretoRotuladoFileName=primary.fileName;
+        cut.carretoGalleryFiles=primary.galleryFiles;
         cut.carretoRotuladoPendingUpload=false;
         cut.carretoRotuladoUploadError="";
         try{clearCutLocalFile((remote||c).id,cut.id,"carreto");}catch(e){}
-        appendEvidence(remote||c,up,"Foto del carreto rotulado del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(carretoAt));
-        return persistCase(remote||c,{type:"CUT_CARRETO_PHOTO_UPLOADED",detail:"Foto de carreto rotulado cargada a Drive desde móvil V220: "+(cut.code||cut.id),visibleRoles:["auxiliar_corte","jefe_logistica","admin","super_admin","coordinador_logistico"]});
+        appendEvidenceGallery(remote||c,uploads,"Fotos/archivos del carreto rotulado del corte "+(cut.code||cut.id)+". Hora de cargue: "+fmtDate(carretoAt),{
+          processName:"Corte",
+          processKey:"corte_cable",
+          evidenceType:"FOTO_CARRETO_ROTULADO_CORTE"
+        });
+        return persistCase(remote||c,{
+          type:"CUT_CARRETO_GALLERY_UPLOADED",
+          detail:uploads.length+" archivo(s) de carreto rotulado cargados a Drive desde móvil V221: "+(cut.code||cut.id),
+          visibleRoles:["auxiliar_corte","jefe_logistica","admin","super_admin","coordinador_logistico"]
+        });
       }).catch(function(err){
         cut.carretoRotuladoPendingUpload=true;
-        cut.carretoRotuladoUploadError=String((err&&err.message)||err||"No fue posible cargar la foto del carreto a Drive").slice(0,240);
-        persistCase(remote||c,{type:"CUT_CARRETO_PHOTO_PENDING_UPLOAD",detail:"El corte quedó registrado. Foto de carreto pendiente de Drive: "+cut.carretoRotuladoUploadError,visibleRoles:["auxiliar_corte","jefe_logistica","admin","super_admin","coordinador_logistico"]}).catch(function(){});
+        cut.carretoRotuladoUploadError=String((err&&err.message)||err||"No fue posible cargar los archivos del carreto a Drive").slice(0,240);
+        persistCase(remote||c,{
+          type:"CUT_CARRETO_GALLERY_PENDING_UPLOAD",
+          detail:"El corte quedó registrado. Archivos de carreto pendientes de Drive: "+cut.carretoRotuladoUploadError,
+          visibleRoles:["auxiliar_corte","jefe_logistica","admin","super_admin","coordinador_logistico"]
+        }).catch(function(){});
       });
     }
   });
 }
-function eiV220MobileCutAction(c,cut,action){
-  if(!eiV220CanOperateCut()){alert("No tiene permiso para operar este corte.");return true;}
-  if(action==="noCutNeeded"){eiV220MobileNoCut(c,cut);return true;}
-  if(action==="completeMeasure"){eiV220MobileCompleteMeasure(c,cut);return true;}
-  if(action==="startCut"){eiV220MobileStart(c,cut);return true;}
-  if(action==="finishCut"){eiV220MobileFinish(c,cut);return true;}
-  if(action==="registerCut"){eiV220MobileRegister(c,cut);return true;}
+function eiV221MobileCutAction(c,cut,action){
+  if(!eiV221CanOperateCut()){alert("No tiene permiso para operar este corte.");return true;}
+  if(action==="noCutNeeded"){eiV221MobileNoCut(c,cut);return true;}
+  if(action==="completeMeasure"){eiV221MobileCompleteMeasure(c,cut);return true;}
+  if(action==="startCut"){eiV221MobileStart(c,cut);return true;}
+  if(action==="finishCut"){eiV221MobileFinish(c,cut);return true;}
+  if(action==="registerCut"){eiV221MobileRegister(c,cut);return true;}
   return false;
 }
-function eiV220InjectMobileCutCss(){
+function eiV221InjectMobileCutCss(){
   try{
     if(document.getElementById("ei216-cut-mobile-css"))return;
     var st=document.createElement("style");
@@ -13393,10 +13645,10 @@ function eiV220InjectMobileCutCss(){
     document.head.appendChild(st);
   }catch(e){}
 }
-function eiV220ApplyMobileVisual(){
+function eiV221ApplyMobileVisual(){
   try{
     if(!(isMobileRuntime&&isMobileRuntime()))return;
-    eiV220InjectMobileCutCss();
+    eiV221InjectMobileCutCss();
     var d=document.getElementById("drawer");if(!d||!d.classList.contains("open"))return;
     var title=d.querySelector(".modal-head h2,.modal-head h3");if(title&&/Corte/i.test(String(title.textContent||"")))title.textContent="Corte móvil · funcional";
     var cards=d.querySelectorAll(".cut-simple-head .card.kpi");if(cards&&cards.length>=3)cards[2].style.display="none";
@@ -13404,36 +13656,43 @@ function eiV220ApplyMobileVisual(){
     var t2=d.querySelector("#cutTimerDisplay");if(t2)t2.style.display="none";
   }catch(e){}
 }
-var eiV220LegacyOpenCutModule=openCutModule;
+var eiV221LegacyOpenCutModule=openCutModule;
 openCutModule=function(id,cutId){
-  eiV220RepairCutUser();
+  eiV221RepairCutUser();
   var c=caseById(id), cut=null;
   try{if(c)cut=findCut(c,cutId);}catch(e){}
-  if(c&&cut)eiV220PrepareCaseCut(c,cut);
-  var result=eiV220LegacyOpenCutModule(id,cutId);
-  setTimeout(eiV220ApplyMobileVisual,0);
-  setTimeout(eiV220ApplyMobileVisual,120);
+  if(c&&cut)eiV221PrepareCaseCut(c,cut);
+  var result=eiV221LegacyOpenCutModule(id,cutId);
+  setTimeout(eiV221ApplyMobileVisual,0);
+  setTimeout(eiV221ApplyMobileVisual,120);
   return result;
 };
-var eiV220LegacyHandleCutAction=handleCutAction;
+var eiV221LegacyHandleCutAction=handleCutAction;
 handleCutAction=function(c,cut,action){
-  if((isMobileRuntime&&isMobileRuntime()) || eiV220IsCutUser()){
-    if(eiV220MobileCutAction(c,cut,action))return;
+  if((isMobileRuntime&&isMobileRuntime()) || eiV221IsCutUser()){
+    if(eiV221MobileCutAction(c,cut,action))return;
   }
-  return eiV220LegacyHandleCutAction(c,cut,action);
+  return eiV221LegacyHandleCutAction(c,cut,action);
 };
-try{eiV220RepairCutUser();eiV220InjectMobileCutCss();}catch(e){}
+try{eiV221RepairCutUser();eiV221InjectMobileCutCss();}catch(e){}
 
 
-/* V220_DIAGNOSTICO_FIREBASE_PROYECTO */
+/* V221_DIAGNOSTICO_FIREBASE_PROYECTO */
 try{
-  var eiV220FirebaseApp=(firebase&&firebase.app)?firebase.app():null;
-  console.info("[V220 Firebase]",{
-    projectId:eiV220FirebaseApp&&eiV220FirebaseApp.options&&eiV220FirebaseApp.options.projectId,
-    authDomain:eiV220FirebaseApp&&eiV220FirebaseApp.options&&eiV220FirebaseApp.options.authDomain,
+  var eiV221FirebaseApp=(firebase&&firebase.app)?firebase.app():null;
+  console.info("[V221 Firebase]",{
+    projectId:eiV221FirebaseApp&&eiV221FirebaseApp.options&&eiV221FirebaseApp.options.projectId,
+    authDomain:eiV221FirebaseApp&&eiV221FirebaseApp.options&&eiV221FirebaseApp.options.authDomain,
     authEmail:auth&&auth.currentUser&&auth.currentUser.email,
     authUid:auth&&auth.currentUser&&auth.currentUser.uid
   });
+}catch(e){}
+
+try{
+  var eiV221Style=document.createElement("style");
+  eiV221Style.id="ei221-mobile-upload-style";
+  eiV221Style.textContent="\n/* V221 - selector m\u00f3vil de c\u00e1mara, galer\u00eda y archivos */\n@media(max-width:790px){\n  input[type=\"file\"][data-mobile-upload=\"true\"]{\n    min-height:48px!important;\n    padding:10px!important;\n    background:#fff!important;\n  }\n  .ei221-file-counter{\n    display:block!important;\n    margin-top:6px!important;\n    line-height:1.35!important;\n  }\n}\n";
+  document.head.appendChild(eiV221Style);
 }catch(e){}
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
