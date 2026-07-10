@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V221';
+var VERSION='V222';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -289,7 +289,7 @@ function caseMetric(c){var start=caseStartMs(c);var missingStart=!isFinite(start
   var reportRows=reportMetricsForCase(c),reportResponse=reportRows.reduce(function(s,r){return s+r.responseMs;},0),reportPending=reportRows.filter(function(r){return r.pending;}).length;
   return {c:c,start:start,end:end,lead:lead,va:va,wait:wait,req:req,dead:dead,closed:isClosed(c),pRows:pRows,waitRows:waitRows,reportRows:reportRows,reportResponse:reportResponse,reportPending:reportPending,bottleneck:bottle,missingStart:missingStart,orderDays:orderDays,orderType:orderType,leadPerDay:perDay(lead,orderDays),vaPerDay:perDay(va,orderDays),waitPerDay:perDay(wait,orderDays),deadPerDay:perDay(dead,orderDays),reportResponsePerDay:perDay(reportResponse,orderDays)};
 }
-async function compute(cases,cancelledCases){loading(true,'Calculando métricas VSM reales por lotes...');buildEventBuckets();var reconciliation=vsmReconciliation(cases,cancelledCases);var rows=[],byP={},byU={},byUP={},waitRows=[],cutRows=[],reportRows=[],incomplete=0;for(var i=0;i<cases.length;i++){var cm=caseMetric(cases[i]);rows.push(cm);if(cm.missingStart)incomplete++;cm.waitRows.forEach(function(w){waitRows.push(w);});cm.reportRows.forEach(function(r){reportRows.push(Object.assign({pedido:refOf(cases[i]),cliente:cases[i].client||""},r));});cm.pRows.forEach(function(p){var a=byP[p.process]||(byP[p.process]={process:p.process,label:p.label,cases:0,wip:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0,doneCuts:0});a.cases++;if(p.wip)a.wip++;a.active+=p.active;a.wait+=p.wait;a.dead+=p.dead;a.total+=p.total;a.req+=p.req;if(p.process==='corte_cable'){a.cuts+=(cases[i].cutRequests||[]).length;a.doneCuts+=(cases[i].cutRequests||[]).filter(function(x){return x.status==='FINALIZADO'||x.registeredAt||x.noCutNeeded||x.measureComplete||x.medidaCompleta;}).length;}var people=personsForProcess(cases[i],p.process);var real=people.filter(function(x){return !x.synthetic;});var use=real.length?real:people,div=Math.max(1,use.length);use.forEach(function(person){var u=byU[person.key]||(byU[person.key]={key:person.key,user:person.name,email:person.email||'',uid:person.uid||'',role:person.role,synthetic:!!person.synthetic,cases:{},open:0,closed:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0,processes:{},sources:{}});if((person.name||'').length>(u.user||'').length)u.user=person.name;if(!u.email&&person.email)u.email=person.email;if(!u.uid&&person.uid)u.uid=person.uid;if(!u.role&&person.role)u.role=person.role;u.sources[person.source||'traza']=1;u.processes[p.process]=(u.processes[p.process]||0)+p.total/div;if(!u.cases[idOf(cases[i])]){u.cases[idOf(cases[i])]=1;if(isClosed(cases[i]))u.closed++;else u.open++;}u.active+=p.active/div;u.wait+=p.wait/div;u.dead+=p.dead/div;u.total+=p.total/div;u.req+=p.req/div;if(p.process==='corte_cable')u.cuts+=(cases[i].cutRequests||[]).length/div;var uk=person.key+'|'+p.process,up=byUP[uk]||(byUP[uk]={key:person.key,user:person.name,email:person.email||'',uid:person.uid||'',role:person.role,synthetic:!!person.synthetic,process:p.process,label:p.label,cases:{},open:0,closed:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0});if((person.name||'').length>(up.user||'').length)up.user=person.name;if(!up.cases[idOf(cases[i])]){up.cases[idOf(cases[i])]=1;if(isClosed(cases[i]))up.closed++;else up.open++;}up.active+=p.active/div;up.wait+=p.wait/div;up.dead+=p.dead/div;up.total+=p.total/div;up.req+=p.req/div;if(p.process==='corte_cable')up.cuts+=(cases[i].cutRequests||[]).length/div;});});(cases[i].cutRequests||[]).forEach(function(x){var ini=tms(x.startedAt||x.takenAt||x.createdAt),fin=tms(x.finishedAt||x.completedAt||x.registeredAt||x.measureCompleteAt||x.noCutNeededAt);cutRows.push({pedido:refOf(cases[i]),cliente:cases[i].client||'',corte:x.code||x.id||'',referencia:x.referencia||x.descripcion||'',metros:x.metrosSolicitados||x.metrajeFinal||'',estado:x.status||'',responsable:x.takenByName||x.finishedByName||x.registeredByName||'',inicio:ini,fin:fin,duracion:num(x.durationMs)||((isFinite(ini)&&isFinite(fin))?Math.max(0,fin-ini):0),modo:x.noCutNeeded||x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':(x.measureComplete||x.medidaCompleta||x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':'Corte físico'),siesa:x.siesaBatchId||x.siesaExportStatus||''});});if(i%25===0){loading(true,(i+1)+' / '+cases.length);await sleep(0);}}
+async function computeBase(cases,cancelledCases){loading(true,'Calculando métricas VSM reales por lotes...');buildEventBuckets();var reconciliation=vsmReconciliation(cases,cancelledCases);var rows=[],byP={},byU={},byUP={},waitRows=[],cutRows=[],reportRows=[],incomplete=0;for(var i=0;i<cases.length;i++){var cm=caseMetric(cases[i]);rows.push(cm);if(cm.missingStart)incomplete++;cm.waitRows.forEach(function(w){waitRows.push(w);});cm.reportRows.forEach(function(r){reportRows.push(Object.assign({pedido:refOf(cases[i]),cliente:cases[i].client||""},r));});cm.pRows.forEach(function(p){var a=byP[p.process]||(byP[p.process]={process:p.process,label:p.label,cases:0,wip:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0,doneCuts:0});a.cases++;if(p.wip)a.wip++;a.active+=p.active;a.wait+=p.wait;a.dead+=p.dead;a.total+=p.total;a.req+=p.req;if(p.process==='corte_cable'){a.cuts+=(cases[i].cutRequests||[]).length;a.doneCuts+=(cases[i].cutRequests||[]).filter(function(x){return x.status==='FINALIZADO'||x.registeredAt||x.noCutNeeded||x.measureComplete||x.medidaCompleta;}).length;}var people=personsForProcess(cases[i],p.process);var real=people.filter(function(x){return !x.synthetic;});var use=real.length?real:people,div=Math.max(1,use.length);use.forEach(function(person){var u=byU[person.key]||(byU[person.key]={key:person.key,user:person.name,email:person.email||'',uid:person.uid||'',role:person.role,synthetic:!!person.synthetic,cases:{},open:0,closed:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0,processes:{},sources:{}});if((person.name||'').length>(u.user||'').length)u.user=person.name;if(!u.email&&person.email)u.email=person.email;if(!u.uid&&person.uid)u.uid=person.uid;if(!u.role&&person.role)u.role=person.role;u.sources[person.source||'traza']=1;u.processes[p.process]=(u.processes[p.process]||0)+p.total/div;if(!u.cases[idOf(cases[i])]){u.cases[idOf(cases[i])]=1;if(isClosed(cases[i]))u.closed++;else u.open++;}u.active+=p.active/div;u.wait+=p.wait/div;u.dead+=p.dead/div;u.total+=p.total/div;u.req+=p.req/div;if(p.process==='corte_cable')u.cuts+=(cases[i].cutRequests||[]).length/div;var uk=person.key+'|'+p.process,up=byUP[uk]||(byUP[uk]={key:person.key,user:person.name,email:person.email||'',uid:person.uid||'',role:person.role,synthetic:!!person.synthetic,process:p.process,label:p.label,cases:{},open:0,closed:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0});if((person.name||'').length>(up.user||'').length)up.user=person.name;if(!up.cases[idOf(cases[i])]){up.cases[idOf(cases[i])]=1;if(isClosed(cases[i]))up.closed++;else up.open++;}up.active+=p.active/div;up.wait+=p.wait/div;up.dead+=p.dead/div;up.total+=p.total/div;up.req+=p.req/div;if(p.process==='corte_cable')up.cuts+=(cases[i].cutRequests||[]).length/div;});});(cases[i].cutRequests||[]).forEach(function(x){var ini=tms(x.startedAt||x.takenAt||x.createdAt),fin=tms(x.finishedAt||x.completedAt||x.registeredAt||x.measureCompleteAt||x.noCutNeededAt);cutRows.push({pedido:refOf(cases[i]),cliente:cases[i].client||'',corte:x.code||x.id||'',referencia:x.referencia||x.descripcion||'',metros:x.metrosSolicitados||x.metrajeFinal||'',estado:x.status||'',responsable:x.takenByName||x.finishedByName||x.registeredByName||'',inicio:ini,fin:fin,duracion:num(x.durationMs)||((isFinite(ini)&&isFinite(fin))?Math.max(0,fin-ini):0),modo:x.noCutNeeded||x.siesaExportStatus==='NO_APLICA_NO_NECESITA_CORTE'?'No necesita corte':(x.measureComplete||x.medidaCompleta||x.siesaExportStatus==='NO_APLICA_MEDIDA_COMPLETA'?'Medida completa':'Corte físico'),siesa:x.siesaBatchId||x.siesaExportStatus||''});});if(i%25===0){loading(true,(i+1)+' / '+cases.length);await sleep(0);}}
   var processRows=Object.keys(byP).map(function(k){var r=byP[k];r.avg=r.cases?r.total/r.cases:0;r.eff=pct(r.active,r.total);r.waitPct=pct(r.wait,r.total);r.deadPct=pct(r.dead,r.total);return r;}).sort(function(a,b){return b.avg-a.avg;});
   var userRows=consolidateSimilarUsers(Object.keys(byU).map(function(k){var r=byU[k];r.count=Object.keys(r.cases).length;r.avg=r.count?r.total/r.count:0;r.eff=pct(r.active,r.total);r.waitPct=pct(r.wait,r.total);r.deadPct=pct(r.dead,r.total);r.productivity=r.active?+(r.closed/(r.active/3600000)).toFixed(3):0;r.processList=Object.keys(r.processes).map(function(p){return processTitle(p);}).sort().join(', ');r.traceQuality=r.synthetic?'Sin responsable trazado':(r.email||r.uid?'Alta: usuario trazado':'Nombre trazado');return r;})).sort(function(a,b){return b.total-a.total;});
   var userProcessRows=Object.keys(byUP).map(function(k){var r=byUP[k];r.count=Object.keys(r.cases).length;r.avg=r.count?r.total/r.count:0;r.eff=pct(r.active,r.total);r.waitPct=pct(r.wait,r.total);r.deadPct=pct(r.dead,r.total);return r;}).sort(function(a,b){return b.avg-a.avg;});
@@ -379,7 +379,7 @@ function principalVsmHtml(rows){
   if(!rows.length)return '<section class="vsm-empty"><strong>Sin pedidos para mostrar.</strong><br>Revise filtros, rango de fechas o cargue histórico.</section>';
   return '<section class="vsm-main-grid">'+rows.map(vsmCard).join('')+'</section>';
 }
-function resetVsmFilters(){
+function resetVsmFiltersBase(){
   ['fFrom','fTo','fProcess','fStatus','fUser','fSearch'].forEach(function(id){if($(id))$(id).value='';});
   if($('fOrderType'))$('fOrderType').value='';
   if($('fView'))$('fView').value='principal';
@@ -409,9 +409,9 @@ function renderTable(){
   $('mainTable').innerHTML=html;
 }
 async function refresh(){var cases=filterCases(),cancelled=filterCancelledCases();await compute(cases,cancelled);renderSummary();renderTable();$('btnExport').disabled=!(cases.length||cancelled.length);}
-function fillFilters(){var p=$('fProcess');p.innerHTML='<option value="">Todos</option>'+FLOW.map(function(k){return '<option value="'+k+'">'+esc(PROCESS[k])+'</option>';}).join('');var users={};app.cases.forEach(function(c){processStatsList(c).forEach(function(pr){personsForProcess(c,pr).forEach(function(person){if(person.synthetic)return;users[person.key]=person;});});});var u=$('fUser');u.innerHTML='<option value="">Todos</option>'+Object.keys(users).sort(function(a,b){return users[a].name.localeCompare(users[b].name);}).map(function(k){return '<option value="'+esc(k)+'">'+esc(users[k].name)+'</option>';}).join('');}
+function fillFiltersBase(){var p=$('fProcess');p.innerHTML='<option value="">Todos</option>'+FLOW.map(function(k){return '<option value="'+k+'">'+esc(PROCESS[k])+'</option>';}).join('');var users={};app.cases.forEach(function(c){processStatsList(c).forEach(function(pr){personsForProcess(c,pr).forEach(function(person){if(person.synthetic)return;users[person.key]=person;});});});var u=$('fUser');u.innerHTML='<option value="">Todos</option>'+Object.keys(users).sort(function(a,b){return users[a].name.localeCompare(users[b].name);}).map(function(k){return '<option value="'+esc(k)+'">'+esc(users[k].name)+'</option>';}).join('');}
 
-function caseMatchesBaseFilters(c,includeStatus){
+function caseMatchesBaseFiltersBase(c,includeStatus){
   var from=$('fFrom').value,to=$('fTo').value,proc=$('fProcess').value,stat=$('fStatus').value,orderType=($('fOrderType')&&$('fOrderType').value)||'',q=lower($('fSearch').value),user=$('fUser').value;
   if(orderType==='pve'&&!isPveCase(c))return false;
   if(orderType==='normal'&&isPveCase(c))return false;
@@ -493,7 +493,431 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_ERP_Normalizado_PVE_v221_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
-function bind(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V222_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+
+/* ============================================================
+   V222 · Centro operativo VSM
+============================================================ */
+var V222_SLA_HOURS={
+  compras:16,
+  recepcion_pedidos:4,
+  alistamiento:4,
+  corte_cable:4,
+  facturacion:2,
+  caja:4,
+  cliente_punto:2,
+  cliente_recoge:8,
+  despacho_local:8,
+  despacho_nacional:16,
+  cierre_despacho_nacional:4
+};
+var V222_NEXT_ACTION={
+  compras:"Liberar compra o confirmar disponibilidad",
+  recepcion_pedidos:"Validar soporte y enviar a alistamiento",
+  alistamiento:"Completar picking, evidencias y liberar",
+  corte_cable:"Iniciar, finalizar o registrar el corte",
+  facturacion:"Emitir factura y anexar soporte",
+  caja:"Validar pago o liberar retención",
+  cliente_punto:"Confirmar entrega en punto",
+  cliente_recoge:"Confirmar recogida del cliente",
+  despacho_local:"Programar y confirmar entrega local",
+  despacho_nacional:"Cargar guía y entregar a transportadora",
+  cierre_despacho_nacional:"Cerrar entrega con evidencia"
+};
+
+function v222MsHours(h){return Math.max(0,Number(h)||0)*3600000;}
+function v222Hours(ms){return (Math.max(0,Number(ms)||0)/3600000).toFixed((Number(ms)||0)<36000000?2:1)+" h";}
+function v222Percentile(values,p){
+  values=(values||[]).filter(function(v){return isFinite(v)&&v>=0;}).sort(function(a,b){return a-b;});
+  if(!values.length)return 0;
+  var idx=Math.min(values.length-1,Math.max(0,Math.ceil((p/100)*values.length)-1));
+  return values[idx];
+}
+function v222Average(values){
+  values=(values||[]).filter(function(v){return isFinite(v)&&v>=0;});
+  return values.length?values.reduce(function(s,v){return s+v;},0)/values.length:0;
+}
+function v222ProcessMetricFromCase(cm,process){
+  return (cm&&cm.pRows||[]).filter(function(p){return p.process===process;})[0]||null;
+}
+function v222CurrentProcessAge(c){
+  var start=caseStartMs(c);
+  if(!isFinite(start))start=tms(c.updatedAt)||nowMs();
+  var end=caseEndMs(c,start);
+  var p=c.currentProcess&&PROCESS[c.currentProcess]?c.currentProcess:"recepcion_pedidos";
+  var pm=processMetric(c,p,start,end);
+  return pm?pm.total:workingMsBetween(c.updatedAt||start,nowMs());
+}
+function v222Blocker(c){
+  if(c.openRequirement)return c.openRequirement.reason||c.openRequirement.detail||"Requerimiento abierto";
+  if(c.salesHold)return c.salesHold.reason||c.salesHold.status||"Retención financiera";
+  if(c.separationRequest&&c.separationRequest.active!==false)return c.separationRequest.reason||c.separationRequest.status||"Pago pendiente";
+  if(c.waitStartedAt)return "Pedido en espera";
+  var cuts=(c.cutRequests||[]).filter(function(x){return !(x.status==="FINALIZADO"||x.registeredAt||x.noCutNeeded||x.measureComplete||x.medidaCompleta);});
+  if(cuts.length)return cuts.length+" corte(s) pendiente(s)";
+  return "Sin bloqueo explícito";
+}
+function v222Responsible(c){
+  return c.assignedName||c.assignedEmail||advisor(c)||"Sin responsable trazado";
+}
+function v222SlaHoursForProcess(p){
+  var custom=Number(($("fThreshold")&&$("fThreshold").value)||0);
+  var selected=($("fProcess")&&$("fProcess").value)||"";
+  if(custom>0 && (!selected||selected===p))return custom;
+  return V222_SLA_HOURS[p]||8;
+}
+function v222ClosedDay(cm){
+  if(!cm||!cm.closed)return "";
+  var d=toDate(cm.end);
+  return d?isoLocalDay(d):"";
+}
+function v222CountBy(rows,keyFn){
+  var out={};
+  (rows||[]).forEach(function(r){var k=keyFn(r);if(k)out[k]=(out[k]||0)+1;});
+  return out;
+}
+function v222FilterSummary(){
+  var parts=[];
+  if($("fFrom").value||$("fTo").value)parts.push("Fecha "+($("fFrom").value||"inicio")+" a "+($("fTo").value||"hoy"));
+  if($("fOrderType").value)parts.push($("fOrderType").value==="pve"?"PVE":"Normal");
+  if($("fProcess").value)parts.push(processTitle($("fProcess").value));
+  if($("fStatus").value)parts.push($("fStatus").options[$("fStatus").selectedIndex].text);
+  if($("fSla").value)parts.push($("fSla").value==="late"?"Fuera de meta":"Dentro de meta");
+  if($("fUser").value)parts.push($("fUser").options[$("fUser").selectedIndex].text);
+  if(clean($("fSearch").value))parts.push('Búsqueda "'+clean($("fSearch").value)+'"');
+  $("filterSummary").textContent=parts.length?parts.join(" · "):"Vista general sin filtros restrictivos.";
+}
+
+async function compute(cases,cancelledCases){
+  await computeBase(cases,cancelledCases);
+  var m=app.metrics;if(!m)return;
+
+  var durations={},completedDurations={},wipRows=[],pickingRows=[],alerts=[];
+  FLOW.forEach(function(p){durations[p]=[];completedDurations[p]=[];});
+
+  m.caseRows.forEach(function(cm){
+    (cm.pRows||[]).forEach(function(pm){
+      durations[pm.process]=durations[pm.process]||[];
+      durations[pm.process].push(pm.total);
+      if(!pm.wip){
+        completedDurations[pm.process]=completedDurations[pm.process]||[];
+        completedDurations[pm.process].push(pm.total);
+      }
+      if(pm.process==="alistamiento"){
+        pickingRows.push({
+          pedido:refOf(cm.c),
+          oc:purchase(cm.c),
+          cliente:cm.c.client||"",
+          responsable:v222Responsible(cm.c),
+          estado:cm.c.status||"",
+          total:pm.total,
+          active:pm.active,
+          wait:pm.wait,
+          dead:pm.dead,
+          inicio:pm.start,
+          fin:pm.finish,
+          cerrado:!pm.wip,
+          slaHours:v222SlaHoursForProcess("alistamiento"),
+          late:pm.total>v222MsHours(v222SlaHoursForProcess("alistamiento"))
+        });
+      }
+    });
+
+    if(!cm.closed){
+      var p=cm.c.currentProcess&&PROCESS[cm.c.currentProcess]?cm.c.currentProcess:"recepcion_pedidos";
+      var pm=v222ProcessMetricFromCase(cm,p);
+      var age=pm?pm.total:v222CurrentProcessAge(cm.c);
+      var sla=v222SlaHoursForProcess(p),late=age>v222MsHours(sla);
+      var row={
+        c:cm.c,pedido:refOf(cm.c),oc:purchase(cm.c),cliente:cm.c.client||"",
+        process:p,processLabel:processTitle(p),responsable:v222Responsible(cm.c),
+        age:age,slaHours:sla,late:late,blocker:v222Blocker(cm.c),
+        next:V222_NEXT_ACTION[p]||"Revisar siguiente acción",
+        lead:cm.lead,wait:cm.wait,va:cm.va,dead:cm.dead
+      };
+      wipRows.push(row);
+      if(late){
+        alerts.push({severity:"bad",pedido:row.pedido,proceso:row.processLabel,detalle:"Fuera de meta por "+v222Hours(age-v222MsHours(sla)),accion:row.next,age:age});
+      }else if(row.blocker!=="Sin bloqueo explícito"){
+        alerts.push({severity:"warn",pedido:row.pedido,proceso:row.processLabel,detalle:row.blocker,accion:row.next,age:age});
+      }
+    }
+
+    if(cm.missingStart){
+      alerts.push({severity:"warn",pedido:refOf(cm.c),proceso:processTitle(cm.c.currentProcess),detalle:"Fecha inicial incompleta",accion:"Corregir trazabilidad del pedido",age:0});
+    }
+  });
+
+  m.waitRows.filter(function(w){return w.dur>v222MsHours(4);}).slice(0,30).forEach(function(w){
+    alerts.push({severity:"warn",pedido:w.pedido,proceso:w.proceso,detalle:w.tipo+" · "+v222Hours(w.dur),accion:"Resolver bloqueo o requerimiento",age:w.dur});
+  });
+
+  var procMap={};
+  m.processRows.forEach(function(r){procMap[r.process]=r;});
+  FLOW.forEach(function(p){
+    var r=procMap[p];
+    if(!r){
+      r={process:p,label:processTitle(p),cases:0,wip:0,active:0,wait:0,dead:0,total:0,req:0,cuts:0,doneCuts:0,avg:0,eff:0,waitPct:0,deadPct:0};
+      m.processRows.push(r);procMap[p]=r;
+    }
+    var all=durations[p]||[],done=completedDurations[p]||all;
+    r.p50=v222Percentile(done,50);
+    r.p90=v222Percentile(done,90);
+    r.min=done.length?Math.min.apply(Math,done):0;
+    r.max=done.length?Math.max.apply(Math,done):0;
+    r.slaHours=v222SlaHoursForProcess(p);
+    r.slaCount=done.length;
+    r.slaOk=done.filter(function(v){return v<=v222MsHours(r.slaHours);}).length;
+    r.slaPct=done.length?Math.round((r.slaOk/done.length)*100):0;
+    var pw=wipRows.filter(function(x){return x.process===p;});
+    r.wip=pw.length;
+    r.wipLate=pw.filter(function(x){return x.late;}).length;
+    r.wipAgeAvg=v222Average(pw.map(function(x){return x.age;}));
+    r.wipAgeMax=pw.length?Math.max.apply(Math,pw.map(function(x){return x.age;})):0;
+    r.flowIndex=FLOW.indexOf(p);
+  });
+  m.processRows.sort(function(a,b){return a.flowIndex-b.flowIndex;});
+
+  m.wipRows=wipRows.sort(function(a,b){return Number(b.late)-Number(a.late)||b.age-a.age;});
+  m.lateWip=m.wipRows.filter(function(x){return x.late;}).length;
+  m.pickingRows=pickingRows.sort(function(a,b){return b.total-a.total;});
+  m.pickingAvg=v222Average(pickingRows.map(function(x){return x.total;}));
+  m.pickingP50=v222Percentile(pickingRows.map(function(x){return x.total;}),50);
+  m.pickingP90=v222Percentile(pickingRows.map(function(x){return x.total;}),90);
+  m.pickingLate=pickingRows.filter(function(x){return x.late;}).length;
+
+  var physicalCuts=m.cutRows.filter(function(x){return x.modo==="Corte físico"&&x.duracion>0;});
+  m.physicalCutAvg=v222Average(physicalCuts.map(function(x){return x.duracion;}));
+  m.physicalCutP50=v222Percentile(physicalCuts.map(function(x){return x.duracion;}),50);
+  m.physicalCutP90=v222Percentile(physicalCuts.map(function(x){return x.duracion;}),90);
+  m.physicalCuts=physicalCuts.length;
+
+  var closedSeries=v222CountBy(m.caseRows.filter(function(r){return r.closed;}).map(function(r){return {day:v222ClosedDay(r)};}),function(x){return x.day;});
+  m.throughputSeries=Object.keys(closedSeries).sort().slice(-20).map(function(day){return {day:day,count:closedSeries[day]};});
+
+  var buckets={"0–2 h":0,"2–4 h":0,"4–8 h":0,"> 8 h":0};
+  m.wipRows.forEach(function(r){
+    var h=r.age/3600000;
+    if(h<=2)buckets["0–2 h"]++;
+    else if(h<=4)buckets["2–4 h"]++;
+    else if(h<=8)buckets["4–8 h"]++;
+    else buckets["> 8 h"]++;
+  });
+  m.wipBuckets=Object.keys(buckets).map(function(k){return {label:k,count:buckets[k]};});
+  m.alertRows=alerts.sort(function(a,b){return (a.severity==="bad"?0:1)-(b.severity==="bad"?0:1)||b.age-a.age;}).slice(0,80);
+  m.dataQualityPct=m.cases?Math.max(0,Math.round(((m.cases-m.incomplete)/m.cases)*100)):100;
+}
+
+function v222Kpi(title,value,detail,kind,tag){
+  return '<article class="card kpi '+(kind||'')+'"><span>'+esc(title)+'</span><strong>'+esc(value)+'</strong><small>'+esc(detail)+'</small>'+(tag?'<em class="tag">'+esc(tag)+'</em>':'')+'</article>';
+}
+function v222Focus(process,title,mainLabel){
+  var m=app.metrics,r=(m.processRows||[]).filter(function(x){return x.process===process;})[0]||{};
+  return '<article class="card focus-card"><h3>'+esc(title)+'</h3><div class="focus-main">'+esc(mainLabel||v222Hours(r.avg||0))+'</div>'+
+    '<small class="muted">Promedio en horas laborales</small>'+
+    '<div class="focus-row"><div><span>P50</span><strong>'+v222Hours(r.p50||0)+'</strong></div><div><span>P90</span><strong>'+v222Hours(r.p90||0)+'</strong></div><div><span>WIP</span><strong>'+Number(r.wip||0)+'</strong></div></div></article>';
+}
+function renderSummary(){
+  var m=app.metrics;if(!m)return;
+  $("summary").innerHTML=
+    v222Kpi("WIP actual",m.wip,m.lateWip+" fuera de meta",m.lateWip?"bad":"ok","Pedidos abiertos")+
+    v222Kpi("Cerrados",m.closed,"Pedidos completados en el filtro","ok","Throughput "+m.throughput+"/día")+
+    v222Kpi("Lead Time promedio",v222Hours(m.leadAvg),"Tiempo laboral total por pedido","","P50 "+v222Hours(m.leadP50))+
+    v222Kpi("Tiempo de picking",v222Hours(m.pickingAvg),m.pickingRows.length+" pedidos con alistamiento",m.pickingLate?"warn":"ok","P90 "+v222Hours(m.pickingP90))+
+    v222Kpi("Corte físico promedio",v222Hours(m.physicalCutAvg),m.physicalCuts+" cortes físicos","","P90 "+v222Hours(m.physicalCutP90))+
+    v222Kpi("Espera promedio",v222Hours(m.waitAvg),"Bloqueos, requerimientos y pausas",m.waitPct>35?"bad":"warn",m.waitPct+"% del LT")+
+    v222Kpi("Eficiencia VA",m.eff+"%","Tiempo efectivo frente al Lead Time",m.eff>=60?"ok":(m.eff>=40?"warn":"bad"),"NVA "+m.deadPct+"%")+
+    v222Kpi("Calidad de trazabilidad",m.dataQualityPct+"%",m.incomplete+" pedido(s) requieren revisión",m.incomplete?"warn":"ok","Base "+m.cases);
+
+  $("operationalFocus").innerHTML=
+    v222Focus("alistamiento","Picking / alistamiento",v222Hours(m.pickingAvg))+
+    v222Focus("corte_cable","Corte de cable",v222Hours(((m.processRows||[]).filter(function(x){return x.process==="corte_cable";})[0]||{}).avg||0))+
+    v222Focus("recepcion_pedidos","Recepción de pedidos")+
+    v222Focus("facturacion","Facturación");
+
+  var bottle=m.bottleneck||{};
+  $("bottleneck").innerHTML=bottle.label
+    ? '<strong>'+esc(bottle.label)+'</strong><p class="muted">Promedio: '+v222Hours(bottle.avg||0)+' · WIP: '+Number(bottle.wip||0)+' · Espera: '+Number(bottle.waitPct||0)+'%</p>'
+    : '<span class="muted">Sin datos suficientes.</span>';
+
+  $("quickBars").innerHTML='<article class="chart-card"><h3>Composición total del tiempo</h3>'+stackTime(m)+'</article>';
+  $("ltProductivityAnalysis").innerHTML='<div class="filter-summary"><strong>'+esc(m.vsmType)+'</strong> · '+m.cases+' pedidos analizados · '+m.cancelTotal+' cancelados/anulados excluidos · '+m.notTraced+' no trazados.</div>';
+  $("deepKpis").innerHTML=
+    v222Kpi("Requerimientos",m.reqCount,m.reqRate+"% de pedidos con requerimiento",m.reqRate>25?"warn":"")+
+    v222Kpi("Novedades pendientes",m.reportPending,m.reportCount+" novedades/reportes analizados",m.reportPending?"warn":"ok")+
+    v222Kpi("Cortes registrados",m.doneCuts+" / "+m.totalCuts,"Cumplimiento del módulo de Corte",m.totalCuts&&m.doneCuts<m.totalCuts?"warn":"ok");
+  v222FilterSummary();
+  renderProcessFlow();
+  renderPowerCharts();
+  renderAlerts();
+}
+function renderProcessFlow(){
+  var m=app.metrics;if(!m)return;
+  $("processFlow").innerHTML=(m.processRows||[]).map(function(r){
+    var late=r.wipLate>0,compliance=r.slaCount?r.slaPct:0;
+    return '<article class="process-card '+(late?'late':'')+'">'+
+      '<div class="process-title"><h3>'+esc(r.label)+'</h3><b>Meta '+r.slaHours+' h</b></div>'+
+      '<div class="process-main"><div><span>Promedio laboral</span><strong>'+v222Hours(r.avg||0)+'</strong></div><div><span>WIP</span><strong>'+Number(r.wip||0)+'</strong></div></div>'+
+      '<div class="process-stats"><div><span>P50</span><b>'+v222Hours(r.p50||0)+'</b></div><div><span>P90</span><b>'+v222Hours(r.p90||0)+'</b></div><div><span>Atrasados</span><b>'+Number(r.wipLate||0)+'</b></div></div>'+
+      '<div class="progress"><i style="width:'+Math.max(0,Math.min(100,compliance))+'%"></i></div>'+
+      '<small class="muted">Cumplimiento: '+compliance+'% · '+Number(r.cases||0)+' caso(s)</small>'+
+    '</article>';
+  }).join('');
+}
+function v222ChartRows(rows,valueFn,labelFn,metaFn,classFn){
+  rows=rows||[];var max=rows.reduce(function(a,r){return Math.max(a,Number(valueFn(r))||0);},0)||1;
+  return rows.map(function(r){
+    var v=Number(valueFn(r))||0;
+    return '<div class="chart-row"><b title="'+esc(labelFn(r))+'">'+esc(labelFn(r))+'</b><div class="chart-track"><i class="'+(classFn?classFn(r):'')+'" style="width:'+Math.max(2,Math.min(100,(v/max)*100))+'%"></i></div><span>'+esc(metaFn(r))+'</span></div>';
+  }).join('')||'<p class="muted">Sin datos suficientes.</p>';
+}
+function renderPowerCharts(){
+  var m=app.metrics;if(!m)return;
+  var proc=(m.processRows||[]).filter(function(r){return r.cases||r.wip;});
+  var wip=proc.slice().sort(function(a,b){return b.wip-a.wip;});
+  var throughput=m.throughputSeries||[];
+  $("powerCharts").innerHTML=
+    '<article class="chart-card"><h3>Tiempo promedio por proceso</h3>'+v222ChartRows(proc,function(r){return r.avg;},function(r){return r.label;},function(r){return v222Hours(r.avg);})+'</article>'+
+    '<article class="chart-card"><h3>WIP por proceso</h3>'+v222ChartRows(wip,function(r){return r.wip;},function(r){return r.label;},function(r){return r.wip+" · "+r.wipLate+" atras.";},function(r){return r.wipLate?"bad":"ok";})+'</article>'+
+    '<article class="chart-card"><h3>Cumplimiento de meta</h3>'+v222ChartRows(proc,function(r){return r.slaPct;},function(r){return r.label;},function(r){return r.slaPct+"%";},function(r){return r.slaPct>=80?"ok":(r.slaPct>=60?"warn":"bad");})+'</article>'+
+    '<article class="chart-card"><h3>Throughput diario</h3>'+v222ChartRows(throughput,function(r){return r.count;},function(r){return r.day;},function(r){return r.count+" cierre(s)";},function(){return "ok";})+'</article>'+
+    '<article class="chart-card"><h3>Antigüedad del WIP</h3>'+v222ChartRows(m.wipBuckets,function(r){return r.count;},function(r){return r.label;},function(r){return r.count+" pedido(s)";},function(r){return r.label==="> 8 h"?"bad":(r.label==="4–8 h"?"warn":"ok");})+'</article>'+
+    '<article class="chart-card"><h3>Distribución VA / espera / NVA</h3>'+stackTime(m)+'<div class="legend"><span><i class="dot va"></i>VA '+m.eff+'%</span><span><i class="dot wait"></i>Espera '+m.waitPct+'%</span><span><i class="dot dead"></i>NVA '+m.deadPct+'%</span></div></article>';
+}
+function renderAlerts(){
+  var m=app.metrics;if(!m)return;
+  var rows=(m.alertRows||[]).slice(0,30);
+  $("alertsBoard").innerHTML=rows.length
+    ? '<div class="alert-list">'+rows.map(function(a){
+        return '<div class="alert-item '+a.severity+'"><div><strong>'+esc(a.pedido||"Sin pedido")+'</strong><small>'+esc(a.proceso||"")+'</small></div><div><strong>'+esc(a.detalle||"")+'</strong><small>'+esc(a.accion||"")+'</small></div><span class="badge '+a.severity+'">'+(a.severity==="bad"?"Prioridad alta":"Revisar")+'</span></div>';
+      }).join('')+'</div>'
+    : '<p class="muted">No hay alertas operativas con los filtros actuales.</p>';
+}
+function v222StatusBadge(late){
+  return late?'<span class="badge bad">Fuera de meta</span>':'<span class="badge ok">Dentro de meta</span>';
+}
+function v222Table(headers,rows){
+  return '<div class="table-wrap"><table>'+table(headers,rows)+'</table></div>';
+}
+function renderTable(){
+  var m=app.metrics;if(!m)return;
+  var view=$("fView").value,title="",count=0,html="";
+  if(view==="procesos"){
+    title="Rendimiento por proceso";count=m.processRows.length;
+    html=v222Table(["Proceso","Casos","WIP","Atrasados","Promedio h","P50 h","P90 h","Meta h","Cumplimiento","Espera","NVA"],m.processRows.map(function(r){
+      return '<tr><td><strong>'+esc(r.label)+'</strong></td><td>'+r.cases+'</td><td>'+r.wip+'</td><td>'+r.wipLate+'</td><td>'+v222Hours(r.avg)+'</td><td>'+v222Hours(r.p50)+'</td><td>'+v222Hours(r.p90)+'</td><td>'+r.slaHours+'</td><td>'+r.slaPct+'%</td><td>'+r.waitPct+'%</td><td>'+r.deadPct+'%</td></tr>';
+    }));
+  }else if(view==="picking"){
+    title="Picking / alistamiento";count=m.pickingRows.length;
+    html=v222Table(["Pedido","OC","Cliente","Responsable","Estado","Inicio","Fin","Tiempo picking","Ocupación","Espera","NVA","Meta"],m.pickingRows.slice(0,800).map(function(r){
+      return '<tr><td><strong>'+esc(r.pedido)+'</strong></td><td>'+esc(r.oc)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.responsable)+'</td><td>'+esc(r.estado)+'</td><td>'+esc(dateTxt(r.inicio))+'</td><td>'+esc(r.cerrado?dateTxt(r.fin):"En curso")+'</td><td><strong>'+v222Hours(r.total)+'</strong></td><td>'+v222Hours(r.active)+'</td><td>'+v222Hours(r.wait)+'</td><td>'+v222Hours(r.dead)+'</td><td>'+v222StatusBadge(r.late)+'</td></tr>';
+    }));
+  }else if(view==="cortes"){
+    title="Detalle de cortes";count=m.cutRows.length;
+    html=v222Table(["Pedido","Cliente","Corte","Referencia","Metros","Estado","Responsable","Inicio","Fin","Duración","Modo","SIESA"],m.cutRows.slice(0,1000).map(function(x){
+      return '<tr><td><strong>'+esc(x.pedido)+'</strong></td><td>'+esc(x.cliente)+'</td><td>'+esc(x.corte)+'</td><td>'+esc(x.referencia)+'</td><td>'+esc(x.metros)+'</td><td>'+esc(x.estado)+'</td><td>'+esc(x.responsable)+'</td><td>'+esc(dateTxt(x.inicio))+'</td><td>'+esc(dateTxt(x.fin))+'</td><td><strong>'+v222Hours(x.duracion)+'</strong></td><td>'+esc(x.modo)+'</td><td>'+esc(x.siesa)+'</td></tr>';
+    }));
+  }else if(view==="usuarios"){
+    title="Productividad por usuario";count=m.userRows.length;
+    html=v222Table(["Usuario","Rol","Casos","Abiertos","Cerrados","Promedio","Ocupación","Espera","NVA","% VA","Procesos"],m.userRows.map(function(r){
+      return '<tr><td><strong>'+esc(r.user)+'</strong></td><td>'+esc(roleTitle(r.role))+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+v222Hours(r.avg)+'</td><td>'+v222Hours(r.active)+'</td><td>'+v222Hours(r.wait)+'</td><td>'+v222Hours(r.dead)+'</td><td>'+r.eff+'%</td><td>'+esc(r.processList||"")+'</td></tr>';
+    }));
+  }else if(view==="usuario_proceso"){
+    title="Usuario por proceso";count=m.userProcessRows.length;
+    html=v222Table(["Usuario","Rol","Proceso","Casos","Abiertos","Cerrados","Promedio","Ocupación","Espera","NVA","% VA"],m.userProcessRows.map(function(r){
+      return '<tr><td><strong>'+esc(r.user)+'</strong></td><td>'+esc(roleTitle(r.role))+'</td><td>'+esc(r.label)+'</td><td>'+r.count+'</td><td>'+r.open+'</td><td>'+r.closed+'</td><td>'+v222Hours(r.avg)+'</td><td>'+v222Hours(r.active)+'</td><td>'+v222Hours(r.wait)+'</td><td>'+v222Hours(r.dead)+'</td><td>'+r.eff+'%</td></tr>';
+    }));
+  }else if(view==="pedidos"){
+    title="Todos los pedidos";count=m.caseRows.length;
+    html=v222Table(["Tipo","Pedido","OC","Cliente","Proceso actual","Estado","LT laboral","Ocupación","Espera","NVA","Eficiencia","Cuello","QA"],m.caseRows.slice(0,900).map(function(r){
+      var c=r.c;
+      return '<tr><td><span class="pill">'+esc(r.orderType)+'</span></td><td><strong>'+esc(refOf(c))+'</strong></td><td>'+esc(purchase(c))+'</td><td>'+esc(c.client||"")+'</td><td>'+esc(processTitle(c.currentProcess))+'</td><td>'+esc(c.status||"")+'</td><td><strong>'+v222Hours(r.lead)+'</strong></td><td>'+v222Hours(r.va)+'</td><td>'+v222Hours(r.wait)+'</td><td>'+v222Hours(r.dead)+'</td><td>'+pct(r.va,r.lead)+'%</td><td>'+esc(r.bottleneck.label||"")+'</td><td>'+(r.missingStart?'<span class="badge warn">Revisar</span>':'<span class="badge ok">OK</span>')+'</td></tr>';
+    }));
+  }else if(view==="novedades"){
+    title="Novedades y reportes";count=m.reportRows.length;
+    html=v222Table(["Pedido","Cliente","Novedad","Estado","Criticidad","Actualizaciones","Primera respuesta","Tiempo respuesta","Tiempo cierre"],m.reportRows.slice(0,800).map(function(r){
+      return '<tr><td><strong>'+esc(r.pedido||"")+'</strong></td><td>'+esc(r.cliente||"")+'</td><td>'+esc(r.title||"")+'</td><td>'+esc(r.status||"")+'</td><td>'+esc(r.severity||"")+'</td><td>'+r.updates+'</td><td>'+(r.pending?'<span class="badge warn">Pendiente</span>':esc(dateTxt(r.firstResponse)))+'</td><td><strong>'+v222Hours(r.responseMs)+'</strong></td><td>'+v222Hours(r.closeMs)+'</td></tr>';
+    }));
+  }else if(view==="cancelados"){
+    title="Cancelados y anulados";count=m.cancelRows.length;
+    html=v222Table(["Pedido","OC","Cliente","Asesor","Tipo","Proceso","Fecha","Usuario","Motivo","Soporte"],m.cancelRows.map(function(r){
+      return '<tr><td><strong>'+esc(r.pedido)+'</strong></td><td>'+esc(r.oc)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.asesor)+'</td><td>'+esc(r.tipo)+'</td><td>'+esc(r.procesoTxt)+'</td><td>'+esc(dateTxt(r.fecha))+'</td><td>'+esc(r.usuario)+'</td><td>'+esc(r.motivo)+'</td><td>'+(r.soporte?'<a href="'+esc(r.soporte)+'" target="_blank" rel="noopener">Abrir</a>':'—')+'</td></tr>';
+    }));
+  }else if(view==="not_traced"){
+    title="No trazados / QA";count=m.notTracedRows.length;
+    html=v222Table(["Pedido","Cliente","Estado","Proceso","Motivo"],m.notTracedRows.map(function(r){
+      return '<tr><td><strong>'+esc(r.pedido||"")+'</strong></td><td>'+esc(r.cliente||"")+'</td><td>'+esc(r.estado||"")+'</td><td>'+esc(r.proceso||"")+'</td><td>'+esc(r.motivo||"")+'</td></tr>';
+    }));
+  }else{
+    var rows=view==="wip"?m.wipRows:m.wipRows;
+    title=view==="wip"?"WIP y atrasos":"Centro operativo · pedidos en curso";count=rows.length;
+    html=v222Table(["Pedido","OC","Cliente","Proceso","Responsable","Tiempo en proceso","Meta","Cumplimiento","Bloqueo","Próxima acción","LT total"],rows.slice(0,900).map(function(r){
+      return '<tr><td><strong>'+esc(r.pedido)+'</strong></td><td>'+esc(r.oc)+'</td><td>'+esc(r.cliente)+'</td><td>'+esc(r.processLabel)+'</td><td>'+esc(r.responsable)+'</td><td><strong>'+v222Hours(r.age)+'</strong></td><td>'+r.slaHours+' h</td><td>'+v222StatusBadge(r.late)+'</td><td>'+esc(r.blocker)+'</td><td>'+esc(r.next)+'</td><td>'+v222Hours(r.lead)+'</td></tr>';
+    }));
+  }
+  $("tableTitle").textContent=title;
+  $("rowCount").textContent=count+" fila(s) · "+m.cases+" pedidos analizados";
+  $("mainTable").innerHTML=html;
+}
+function resetVsmFilters(){
+  resetVsmFiltersBase();
+  $("fSla").value="";
+  $("fThreshold").value="8";
+  $("fView").value="principal";
+  document.querySelectorAll("[data-range]").forEach(function(b){b.classList.remove("active");});
+  v222FilterSummary();
+}
+function caseMatchesBaseFilters(c,includeStatus){
+  if(!caseMatchesBaseFiltersBase(c,includeStatus))return false;
+  var slaFilter=$("fSla").value;
+  if(!slaFilter||isCancelledVsm(c)||isClosed(c))return true;
+  var age=v222CurrentProcessAge(c);
+  var p=c.currentProcess&&PROCESS[c.currentProcess]?c.currentProcess:"recepcion_pedidos";
+  var late=age>v222MsHours(v222SlaHoursForProcess(p));
+  return slaFilter==="late"?late:!late;
+}
+function fillFilters(){
+  fillFiltersBase();
+  var p=$("fProcess");
+  if(p&&!p.getAttribute("data-v222")){
+    p.setAttribute("data-v222","1");
+    p.addEventListener("change",function(){
+      var key=p.value;
+      if(key&&V222_SLA_HOURS[key])$("fThreshold").value=V222_SLA_HOURS[key];
+    });
+  }
+}
+function v222SetRange(mode){
+  var today=new Date(),from=null,to=new Date(today);
+  if(mode==="today")from=new Date(today);
+  else if(mode==="7"){from=new Date(today);from.setDate(from.getDate()-6);}
+  else if(mode==="30"){from=new Date(today);from.setDate(from.getDate()-29);}
+  else if(mode==="month")from=new Date(today.getFullYear(),today.getMonth(),1);
+  else if(mode==="all"){from=null;to=null;}
+  if(from)$("fFrom").value=isoLocalDay(from);else $("fFrom").value="";
+  if(to)$("fTo").value=isoLocalDay(to);else $("fTo").value="";
+  document.querySelectorAll("[data-range]").forEach(function(b){b.classList.toggle("active",b.getAttribute("data-range")===mode);});
+  refresh().catch(function(e){loading(false);status("Error filtrando: "+esc(e.message||e),"bad");});
+}
+function bind(){
+  bindBase();
+  ["fSla","fThreshold"].forEach(function(id){
+    $(id).addEventListener("change",function(){refresh().catch(function(e){loading(false);status("Error recalculando: "+esc(e.message||e),"bad");});});
+  });
+  document.querySelectorAll("[data-range]").forEach(function(btn){
+    btn.addEventListener("click",function(){v222SetRange(btn.getAttribute("data-range"));});
+  });
+  $("btnApply").onclick=function(){refresh().catch(function(e){loading(false);status("Error aplicando filtros: "+esc(e.message||e),"bad");});};
+  $("btnOnlyWip").onclick=function(){
+    $("fStatus").value="open";$("fSla").value="";$("fView").value="wip";
+    refresh().catch(function(e){loading(false);status("Error filtrando WIP: "+esc(e.message||e),"bad");});
+  };
+  $("btnDelayed").onclick=function(){
+    $("fStatus").value="open";$("fSla").value="late";$("fView").value="wip";
+    refresh().catch(function(e){loading(false);status("Error filtrando atrasados: "+esc(e.message||e),"bad");});
+  };
+}
+
+function bindBase(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}
 (async function(){try{bind();await initFirebase();$('fFrom').value='';$('fTo').value='';await loadCases(false);if(/[?&]export=1/.test(location.search))setTimeout(function(){$('btnExport').click();},900);}catch(e){loading(false);status('Error inicializando VSM: '+esc(e.message||e),'bad');}})();
 })();
