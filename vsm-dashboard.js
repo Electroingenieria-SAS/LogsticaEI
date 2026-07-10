@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V228';
+var VERSION='V229';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -507,7 +507,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V228_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V229_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -1519,6 +1519,9 @@ function bindV228Base(){
 ============================================================ */
 var V228_AREA_SLA={ventas:4,compras:16,logistica:4,facturacion:2,cartera:4,despacho:8};
 
+function v229NormalizeRole(value){
+  return normKey(value||"");
+}
 function v228Scope(){
   var area=$("fArea")&&$("fArea").value||"";
   var process=$("fProcess")&&$("fProcess").value||"";
@@ -1536,7 +1539,7 @@ function v228ClosedText(text){
   return /cerrad|resuelt|solucionad|complet|finaliz|entrega confirmada/i.test(String(text||""));
 }
 function v228AreaFromRoleOrProcess(role,process,text){
-  role=normalizeRole(role||"");
+  role=v229NormalizeRole(role||"");
   if(process&&v225AreaForProcess(process))return v225AreaForProcess(process);
   if(role==="ventas"||role==="asesor_ventas")return "ventas";
   if(role==="compras"||role==="proyectos")return "compras";
@@ -1583,9 +1586,9 @@ function v228RequirementClass(c,item){
   var r=item.r;
   var text=[r.source,r.type,r.category,r.reason,r.detail,r.description,r.status,r.targetRole,r.sourceProcess,r.returnProcess,c.requirementType].join(" ");
   if(v228NoDeliveryText(text)||r.source==="no_entrega"||c.requirementType==="no_entrega")return "no_delivery";
-  var target=normalizeRole(r.targetRole||"");
+  var target=v229NormalizeRole(r.targetRole||"");
   var explicitReturn=!!(r.returnProcess||r.sourceProcess);
-  if(target==="ventas"||v228ReworkText(text)||(explicitReturn&&target&&target!==normalizeRole(r.sourceRole||"")))return "rework";
+  if(target==="ventas"||v228ReworkText(text)||(explicitReturn&&target&&target!==v229NormalizeRole(r.sourceRole||"")))return "rework";
   return "novelty";
 }
 function v228SlaHours(area,process){
