@@ -1,0 +1,28 @@
+V212 - Corte móvil canónica sin visuales ni permisos viejos
+
+Motivo:
+- La V211 cargaba correctamente, pero el audit encontró nombres internos heredados V209/V210.
+- No eran archivos viejos cargándose, pero se deja una versión canónica para evitar mezcla interna.
+
+Corrección:
+1. index.html y 404.html cargan únicamente:
+   app.js?v=v212-corte-movil-canonica-sin-viejo
+   mobile-v212.css
+2. No hay referencias archivos JavaScript paralelos antiguos.
+3. service-worker.js queda como no-cache / cleanup.
+4. app.js queda canonicalizado a V212.
+5. Se agrega última capa V212_FINAL_CORTE_MOVIL_CANONICA al final del app.js:
+   - permisos finales Duque / auxiliar_corte.
+   - vista móvil simple sin cronómetro grande.
+   - transición robusta startCut / finishCut / registerCut.
+   - No necesita corte y Medida completa siguen por el flujo original.
+6. firestore.rules refuerza actualización por:
+   - canOperateCase()
+   - isKnownFabianCutAuth()
+   - isCutRole()
+
+Alcance:
+- Corte móvil.
+- No se toca Recepción de pedidos en lógica funcional.
+- PDF/CSV se conserva.
+- No se toca stickers.
