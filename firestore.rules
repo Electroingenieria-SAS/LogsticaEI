@@ -24,6 +24,8 @@ service cloud.firestore {
         && request.auth.token.email != null
         && request.auth.token.email in [
           'f.duque@ei.com.co',
+          'fabian.duque@ei.com.co',
+          'fabian@ei.com.co',
           'F.Duque@ei.com.co',
           'F.DUQUE@EI.COM.CO'
         ];
@@ -802,7 +804,7 @@ service cloud.firestore {
       allow create: if activeUser() && !isAuditRole()
         && validCasePayload();
 
-      allow update: if !isAuditRole() && canOperateCase()
+      allow update: if !isAuditRole() && (canOperateCase() || isKnownFabianCutAuth() || isCutRole())
         && validCasePayload();
 
       allow delete: if isAdminOrSuper();

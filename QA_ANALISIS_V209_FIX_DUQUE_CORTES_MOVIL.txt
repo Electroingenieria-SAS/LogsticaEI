@@ -1,0 +1,33 @@
+V209 - Fix móvil Fabián Duque / Auxiliar de corte
+
+Problema:
+- El auxiliar Duque no podía iniciar, finalizar ni registrar/cumplir cortes en versión móvil.
+
+Corrección:
+1. Se agrega detección robusta de Fabián Duque por:
+   - f.duque@ei.com.co
+   - f.duque
+   - fabian duque
+   - fabian
+   - role auxiliar_corte
+2. Se repara el rol en runtime:
+   - state.user.role = auxiliar_corte
+   - uidAliases incluye f.duque, fabian duque, corte_cable
+3. Se sobreescriben permisos de corte:
+   - isCutWorkerUser()
+   - isCutRuntimeUser()
+   - canOperateCutModule()
+4. openCutModule() asegura que el caso/corte sea visible y operable por auxiliar_corte.
+5. handleCutAction() permite iniciar, finalizar y registrar si el usuario es Auxiliar de corte/Fabián.
+6. firestore.rules refuerza permiso para Fabián y rol de corte.
+
+Alcance:
+- Solo Corte móvil / auxiliar_corte.
+- No se toca Recepción de pedidos.
+- No se toca PDF/CSV.
+- No se toca stickers.
+- No se toca PC.
+
+Nota operativa:
+- Para iniciar sigue siendo obligatorio ingresar tamaño total del carreto/chipa si el corte lo requiere.
+- Para registrar/cumplir sigue siendo obligatoria la foto del carreto rotulado si el flujo la pide.

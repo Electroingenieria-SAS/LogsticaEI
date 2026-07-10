@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v208-csv-pdf-mismo-soporte-recepcion";
+var CACHE_VERSION = "ei-trazabilidad-v209-fix-duque-cortes-movil";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){

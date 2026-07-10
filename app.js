@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v208-csv-pdf-mismo-soporte-recepcion";
+var EI_CANONICAL_APP_VERSION = "v209-fix-duque-cortes-movil";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -67,16 +67,16 @@ var state = {
   notifications: { enabled: true, memory: {}, queue: [], queueTimer: null, lastSoundAt: 0 }
 };
 
-function ensureV208UiFixes(){
-  if(document.getElementById("ei-v208-csv-pdf-mismo-soporte-recepcion"))return;
+function ensureV209UiFixes(){
+  if(document.getElementById("ei-v209-fix-duque-cortes-movil"))return;
   var st=document.createElement("style");
-  st.id="ei-v208-csv-pdf-mismo-soporte-recepcion";
+  st.id="ei-v209-fix-duque-cortes-movil";
   st.textContent='\
 \
 \
 \
 @media(max-width:790px){.mobile-top{gap:8px}.mobile-top .mobile-logout-btn{display:inline-flex!important;background:#fee2e2!important;color:#991b1b!important;border-color:#fecaca!important}.mobile-menu-head .top-actions{gap:6px;align-items:center}.mobile-session-box{border-top:1px solid #e2e8f0;margin-top:10px;padding-top:12px}.mobile-session-box .btn{width:100%;justify-content:center}.mobile-session-box small{display:block;margin-top:8px;color:#64748b;font-weight:700;word-break:break-word}}\
-/* V208_MOBILE_CLEAN */\
+/* V209_MOBILE_CLEAN */\
 @media(max-width:790px){\
   body{background:#eef3f8!important;overflow-x:hidden!important;}\
   .sidebar{display:none!important;}\
@@ -1280,7 +1280,7 @@ function forceCajaPvcPveToCarteraNow(){
   if(!state.user || !(canSeeAll()||isAdminRoleValue(state.user.role)||currentUserIsAdminOrSuper()||normalizeRole(state.user.role)==="caja"||normalizeRole(state.user.role)==="cartera")){alert("Solo Caja, Cartera o roles de gestión pueden normalizar Caja/Cartera.");return;}
   var jobs=[],count=0;
   (state.cases||[]).forEach(function(c){
-    if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V208: PVC/PVE debe estar en Cartera.")){
+    if(migrateCajaToCarteraIfNeeded(c,"Normalización masiva V209: PVC/PVE debe estar en Cartera.")){
       count++;
       jobs.push(persistCase(c,{type:"FINANCIAL_ROUTE_NORMALIZED_TO_CARTERA",detail:"Pedido "+orderKindCode(c)+" movido de Caja a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}));
     }
@@ -1301,12 +1301,12 @@ function autoNormalizeLoadedPvcPveFromCajaToCartera(reason){
   var jobs=[],count=0;
   (state.cases||[]).forEach(function(c){
     if(!c||!canNormalizeCajaCarteraSilently(c))return;
-    if(migrateCajaToCarteraIfNeeded(c,reason||"Normalización automática V208: PVC/PVE no puede permanecer en Caja.")){
+    if(migrateCajaToCarteraIfNeeded(c,reason||"Normalización automática V209: PVC/PVE no puede permanecer en Caja.")){
       count++;
       c.visibleRoles=financialVisibleRolesForOrder(c);
       c.targetRoles=financialVisibleRolesForOrder(c);
       jobs.push(db.collection("cases").doc(c.id).set(c,{merge:true}).then(function(){
-        return createEvent({type:"AUTO_CARTERA_REDIRECT_V208",caseId:c.id,process:"cartera",detail:"PVC/PVE detectado en Caja y redirigido automáticamente a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}).catch(function(){return null;});
+        return createEvent({type:"AUTO_CARTERA_REDIRECT_V209",caseId:c.id,process:"cartera",detail:"PVC/PVE detectado en Caja y redirigido automáticamente a Cartera.",targetRole:"cartera",visibleRoles:financialVisibleRolesForOrder(c)}).catch(function(){return null;});
       }).catch(function(e){console.warn("No se pudo normalizar a Cartera",c.id,e);return null;}));
     }
   });
@@ -1858,7 +1858,7 @@ function clearPwaCachesAndReload(){
 }
 function ensureMobileFreshVersion(){
   try{
-    var version="v208-csv-pdf-mismo-soporte-recepcion";
+    var version="v209-fix-duque-cortes-movil";
     var key="ei_mobile_app_version";
     var old=localStorage.getItem(key)||"";
     localStorage.setItem(key,version);
@@ -2295,12 +2295,12 @@ function loadData(){
     state.reports=filterReportsForCurrentUser(res[6]||[]);
     state.inventoryChips=res[7]||[];
     state.dataLoading=false;
-    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera("Normalización al cargar datos V208: PVC/PVE debe ir a Cartera.");
+    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera("Normalización al cargar datos V209: PVC/PVE debe ir a Cartera.");
     if(canSeeAll() || isAdminRoleValue(state.user&&state.user.role)){
       autoMigrateLegacyProcesses();
     }
     return normalizePromise.then(function(moved){
-      if(moved>0)console.info("[V208] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+      if(moved>0)console.info("[V209] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
     });
   }).catch(function(e){
     state.dataLoading=false;
@@ -3232,7 +3232,7 @@ function autoMigrateLegacyProcesses(){
   state.cases.forEach(function(c){
     var changed=false;
     if(migrateLegacyCaseInMemory(c,"Migración automática de procesos legacy al cargar la app"))changed=true;
-    if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Migración automática V208: PVE existente debe pasar por Compras antes de Recepción"))changed=true;
+    if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Migración automática V209: PVE existente debe pasar por Compras antes de Recepción"))changed=true;
     if(repairDeliveryTypeInMemory(c,"Corrección automática al cargar la app"))changed=true;
     if(repairDeliveryRouteAssignmentInMemory(c,"Corrección automática de asignación Duvan/Javier al cargar la app"))changed=true;
     if(changed)migrated.push(c);
@@ -3267,7 +3267,7 @@ function forceExistingPveToPurchasesNow(){
       var before=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
       var label=pveMigrationCandidateLabel(c);
       if(label!=="migrable_a_compras")skipped[label]=Number(skipped[label]||0)+1;
-      if(forcePveCaseToPurchasesInMemory(c,"Migración manual V208: PVE existente enviado a Compras antes de Recepción")){
+      if(forcePveCaseToPurchasesInMemory(c,"Migración manual V209: PVE existente enviado a Compras antes de Recepción")){
         var after=c.currentProcess+"|"+c.status+"|"+JSON.stringify(c.purchaseFlow||{})+"|"+JSON.stringify(c.visibleRoles||[])+"|"+JSON.stringify(c.documentFlow||{});
         if(before!==after){
           changedDocs.push(c);
@@ -3413,7 +3413,7 @@ function mobileFullMenuHtml(){
 
 function loadWarningsHtml(){
   if(!state.loadWarnings || !state.loadWarnings.length)return "";
-  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique las reglas V208 y recargue la PWA.</small></div>';
+  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique las reglas V209 y recargue la PWA.</small></div>';
 }
 
 
@@ -3438,9 +3438,9 @@ function applyLowResolutionMode(){
   }catch(e){}
 }
 function ensureLowResolutionResponsiveCss(){
-  if(document.getElementById("ei-v208-csv-pdf-mismo-soporte-recepcion")){applyLowResolutionMode();return;}
+  if(document.getElementById("ei-v209-fix-duque-cortes-movil")){applyLowResolutionMode();return;}
   var st=document.createElement("style");
-  st.id="ei-v208-csv-pdf-mismo-soporte-recepcion";
+  st.id="ei-v209-fix-duque-cortes-movil";
   st.textContent='\
 :root{--ei-sidebar-w:260px;--ei-card-pad:18px;--ei-gap:16px;--ei-font-scale:1;}\
 .app-layout{min-height:100dvh;}\
@@ -3537,7 +3537,7 @@ function openRouteSafely(route){
   catch(e){showError("Error al abrir el módulo "+route+": "+((e&&e.message)||e));}
 }
 
-function ensureV208ViewportFinalFix(){
+function ensureV209ViewportFinalFix(){
   try{
     var st=document.getElementById("ei195-viewport-final-fix");
     if(!st){
@@ -3664,14 +3664,14 @@ function ensureV208ViewportFinalFix(){
     z-index:16000!important;
   }
 }`;
-  }catch(e){console.warn("No se pudo aplicar V208 viewport fix",e);}
+  }catch(e){console.warn("No se pudo aplicar V209 viewport fix",e);}
 }
 
 function layout(content){
   cleanupProtectedToast();
   injectExecutiveMinimalCss();
   ensureLowResolutionResponsiveCss();
-  ensureV208ViewportFinalFix();
+  ensureV209ViewportFinalFix();
   var rs=routes();
   var bottom=mobileItems().slice(0,4);
   appEl.innerHTML='<div class="app-layout ei191-shell"><aside class="sidebar"><div class="sidebar-brand"><img class="sidebar-logo" src="'+logoPath+'"><div><strong>Electroingeniería</strong><span>'+esc(roleTitle(state.user.role))+'</span></div></div><nav class="nav">'+rs.main.map(navBtn).join("")+(rs.processes.length?'<div style="height:1px;background:rgba(255,255,255,.16);margin:8px 0"></div>':"")+rs.processes.map(navBtn).join("")+'</nav><div class="sidebar-footer"><div><strong>'+esc(state.user.name)+'</strong><div>'+esc(roleTitle(state.user.role))+'</div></div><button class="btn btn-small btn-gold" data-action="certificate">Certificado de creación</button><button class="btn btn-small" data-action="logout">Salir</button></div></aside><header class="mobile-top ei191-top ei193-top-clean"><img class="mobile-logo" src="'+logoPath+'"><div class="mobile-title mobile-title-hidden" aria-hidden="true"></div><button class="mobile-menu-btn ei191-menu" data-action="openMobileMenu" aria-label="Abrir menú"><i></i><i></i><i></i></button></header><main class="main ei191-main">'+loadWarningsHtml()+auditReadOnlyNotice()+content+'</main><nav class="bottom-nav ei191-bottom">'+bottom.map(function(x){return'<button class="'+(state.route===x[0]?'active':'')+'" data-route="'+x[0]+'"><b>'+esc(x[2])+'</b><span>'+esc(x[1])+'</span></button>';}).join("")+'<button class="ei192-bottom-menu" data-action="openMobileMenu" aria-label="Abrir menú"><b><i></i><i></i><i></i></b><span>Menú</span></button></nav></div><div class="drawer" id="drawer"></div><div class="mobile-menu-overlay" id="mobileMenu"><div class="mobile-menu-backdrop" data-action="closeMobileMenu"></div>'+mobileFullMenuHtml()+'</div>';
@@ -3729,7 +3729,7 @@ function temporaryProfileFromAuth(fbUser,reason){
   };
   state.route=defaultRoute(state.user.role);
   state.loadWarnings=state.loadWarnings||[];
-  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió para no parar el proceso. Publique reglas V208 y cree/verifique el perfil operativo.");
+  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió para no parar el proceso. Publique reglas V209 y cree/verifique el perfil operativo.");
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   console.warn("Perfil temporal activado",reason);
   return true;
@@ -5318,7 +5318,7 @@ function createCase(fd){
   if(priority){procStats(c,p).waitMs=0;} else {procStats(c,p).deadMs=0;}
   resetChecklistForProcess(c,p);
   addStateHistory(c,"creacion",routeDetail,{tipo_estado:"creacion",fecha_hora_inicio_estado:created});
-  ensurePvePurchasingMetadata(c,"Creación V208: pedido PVE debe pasar por Compras antes de Recepción");
+  ensurePvePurchasingMetadata(c,"Creación V209: pedido PVE debe pasar por Compras antes de Recepción");
   var finish=function(){
     return persistCase(c,{type:"CASE_CREATED",detail:routeDetail,targetRole:assignedRole,visibleRoles:c.visibleRoles||[assignedRole,"ventas","admin","super_admin","super_administrador","jefe_logistica"]}).then(function(){state.route="dashboard";render();});
   };
@@ -5372,12 +5372,12 @@ function renderDetail(id){
   if(!caseRelevantToCurrentUser(c) && !userIsGlobalVisibilityRole()){layout(header("Acceso no disponible","Este pedido o requerimiento pertenece a otra área o no está delegado a su usuario.",'<button class="btn" data-route="dashboard">Volver al inicio</button>')+'<div class="empty">No se muestra para evitar confusiones operativas.</div>');return;}
   cacheDetailCase(c);
   var correctedOnOpen=false;
-  if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V208: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
+  if(migrateCajaToCarteraIfNeeded(c,"Corrección automática V209: PVC/PVE debe ir a Cartera, no Caja."))correctedOnOpen=true;
   if(caseLooksBlockedInSales(c)){
-    if(releaseAnyCaseIfResolvedByReqOrReport(c,"Corrección automática V208: requerimiento o novedad/reporte ya respondido/cerrado.","Corrección automática V208"))correctedOnOpen=true;
+    if(releaseAnyCaseIfResolvedByReqOrReport(c,"Corrección automática V209: requerimiento o novedad/reporte ya respondido/cerrado.","Corrección automática V209"))correctedOnOpen=true;
   }
   if(migrateLegacyCaseInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
-  if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Corrección automática V208 al abrir detalle: PVE debe pasar por Compras"))correctedOnOpen=true;
+  if((currentUserIsAdminOrSuper() || normalizeRole(state.user&&state.user.role)==="gerencia") && forcePveCaseToPurchasesInMemory(c,"Corrección automática V209 al abrir detalle: PVE debe pasar por Compras"))correctedOnOpen=true;
   if(repairDeliveryTypeInMemory(c,"Corrección automática al abrir detalle"))correctedOnOpen=true;
   var beforeReceptionFlow=JSON.stringify(c.documentFlow||{});
   normalizeReceptionDocumentFlow(c);
@@ -5404,7 +5404,7 @@ function renderDetail(id){
     if(c.status==="en_espera"&&normalizeRole(state.user.role)===normalizeRole(c.assignedRole))actions+='<button class="btn btn-primary" data-action="answer" data-id="'+c.id+'">'+(normalizeRole(state.user.role)==="jefe_logistica"?"Aprobar / resolver":"Resolver")+'</button>';
     if(canManageNoDelivery(c))actions+='<button class="btn btn-danger" data-action="manageNoDelivery" data-id="'+c.id+'">Gestionar no entrega</button>';
     if(isJefeLogistica()&&!c.closedAt)actions+='<button class="btn btn-gold" data-action="supervise" data-id="'+c.id+'">Observación jefe logística</button>';
-    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canOperate)actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar PDF o CSV recepción · V208</button>';
+    if(c.status==="en_proceso"&&c.currentProcess==="recepcion_pedidos"&&canOperate)actions+='<button class="btn btn-primary" data-action="receptionPdf" data-id="'+c.id+'">Cargar PDF o CSV recepción · V209</button>';
     if(c.status==="en_proceso"&&c.currentProcess==="alistamiento"&&canOperate)actions+='<button class="btn btn-primary" data-action="alistChecklist" data-id="'+c.id+'">Lista marcable de alistamiento</button><button class="btn btn-success" data-action="alistPartial" data-id="'+c.id+'">Crear envío parcial</button><button class="btn btn-primary" data-action="planCuts" data-id="'+c.id+'">Revisar / ajustar cortes</button><button class="btn btn-gold" data-action="syncCuts" data-id="'+c.id+'">Sincronizar cortes</button>';
     if(c.currentProcess==="alistamiento"&&canManageAlistamientoAssignment(c))actions+='<button class="btn btn-gold" data-action="assignAlistamiento" data-id="'+c.id+'">Cambiar asignación alistamiento</button>';
     if(c.currentProcess==="recepcion_pedidos"&&canAssignAlistamientoFromReception(c)&&actions.indexOf('data-action="assignAlistamiento"')===-1)actions+='<button class="btn btn-gold" data-action="assignAlistamiento" data-id="'+c.id+'">Enviar a alistamiento y asignar</button>';
@@ -5481,7 +5481,7 @@ function casePdfUrl(c){
   return c && c.documentFlow && c.documentFlow.receptionPdfDriveUrl ? c.documentFlow.receptionPdfDriveUrl : "";
 }
 function casePdfLoadedAt(c){
-  return c && eiV208IsReceptionSupportLoaded(c) ? c.documentFlow.receptionFileLoadedAt : "";
+  return c && eiV209IsReceptionSupportLoaded(c) ? c.documentFlow.receptionFileLoadedAt : "";
 }
 function pdfDocumentCard(c, compact){
   var url=casePdfUrl(c), loaded=casePdfLoadedAt(c), title=compact?"PDF del pedido":"Documento oficial del pedido";
@@ -5915,7 +5915,7 @@ function mergePdfItemsIntoCase(c, parsed){
   var incoming=(parsed && parsed.items) ? parsed.items : [];
   c.orderItems=c.orderItems||[];
 
-  // V208: la clave de una línea de recepción incluye ubicación/bodega/extensiones.
+  // V209: la clave de una línea de recepción incluye ubicación/bodega/extensiones.
   // Antes, si el PDF traía 3 carretos iguales con distinta ubicación, se fusionaban en una sola línea.
   var incomingBaseCounts={};
   incoming.forEach(function(it){
@@ -5981,7 +5981,7 @@ function repairReceptionLinesFromPdfExtraction(c){
     c.documentFlow=c.documentFlow||{};
     c.documentFlow.receptionLinesRepairAt=now();
     c.documentFlow.receptionLinesRepairBy=state.user?state.user.name:"";
-    c.documentFlow.receptionLinesRepairDetail="Corrección automática V208: se restauraron líneas iguales con ubicaciones distintas para que todos los carretos completos pasen a alistamiento.";
+    c.documentFlow.receptionLinesRepairDetail="Corrección automática V209: se restauraron líneas iguales con ubicaciones distintas para que todos los carretos completos pasen a alistamiento.";
     try{applyReceptionChecklistFromPdf(c,c.pdfExtraction||{});}catch(e){}
     try{applyAlistamientoAutoChecklist(c);}catch(e){}
     return true;
@@ -6301,23 +6301,23 @@ function applyReceptionCutDecisions(parsed, fd){
 
 
 /* ============================================================
-   V208 - Recepción de pedidos: dos botones separados PDF / CSV
+   V209 - Recepción de pedidos: dos botones separados PDF / CSV
    Alcance único:
    - Ventana PC openReceptionPdf(id).
    - No toca Corte.
    - No toca stickers.
    - No toca Recepción de mercancía.
 ============================================================ */
-function eiV208NormHeader(v){
+function eiV209NormHeader(v){
   return stripAccents(String(v||'').toLowerCase()).replace(/[^a-z0-9]+/g,'').trim();
 }
-function eiV208DetectDelimiter(line){
+function eiV209DetectDelimiter(line){
   line=String(line||'');
   var sc=(line.match(/;/g)||[]).length, cm=(line.match(/,/g)||[]).length, tb=(line.match(/\t/g)||[]).length;
   if(tb>=sc && tb>=cm)return '\t';
   return sc>=cm?';':',';
 }
-function eiV208SplitCsvLine(line,delim){
+function eiV209SplitCsvLine(line,delim){
   var out=[], cur='', q=false;
   line=String(line||'');
   for(var i=0;i<line.length;i++){
@@ -6330,17 +6330,17 @@ function eiV208SplitCsvLine(line,delim){
   out.push(cur);
   return out.map(function(x){return String(x||'').trim();});
 }
-function eiV208CsvRows(text){
+function eiV209CsvRows(text){
   var lines=String(text||'').replace(/\r/g,'\n').split(/\n+/).filter(function(l){return String(l||'').trim();});
   if(!lines.length)return [];
   var headerLine=lines.find(function(l){
-    var n=eiV208NormHeader(l);
+    var n=eiV209NormHeader(l);
     return n.indexOf('referencia')>=0 && n.indexOf('descripcion')>=0 && n.indexOf('cantidad')>=0;
   });
   if(!headerLine)return [];
   var start=lines.indexOf(headerLine);
-  var delim=eiV208DetectDelimiter(headerLine);
-  var headers=eiV208SplitCsvLine(headerLine,delim).map(eiV208NormHeader);
+  var delim=eiV209DetectDelimiter(headerLine);
+  var headers=eiV209SplitCsvLine(headerLine,delim).map(eiV209NormHeader);
   function idx(names){for(var i=0;i<headers.length;i++){if(names.indexOf(headers[i])>=0)return i;}return -1;}
   var iRef=idx(['referencia','ref','codigo','codigoreferencia','material','item']);
   var iDesc=idx(['descripcion','descripcionmaterial','desc','materialdescripcion','nombre','nombrematerial']);
@@ -6351,7 +6351,7 @@ function eiV208CsvRows(text){
   var iPag=idx(['pagina','page']);
   var rows=[];
   for(var r=start+1;r<lines.length;r++){
-    var cols=eiV208SplitCsvLine(lines[r],delim);
+    var cols=eiV209SplitCsvLine(lines[r],delim);
     var ref=iRef>=0?cols[iRef]:'';
     var desc=iDesc>=0?cols[iDesc]:'';
     var qty=iQty>=0?cols[iQty]:'';
@@ -6361,26 +6361,26 @@ function eiV208CsvRows(text){
     var pag=iPag>=0?cols[iPag]:'';
     if(!ref || !desc || !qty || !unit)continue;
     var it={
-      id:'CSV-V208-'+String(rows.length+1).padStart(4,'0'),
+      id:'CSV-V209-'+String(rows.length+1).padStart(4,'0'),
       referencia:String(ref).replace(/\D/g,''),
       descripcion:String(desc||'').trim(),
-      cantidad:eiV208NormalizeCsvQty(qty),
+      cantidad:eiV209NormalizeCsvQty(qty),
       unidad:String(unit||'').replace(/\./g,'').toUpperCase().trim(),
       ubicacion:String(loc||'').toUpperCase().trim(),
       bodega:String(bod||'').trim(),
       sourcePage:pag||'',
       sourceRowIndex:rows.length+1,
       pdfPhysicalRowNumber:rows.length+1,
-      generatedBy:'CSV_RECEPCION_PEDIDOS_V208',
-      origen:'CSV_RECEPCION_PEDIDOS_V208',
-      detectionReason:'Fila cargada desde CSV V208 en Recepción de pedidos.'
+      generatedBy:'CSV_RECEPCION_PEDIDOS_V209',
+      origen:'CSV_RECEPCION_PEDIDOS_V209',
+      detectionReason:'Fila cargada desde CSV V209 en Recepción de pedidos.'
     };
     try{it=recalcReceptionItemFlags(it);}catch(e){}
     rows.push(it);
   }
   return rows;
 }
-function eiV208ReadTextFile(file){
+function eiV209ReadTextFile(file){
   return new Promise(function(resolve,reject){
     var reader=new FileReader();
     reader.onload=function(){resolve(String(reader.result||''));};
@@ -6388,8 +6388,8 @@ function eiV208ReadTextFile(file){
     reader.readAsText(file,'utf-8');
   });
 }
-function eiV208ParsedFromCsv(text,c,fileName){
-  var items=eiV208CsvRows(text);
+function eiV209ParsedFromCsv(text,c,fileName){
+  var items=eiV209CsvRows(text);
   if(!items.length)throw new Error('El CSV no tiene columnas reconocibles. Use: referencia;descripcion;cantidad;unidad;ubicacion;bodega');
   return {
     orderNumber:(c&&c.reference)||String(fileName||'').replace(/\.[^.]+$/,''),
@@ -6408,16 +6408,16 @@ function eiV208ParsedFromCsv(text,c,fileName){
     meterItems:items.filter(function(x){return x.requiereCorte;}).length,
     pages:Math.max.apply(null,items.map(function(x){return Number(x.sourcePage)||1;})),
     raw:String(text||'').slice(0,10000),
-    extractionMode:'CSV_RECEPCION_PEDIDOS_V208',
+    extractionMode:'CSV_RECEPCION_PEDIDOS_V209',
     csvForcedRows:items.length
   };
 }
-function eiV208ApplyCsvItemsToCase(c,parsed){
+function eiV209ApplyCsvItemsToCase(c,parsed){
   var incoming=(parsed.items||[]).map(function(it,idx){
     var copy=Object.assign({},it);
     copy.id=uid('LIN');
     copy.estado=copy.requiereCorte ? 'PENDIENTE_CORTE' : 'PENDIENTE_ALISTAMIENTO';
-    copy.origen='CSV_RECEPCION_PEDIDOS_V208';
+    copy.origen='CSV_RECEPCION_PEDIDOS_V209';
     copy.createdAt=now();
     copy.csvPhysicalRowNumber=idx+1;
     return copy;
@@ -6425,7 +6425,7 @@ function eiV208ApplyCsvItemsToCase(c,parsed){
   c.orderItems=c.orderItems||[];
   c.orderItems=c.orderItems.filter(function(it){
     var origin=String(it.origen||it.generatedBy||it.detectionReason||'').toUpperCase();
-    return origin.indexOf('CSV_RECEPCION_PEDIDOS_V208')<0;
+    return origin.indexOf('CSV_RECEPCION_PEDIDOS_V209')<0;
   });
   incoming.forEach(function(it){c.orderItems.push(it);});
   return incoming.length;
@@ -6436,8 +6436,8 @@ function eiV208ApplyCsvItemsToCase(c,parsed){
 
 
 
-/* V208 - Helper seguro para abrir/cerrar drawer de Recepción de pedidos */
-function eiV208CloseReceptionDrawer(){
+/* V209 - Helper seguro para abrir/cerrar drawer de Recepción de pedidos */
+function eiV209CloseReceptionDrawer(){
   try{
     var d=qs("#drawer");
     if(d){
@@ -6447,7 +6447,7 @@ function eiV208CloseReceptionDrawer(){
     }
   }catch(e){}
 }
-function eiV208OpenDrawerHtml(html){
+function eiV209OpenDrawerHtml(html){
   var d=qs("#drawer");
   if(!d)throw new Error("No se encontró el contenedor drawer.");
   d.innerHTML=html;
@@ -6459,16 +6459,16 @@ function eiV208OpenDrawerHtml(html){
     if(t===d || (t && t.closest && t.closest('[data-action="closeDrawer"],[data-action="closeReceptionDrawer"]'))){
       ev.preventDefault();
       ev.stopPropagation();
-      eiV208CloseReceptionDrawer();
+      eiV209CloseReceptionDrawer();
     }
   };
   try{
     document.onkeydown=function(ev){
-      if(ev && ev.key==="Escape" && d.classList.contains("open"))eiV208CloseReceptionDrawer();
+      if(ev && ev.key==="Escape" && d.classList.contains("open"))eiV209CloseReceptionDrawer();
     };
   }catch(e){}
 }
-function eiV208NormalizeCsvQty(v){
+function eiV209NormalizeCsvQty(v){
   var s=String(v||'').trim();
   if(!s)return '';
   s=s.replace(/\s+/g,'');
@@ -6484,8 +6484,8 @@ function eiV208NormalizeCsvQty(v){
 }
 
 
-/* V208 - Helper local para guardar datos del pedido sin depender de applyParsedPedidoToCase */
-function eiV208ApplyParsedPedidoToCase(c,parsed){
+/* V209 - Helper local para guardar datos del pedido sin depender de applyParsedPedidoToCase */
+function eiV209ApplyParsedPedidoToCase(c,parsed){
   parsed=parsed||{};
   var changed=[];
   function put(field,value,label){
@@ -6517,7 +6517,7 @@ function eiV208ApplyParsedPedidoToCase(c,parsed){
   c.updatedAt=now();
   return changed;
 }
-function eiV208EnsureReceptionDecision(c,parsed){
+function eiV209EnsureReceptionDecision(c,parsed){
   c.receptionDecisionConfirmation=c.receptionDecisionConfirmation||{};
   if(!c.receptionDecisionConfirmation.decision){
     c.receptionDecisionConfirmation={
@@ -6526,7 +6526,7 @@ function eiV208EnsureReceptionDecision(c,parsed){
       at:now(),
       by:state.user.uid,
       byName:state.user.name,
-      source:'RECEPCION_PEDIDOS_V208'
+      source:'RECEPCION_PEDIDOS_V209'
     };
   }
   c.receptionDecisionLog=c.receptionDecisionLog||[];
@@ -6537,8 +6537,8 @@ function eiV208EnsureReceptionDecision(c,parsed){
 
 
 
-/* V208 - PDF y CSV son soporte válido para Recepción de pedidos */
-function eiV208IsReceptionSupportLoaded(c){
+/* V209 - PDF y CSV son soporte válido para Recepción de pedidos */
+function eiV209IsReceptionSupportLoaded(c){
   c=c||{};
   var df=c.documentFlow||{};
   return !!(
@@ -6556,7 +6556,7 @@ function eiV208IsReceptionSupportLoaded(c){
     c.csvReception
   );
 }
-function eiV208MarkReceptionSupport(c,up,mode,fileName,parsed){
+function eiV209MarkReceptionSupport(c,up,mode,fileName,parsed){
   c.documentFlow=c.documentFlow||{};
   mode=String(mode||'').toUpperCase();
   c.documentFlow.receptionSupportLoaded=true;
@@ -6605,9 +6605,9 @@ function eiV208MarkReceptionSupport(c,up,mode,fileName,parsed){
 function openReceptionPdf(id){
   var c=caseById(id);if(!c)return;
   var parsed=null,fileName="",selectedFile=null,previewUrl="",loadedMode="";
-  drawer('<section class="modal modal-wide ei207-reception-modal" style="width:min(1180px,96vw);max-width:96vw;max-height:92vh;overflow:auto;border-radius:24px"><div class="modal-head"><div><h3>Recepción de pedidos · cargar PDF o CSV · V208</h3><p>PDF y CSV usan el mismo ciclo: compromiso, decisión de corte, líneas, cortes automáticos, checklist, evidencia y evento.</p></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+
+  drawer('<section class="modal modal-wide ei207-reception-modal" style="width:min(1180px,96vw);max-width:96vw;max-height:92vh;overflow:auto;border-radius:24px"><div class="modal-head"><div><h3>Recepción de pedidos · cargar PDF o CSV · V209</h3><p>PDF y CSV usan el mismo ciclo: compromiso, decisión de corte, líneas, cortes automáticos, checklist, evidencia y evento.</p></div><button class="btn btn-small" type="button" data-action="closeDrawer">Cerrar</button></div>'+
     '<form class="form" id="recPdfForm">'+
-    '<div class="notice success"><strong>V208:</strong> escoja una carga. El CSV conserva todas las filas físicas y al guardar sigue el mismo ciclo operativo del PDF.</div>'+
+    '<div class="notice success"><strong>V209:</strong> escoja una carga. El CSV conserva todas las filas físicas y al guardar sigue el mismo ciclo operativo del PDF.</div>'+
     '<div class="grid2">'+
     '<label class="field"><span>1. Cargar PDF del pedido</span><input class="input" type="file" name="pdf" id="receptionPdfInput" accept="application/pdf,.pdf"></label>'+
     '<label class="field"><span>2. Cargar CSV de líneas</span><input class="input" type="file" name="csv" id="receptionCsvInput" accept="text/csv,.csv,text/plain,.txt"><small class="muted">Formato: referencia;descripcion;cantidad;unidad;ubicacion;bodega</small></label>'+
@@ -6670,9 +6670,9 @@ function openReceptionPdf(id){
       qs("#pdfPreviewFrame").src="";
       qs("#receptionPdfStatus").innerHTML="Leyendo CSV de líneas físicas...";
       qs("#pdfExtractPreview").innerHTML="";
-      eiV208ReadTextFile(f).then(function(text){
-        parsed=eiV208ParsedFromCsv(text,c,f.name);
-        parsed.extractionMode="CSV_RECEPCION_PEDIDOS_V208";
+      eiV209ReadTextFile(f).then(function(text){
+        parsed=eiV209ParsedFromCsv(text,c,f.name);
+        parsed.extractionMode="CSV_RECEPCION_PEDIDOS_V209";
         showParsedResult("CSV");
       }).catch(function(e){
         qs("#receptionPdfStatus").innerHTML="No fue posible leer el CSV. "+esc(e.message||e);
@@ -6689,9 +6689,9 @@ function openReceptionPdf(id){
     parsed.items=collectReceptionItemsFromForm(fd,false);
     if(!parsed.items.length){alert("Debe quedar al menos una línea del pedido. Corrija la extracción o agregue una línea manual.");return;}
     parsed.items.forEach(function(it,idx){
-      if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V208"){
-        it.origen="CSV_RECEPCION_PEDIDOS_V208";
-        it.generatedBy="CSV_RECEPCION_PEDIDOS_V208";
+      if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V209"){
+        it.origen="CSV_RECEPCION_PEDIDOS_V209";
+        it.generatedBy="CSV_RECEPCION_PEDIDOS_V209";
         it.csvPhysicalRowNumber=idx+1;
       }
     });
@@ -6713,13 +6713,13 @@ function openReceptionPdf(id){
     c.documentFlow.extractedCuts=(parsed.items||[]).filter(function(x){return x.requiereCorte;}).length;
     c.documentFlow.lastReceptionDecisionConfirmedAt=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.confirmedAt;
     c.documentFlow.lastReceptionDecisionSummary=c.receptionDecisionConfirmation&&c.receptionDecisionConfirmation.detail;
-    if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V208"){
-      c.documentFlow.extractionMode="CSV_RECEPCION_PEDIDOS_V208";
+    if(parsed.extractionMode==="CSV_RECEPCION_PEDIDOS_V209"){
+      c.documentFlow.extractionMode="CSV_RECEPCION_PEDIDOS_V209";
     }
     var added=autoCreateCutsFromItems(c,state.user.name);
     applyReceptionChecklistFromPdf(c,parsed);
     uploadReceptionPdfToDrive(selectedFile,c).then(function(up){
-      eiV208MarkReceptionSupport(c,up,loadedMode||parsed.extractionMode,fileName,parsed);
+      eiV209MarkReceptionSupport(c,up,loadedMode||parsed.extractionMode,fileName,parsed);
       c.documentFlow.receptionSupportDriveUrl=up.url;
       c.documentFlow.receptionSupportDriveId=up.fileId;
       c.documentFlow.receptionSupportDriveFolder=up.folderPath||up.folder;
@@ -7054,7 +7054,7 @@ function cutFinalOk(cut){return !!(cut && cut.finishedAt);}
 function launchCut(id,cutId){openCutModule(id,cutId);}
 function openCutModule(id,cutId){
   var c=caseById(id);if(!c)return;
-  ensureCutCaseFlagsV208(c);
+  ensureCutCaseFlagsV209(c);
   var cut=findCut(c,cutId);if(!cut)return;
   var canOperate=canOperateCutModule();
   if(!canOperate){alert("No tiene permiso para operar este corte.");return;}
@@ -7167,7 +7167,7 @@ function syncCutSourceLineToAlistamiento(c,cut,mode){
     });
   }catch(e){}
 }
-function ensureCutCaseFlagsV208(c){
+function ensureCutCaseFlagsV209(c){
   try{
     if(!c)return;
     c.hasCuts=true;
@@ -7289,7 +7289,7 @@ function finishCutWithoutPhysicalProcess(c,cut,mode){
 }
 function handleCutAction(c,cut,action){
   applyCutFormValues(cut);
-  ensureCutCaseFlagsV208(c);
+  ensureCutCaseFlagsV209(c);
   var calc=cutCalc(cut), rule=calc.rule;
   if(action==="saveCutDraft"){
     cut.status=cut.status||"PENDIENTE_CORTE";
@@ -7543,7 +7543,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V208</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V209</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -7607,8 +7607,8 @@ function forceReleaseOneSalesBlock(id){
   if(!canForceReleaseSalesBlocks()){alert("No tiene permiso para liberar bloqueos de Ventas.");return;}
   if(!caseLooksBlockedInSales(c)){alert("Este pedido no aparece bloqueado en Ventas.");return;}
   if(!caseHasSalesResolutionSignal(c) && !confirm("No encontré respuesta/cierre asociado, ¿desea liberarlo manualmente de todas formas?"))return;
-  if(!releaseCaseFromSalesBlock(c,"Liberación manual V208 por rol autorizado.","Liberación manual V208")){alert("No fue posible liberar este pedido.");return;}
-  persistCase(c,{type:"SALES_BLOCK_MANUAL_RELEASED",detail:"Liberación manual V208: pedido devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}).then(loadData).then(function(){renderDetail(id);alert("Pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess)+".");}).catch(function(e){showError((e&&e.message)||e||"No se pudo liberar el pedido.");});
+  if(!releaseCaseFromSalesBlock(c,"Liberación manual V209 por rol autorizado.","Liberación manual V209")){alert("No fue posible liberar este pedido.");return;}
+  persistCase(c,{type:"SALES_BLOCK_MANUAL_RELEASED",detail:"Liberación manual V209: pedido devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}).then(loadData).then(function(){renderDetail(id);alert("Pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess)+".");}).catch(function(e){showError((e&&e.message)||e||"No se pudo liberar el pedido.");});
 }
 function caseLooksBlockedInSales(c){
   if(!c)return false;
@@ -7692,9 +7692,9 @@ function forceReleaseResolvedSalesBlocksNow(){
   (state.cases||[]).forEach(function(c){
     if(!caseLooksBlockedInSales(c))return;
     if(!caseHasSalesResolutionSignal(c))return;
-    if(releaseCaseFromSalesBlock(c,"Reparación V208: requerimiento o novedad/reporte respondido/cerrado. Incluye liberación aunque exista requerimiento y reporte al mismo tiempo.","Reparación V208")){
+    if(releaseCaseFromSalesBlock(c,"Reparación V209: requerimiento o novedad/reporte respondido/cerrado. Incluye liberación aunque exista requerimiento y reporte al mismo tiempo.","Reparación V209")){
       changed.push(c);
-      promises.push(persistCase(c,{type:"SALES_BLOCK_FORCE_RELEASED_V208",detail:"Reparación V208: pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}));
+      promises.push(persistCase(c,{type:"SALES_BLOCK_FORCE_RELEASED_V209",detail:"Reparación V209: pedido liberado de Ventas y devuelto a "+processTitle(c.currentProcess),targetRole:c.assignedRole,visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica",c.assignedRole,"ventas"]}));
     }
   });
   if(!changed.length){alert("No se encontraron pedidos con requerimiento/novedad ya respondida o cerrada para liberar de Ventas.");return;}
@@ -7780,16 +7780,16 @@ function modal(title,body){
 }
 
 
-function ensureV208CutUiFixes(){
-  if(document.getElementById('ei-v208-csv-pdf-mismo-soporte-recepcion'))return;
-  var st=document.createElement('style');st.id='ei-v208-csv-pdf-mismo-soporte-recepcion';
+function ensureV209CutUiFixes(){
+  if(document.getElementById('ei-v209-fix-duque-cortes-movil'))return;
+  var st=document.createElement('style');st.id='ei-v209-fix-duque-cortes-movil';
   st.textContent='.cut-simple-head{gap:10px}.cut-quick-note{font-size:.95rem}.cut-full fieldset{margin-top:12px;padding:14px;border-radius:18px}.cut-full legend{font-weight:900;color:#061b46}.cut-full .top-actions{gap:8px;flex-wrap:wrap}.cut-full .top-actions .btn{min-height:42px}.cut-full .btn[data-cut-action="noCutNeeded"]{font-weight:900}.cut-timer-card{padding:12px}.compact-lines-table td,.compact-lines-table th{vertical-align:top}.drawer .modal{max-width:min(1040px,96vw)}@media(max-width:720px){.drawer .modal{width:96vw;max-height:94vh;border-radius:22px}.modal-head{position:sticky;top:0;z-index:3;background:#fff}.cut-full fieldset{padding:12px}.cut-full .top-actions{display:grid;grid-template-columns:1fr;gap:8px}.cut-full .top-actions .btn{width:100%;justify-content:center}.cut-grid,.cut-grid-2,.cut-grid-3,.cut-grid-4{grid-template-columns:1fr!important}.cut-simple-head{grid-template-columns:1fr!important}.cut-timer{font-size:1.5rem}}';
   document.head.appendChild(st);
 }
 
 function drawer(html){
-  ensureV208UiFixes();
-  ensureV208CutUiFixes();
+  ensureV209UiFixes();
+  ensureV209CutUiFixes();
   var d=qs('#drawer');
   if(!d){d=document.createElement('div');d.id='drawer';d.className='drawer';document.body.appendChild(d);}
   d.innerHTML=html||'';
@@ -8491,7 +8491,7 @@ function forceStrictTraceCorrectionNow(){
         mixedNotesQuarantinedAt:stamp,
         mixedNotesQuarantinedBy:state.user.uid,
         mixedNotesQuarantinedByName:state.user.name,
-        lastUpdateType:"CORRECCION_FORZADA_TRAZABILIDAD_V208",
+        lastUpdateType:"CORRECCION_FORZADA_TRAZABILIDAD_V209",
         updatedAt:stamp
       };
       if(wrongMerge){
@@ -8528,7 +8528,7 @@ function forceStrictTraceCorrectionNow(){
   var msg="Se corregirán "+reportsFixed+" reporte(s) y "+casesFixed+" pedido(s). Se sacarán de la vista operativa "+entriesRemoved+" nota(s) y "+caseEntriesRemoved+" traza(s) cruzadas, dejando copia en cuarentena. ¿Continuar?";
   if(!confirm(msg))return;
   Promise.all(reportJobs.concat(caseJobs)).then(function(){
-    return createEvent({type:"FORCED_TRACE_CORRECTION_V208",detail:"Corrección forzada de trazabilidad: "+reportsFixed+" reportes, "+casesFixed+" pedidos, "+entriesRemoved+" notas y "+caseEntriesRemoved+" trazas en cuarentena.",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
+    return createEvent({type:"FORCED_TRACE_CORRECTION_V209",detail:"Corrección forzada de trazabilidad: "+reportsFixed+" reportes, "+casesFixed+" pedidos, "+entriesRemoved+" notas y "+caseEntriesRemoved+" trazas en cuarentena.",targetRole:"jefe_logistica",visibleRoles:["admin","super_admin","super_administrador","gerencia","jefe_logistica"]}).catch(function(){return null;});
   }).then(loadData).then(function(){renderReports();alert("Listo. Se corrigió la trazabilidad cruzada. Las notas/trazas retiradas quedaron en cuarentena, no eliminadas.");}).catch(function(e){showError((e&&e.message)||e||"No se pudo forzar la corrección de trazabilidad.");});
 }
 function repairMixedReportThreadsNow(){
@@ -9202,7 +9202,7 @@ function downloadKpiExcel(){
   var totalHoras=0, vaHoras=0, esperaHoras=0, reqHoras=0, nvaHoras=0;
   var head='<html><head><meta charset="utf-8"><style>body{font-family:Century Gothic,Arial}h1{color:#061B46}.kpi{font-size:18px;font-weight:bold;color:#061B46}table{border-collapse:collapse;width:100%;margin-bottom:18px}th{background:#061B46;color:white}td,th{border:1px solid #cbd5e1;padding:8px;vertical-align:top}.note{background:#f8fafc;border:1px solid #cbd5e1;padding:10px}.warn{background:#fff7ed}.total-hours{font-weight:bold;background:#eaf2ff}</style></head><body>'+
     '<h1>Dashboard VSM · Informe completo de tiempos y trazabilidad</h1><p>Exportado: '+escapeExcel(new Date().toLocaleString())+'</p><p><strong>Filtro usuario:</strong> '+escapeExcel(selectedUser)+' · <strong>Filtro macroproceso:</strong> '+escapeExcel((state.kpiFilters&&state.kpiFilters.process)?processTitle(state.kpiFilters.process):'Todos')+' · <strong>Pedidos:</strong> '+data.length+'</p>'+ 
-    '<div class="note"><strong>V208:</strong> exportación por lotes para evitar que el navegador se quede sin responder. La primera tabla sigue siendo la base del informe: DEMORA EXACTA POR PEDIDO.</div>';
+    '<div class="note"><strong>V209:</strong> exportación por lotes para evitar que el navegador se quede sin responder. La primera tabla sigue siendo la base del informe: DEMORA EXACTA POR PEDIDO.</div>';
   parts.push(head);
   function buildCaseMetrics(){
     return excelAsyncAppendRows([],data,'Cálculo de demora por pedido',function(c){
@@ -9437,11 +9437,11 @@ function renderIndicators(){
   var link='./vsm-dashboard.html?v=158';
   var canExportSiesa=(state.user&&(normalizeRole(state.user.role)==="auxiliar_corte"||normalizeRole(state.user.role)==="jefe_logistica"||normalizeRole(state.user.role)==="gerencia"||isAdminRoleValue(state.user.role)));
   layout(header("VSM ERP · Normal / PVE","Panel liviano con VSM normal y VSM PVE separados, más normalización de horas por pedido/día.",'<a class="btn btn-primary" href="'+link+'" target="_blank" rel="opener">Abrir VSM optimizado</a>'+(canExportSiesa?'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA cortes</button>':''))+
-    '<section class="notice success"><strong>V208:</strong> el VSM tiene vista principal por tarjetas, más espaciado visual, conciliación completa y filtros más claros. El tablero independiente conserva calendario laboral colombiano, novedades/reportes y tiempos de respuesta. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, productividad por usuario consolidado, usuario por proceso, VA, espera, NVA/tiempo muerto, P50/P90, throughput y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
+    '<section class="notice success"><strong>V209:</strong> el VSM tiene vista principal por tarjetas, más espaciado visual, conciliación completa y filtros más claros. El tablero independiente conserva calendario laboral colombiano, novedades/reportes y tiempos de respuesta. Al abrirlo se usa un tablero independiente, liviano y por lotes, con KPIs VSM, lead time por proceso, productividad por usuario consolidado, usuario por proceso, VA, espera, NVA/tiempo muerto, P50/P90, throughput y exportación Excel optimizada. El cálculo pesado queda totalmente aislado de la operación.</section>'+ 
     '<section class="grid grid-3" style="margin-top:16px">'+
       '<article class="card kpi"><span>Modo de carga</span><strong style="font-size:1.25rem">Por lotes</strong><small>No congela la app principal.</small></article>'+ 
       '<article class="card kpi"><span>Indicadores base</span><strong style="font-size:1.25rem">VSM + LT</strong><small>Proceso, usuario, pedido, esperas y requerimientos.</small></article>'+ 
-      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V208</strong><small>Tablas separadas para informe completo.</small></article>'+ 
+      '<article class="card kpi"><span>Exportación</span><strong style="font-size:1.25rem">Excel V209</strong><small>Tablas separadas para informe completo.</small></article>'+ 
     '</section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Cómo usarlo</h3><p>Abre el VSM optimizado en una pestaña aparte. El tablero lee Firebase directamente, calcula solo los indicadores necesarios y exporta el informe en lotes. La operación normal de pedidos queda aislada para que Corte, Recepción, Alistamiento, Ventas y Caja no se vean afectados.</p><div class="top-actions"><a class="btn btn-primary" href="'+link+'" target="_blank" rel="opener">Abrir tablero VSM optimizado</a><a class="btn" href="./vsm-dashboard.html?export=1&v=146" target="_blank" rel="opener">Abrir y preparar exportación</a></div></section>'+ 
     '<section class="card" style="margin-top:16px"><h3>Fórmulas aplicadas en el tablero</h3><div class="table-wrap"><table><thead><tr><th>Indicador</th><th>Fórmula funcional</th></tr></thead><tbody>'+ 
@@ -9520,7 +9520,7 @@ function applyPersonalAssignment(c,next,assignmentUsers){
 }
 function assignToProcess(c,next,detail,assignmentUsers){
   if(c && next==="recepcion_pedidos" && pveShouldBeForcedToPurchases(c)){
-    ensurePvePurchasingMetadata(c,"Bloqueo V208: ningún PVE sin liberar por Compras puede entrar directo a Recepción");
+    ensurePvePurchasingMetadata(c,"Bloqueo V209: ningún PVE sin liberar por Compras puede entrar directo a Recepción");
     next="compras";
     detail="PVE sin liberación de Compras. Se redirige primero a Compras antes de Recepción.";
     assignmentUsers=null;
@@ -10743,7 +10743,7 @@ function exportSalesReport(){
     .then(function(){appendSummary();return appendDetail();})
     .then(function(){parts.push('</tbody></table></body></html>');downloadHtmlExcelParts('registro_ventas_demora_v133_'+new Date().toISOString().slice(0,10)+'.xls',parts);});
 }
-function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess=isPveOrder(child)?'compras':'recepcion_pedidos';child.status='asignado';ensurePvePurchasingMetadata(child,'Reenvío de faltante V208: PVE pasa primero a Compras');child.assignedRole=primaryOwnerRole(child.currentProcess);child.assignedName=processOwnerTitle(child.currentProcess);child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};(processes[child.currentProcess]||processes.recepcion_pedidos).checklist.forEach(function(x){child.checklist[x]=(x==='Pedido registrado por ventas'||x==='Orden PVE recibida desde ventas')?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
+function resendPendingItems(id){var c=caseById(id);if(!c)return;var pending=(c.orderItems||[]).filter(function(it){return partialQtyParse(it.partialPendingQty)>0 || /PENDIENTE|NO_ENCONTRADO|NOVEDAD|SALDO/i.test(it.estado||it.alistamientoStatus||'');});if(!pending.length){alert('No hay faltantes pendientes para reenviar.');return;}var child=JSON.parse(JSON.stringify(c));var stamp=now(),seq=(c.pendingResends||[]).length+1;child.id=uid('FAL');child.parentCaseId=c.id;child.isPendingResend=true;child.reference=(c.reference||c.id)+'-FALTANTE-'+String(seq).padStart(2,'0');child.currentProcess=isPveOrder(child)?'compras':'recepcion_pedidos';child.status='asignado';ensurePvePurchasingMetadata(child,'Reenvío de faltante V209: PVE pasa primero a Compras');child.assignedRole=primaryOwnerRole(child.currentProcess);child.assignedName=processOwnerTitle(child.currentProcess);child.assignedTo='';child.assignedUid='';child.assignedUsers=[];child.assignedUserIds=[];child.createdAt=stamp;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;child.orderItems=pending.map(function(it){var x=Object.assign({},it);x.cantidad=it.partialPendingQty||it.cantidad;x.estado='REENVIADO_FALTANTE';return x;});child.checklist={};(processes[child.currentProcess]||processes.recepcion_pedidos).checklist.forEach(function(x){child.checklist[x]=(x==='Pedido registrado por ventas'||x==='Orden PVE recibida desde ventas')?'ok':'pending';});child.processStats={};procStats(child,'recepcion_pedidos').startedAt=stamp;c.pendingResends=c.pendingResends||[];c.pendingResends.push({id:child.id,at:stamp,byName:state.user.name,items:child.orderItems.length});db.collection('cases').doc(child.id).set(child).then(function(){state.cases.unshift(child);return persistCase(c,{type:'PENDING_ITEMS_RESENT',detail:'Ventas reenvió '+child.orderItems.length+' línea(s) faltante(s) al flujo.',targetRole:'coordinador_logistico',visibleRoles:['ventas','coordinador_logistico','jefe_logistica','admin','super_admin','super_administrador']});}).then(function(){renderSalesReports();}).catch(function(e){showError(e.message||e);});}
 
 function bindActions(){
   qsa("[data-action]").forEach(function(b){b.onclick=function(){var a=b.getAttribute("data-action"),id=b.getAttribute("data-id");
@@ -10876,7 +10876,7 @@ function renderCutDiagnostics(){
   ];
   layout(header("Diagnóstico Corte","Verificación rápida de perfil, permisos y carga para el usuario de Corte.",'<button class="btn btn-gold" data-action="forceRefreshCases">Probar carga de pedidos</button>')+
     '<section class="card"><h3>Perfil detectado</h3><div class="table-wrap"><table><tbody>'+rows.map(function(r){return '<tr><th>'+esc(r[0])+'</th><td>'+esc(r[1])+'</td></tr>';}).join("")+'</tbody></table></div></section>'+
-    '<section class="notice"><strong>Uso:</strong> si aquí el rol no sale como auxiliar_corte o no cargan casos, debe publicarse firestore.rules V208 y verificar el documento users del UID real.</section>');
+    '<section class="notice"><strong>Uso:</strong> si aquí el rol no sale como auxiliar_corte o no cargan casos, debe publicarse firestore.rules V209 y verificar el documento users del UID real.</section>');
 }
 function render(){
   var force=state.__forceRenderOnce===true;
@@ -12847,10 +12847,10 @@ bindActions = function(){
 };
 
 
-/* V208: lectura reforzada de PDF SIESA con cantidades 20.000,00 y filas multilinea; no elimina lector V92. */
-function eiV208QtyRegex(){return /^\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?$|^\d+(?:[.,]\d+)?$/;}
-function eiV208CleanDescTail(s){return eiV92CleanText(String(s||'').replace(/\$\s*[\d.,]+.*$/g,'').replace(/\b(?:VALOR|UNIT|PARCIAL|SUBTOTAL|IVA|TOTAL)\b.*$/ig,''));}
-function eiV208ParseSiesaRowsFromRawText(raw){
+/* V209: lectura reforzada de PDF SIESA con cantidades 20.000,00 y filas multilinea; no elimina lector V92. */
+function eiV209QtyRegex(){return /^\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?$|^\d+(?:[.,]\d+)?$/;}
+function eiV209CleanDescTail(s){return eiV92CleanText(String(s||'').replace(/\$\s*[\d.,]+.*$/g,'').replace(/\b(?:VALOR|UNIT|PARCIAL|SUBTOTAL|IVA|TOTAL)\b.*$/ig,''));}
+function eiV209ParseSiesaRowsFromRawText(raw){
   var text=String(raw||'').replace(/\r/g,'\n');
   var rows=[];
   var unitRx='(?:'+orderUnitPattern()+')';
@@ -12861,9 +12861,9 @@ function eiV208ParseSiesaRowsFromRawText(raw){
   var m;
   while((m=rx.exec(text))){
     var unit=m[1], reference=m[2], desc=m[3], cantidad=m[4], ubic=m[5];
-    desc=eiV208CleanDescTail(desc).replace(/\s+/g,' ').trim();
+    desc=eiV209CleanDescTail(desc).replace(/\s+/g,' ').trim();
     desc=desc.replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
-    if(eiV92ReferenceOk(reference) && desc && cantidad && ubic){rows.push({referencia:reference,descripcion:desc,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V208_RAW'});}
+    if(eiV92ReferenceOk(reference) && desc && cantidad && ubic){rows.push({referencia:reference,descripcion:desc,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V209_RAW'});}
   }
   // Fallback para textos extraídos por columnas donde referencia/descripcion/ubicación/cantidad quedan separados.
   if(!rows.length){
@@ -12878,15 +12878,15 @@ function eiV208ParseSiesaRowsFromRawText(raw){
       }
     }
     var locs=[], qtys=[], units=[];
-    lines.forEach(function(l){if(/^[A-Z]\d{5,6}$/.test(l))locs.push(l); if(eiV208QtyRegex().test(l))qtys.push(l); if(new RegExp('^'+unitRx+'$','i').test(l))units.push(l);});
+    lines.forEach(function(l){if(/^[A-Z]\d{5,6}$/.test(l))locs.push(l); if(eiV209QtyRegex().test(l))qtys.push(l); if(new RegExp('^'+unitRx+'$','i').test(l))units.push(l);});
     refRows.forEach(function(r,idx){
       var cantidad=qtys[idx]||qtys[0]||'', unit=units[idx]||units[0]||'M', ubic=locs[idx]||'';
-      if(r.referencia && r.descripcion && cantidad && unit)rows.push({referencia:r.referencia,descripcion:r.descripcion,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V208_COLUMN_TEXT'});
+      if(r.referencia && r.descripcion && cantidad && unit)rows.push({referencia:r.referencia,descripcion:r.descripcion,cantidad:cantidad,unidad:unit,ubicacion:ubic,pagina:1,mode:'V209_COLUMN_TEXT'});
     });
   }
   return eiV92DedupeItems(rows);
 }
-var eiV208LegacyParseRows = eiV92ParseSiesaRows;
+var eiV209LegacyParseRows = eiV92ParseSiesaRows;
 eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
   var lines=eiV92GroupLines(words,5);
   var header=eiV92FindHeaderLine(lines);
@@ -12898,7 +12898,7 @@ eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
   var ubicMin=pageWidth*0.60, ubicMax=pageWidth*0.70;
   var qtyMin=pageWidth*0.69, qtyMax=pageWidth*0.77;
   var unitMin=pageWidth*0.75, unitMax=pageWidth*0.84;
-  var qtyRx=eiV208QtyRegex();
+  var qtyRx=eiV209QtyRegex();
   var unitRx=new RegExp('^(?:'+orderUnitPattern()+')$','i');
   var rows=[];
   for(var li=0;li<lines.length;li++){
@@ -12915,41 +12915,41 @@ eiV92ParseSiesaRows = function(words,pageNum,pageWidth,pageHeight){
       var cont=eiV92LineTextInRange(next,descMin,descMax);
       if(cont && !/^(PARQUE|INDUSTRIAL)$/i.test(cont))desc+=' '+cont;
     }
-    desc=eiV208CleanDescTail(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
+    desc=eiV209CleanDescTail(desc).replace(/\bPARQUE\s+INDUSTRIAL\b/ig,' ').replace(/\s+/g,' ').trim();
     var ubic=eiV92LineTextInRange(line,ubicMin,ubicMax);
     if(!desc)return;
-    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum,mode:'V208_GEOMETRY'});
+    rows.push({referencia:ref,descripcion:desc,cantidad:qty,unidad:unit,ubicacion:ubic,pagina:pageNum,mode:'V209_GEOMETRY'});
   }
   return rows;
 };
-var eiV208ReadPdfFileBase = readPdfFile;
+var eiV209ReadPdfFileBase = readPdfFile;
 readPdfFile = function(file){
-  return eiV208ReadPdfFileBase(file).then(function(text){
-    var rawRows=eiV208ParseSiesaRowsFromRawText(text);
+  return eiV209ReadPdfFileBase(file).then(function(text){
+    var rawRows=eiV209ParseSiesaRowsFromRawText(text);
     if(!rawRows.length)return text;
     var existing=[]; try{existing=extractPedidoItems(text)||[];}catch(e){existing=[];}
-    var merged=eiV92DedupeItems((existing||[]).concat(rawRows.map(function(m,i){return eiV92MaterialToApp(m,i,'V208_RAW_TEXT');})));
+    var merged=eiV92DedupeItems((existing||[]).concat(rawRows.map(function(m,i){return eiV92MaterialToApp(m,i,'V209_RAW_TEXT');})));
     if(merged.length <= existing.length)return text;
     var clean=String(text||'').replace(/^__EI_V\d+_ROW__.*$/gm,'').replace(/^__EI_V\d+_AUDIT__.*$/gm,'');
-    var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V208_MERGE'));}).join('\n');
-    var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V208',materialesExtraidos:merged.length,rawExtraidos:rawRows.length,nota:'Incluye soporte para cantidades con miles 20.000,00 y filas SIESA multilinea.'});
+    var markers=merged.map(function(it,idx){return '__EI_V92_ROW__'+JSON.stringify(eiV92MaterialToApp(it,idx,'V209_MERGE'));}).join('\n');
+    var audit='__EI_V92_AUDIT__'+JSON.stringify({version:'V209',materialesExtraidos:merged.length,rawExtraidos:rawRows.length,nota:'Incluye soporte para cantidades con miles 20.000,00 y filas SIESA multilinea.'});
     return markers+'\n'+audit+'\n'+clean;
   });
 };
 
 
-/* V208 QA ERP final: refuerzo conservador sin cambiar flujo.
+/* V209 QA ERP final: refuerzo conservador sin cambiar flujo.
    - El planificador de cortes reutiliza la sincronización robusta de Recepción.
    - No necesita corte / Medida completa no quedan pendientes en SIESA.
    - Se agrega verificación de salud operativa en consola para detectar funciones críticas faltantes. */
-function eiV208OperationalHealthCheck(){
+function eiV209OperationalHealthCheck(){
   var required=["autoCreateCutsFromItems","normalizeReceptionLinesForFlow","cutSourceKeyFromItem","renderAfterLiveChange","caseRelevantToCurrentUser","uploadFileToDrive","extractPedido","readPdfFile"];
   var missing=required.filter(function(name){try{return typeof eval(name)!=="function";}catch(e){return true;}});
-  if(missing.length){console.error("QA ERP V208 · funciones críticas faltantes:",missing);}
-  else{console.info("QA ERP V208 · funciones críticas disponibles.");}
+  if(missing.length){console.error("QA ERP V209 · funciones críticas faltantes:",missing);}
+  else{console.info("QA ERP V209 · funciones críticas disponibles.");}
   return missing;
 }
-var eiV208LegacyOpenCutsPlanner = openCutsPlanner;
+var eiV209LegacyOpenCutsPlanner = openCutsPlanner;
 openCutsPlanner = function(id){
   var c=caseById(id);if(!c)return;
   if(!canOperateCurrentProcess(c)){alert("Este pedido no está asignado a su usuario para alistamiento.");return;}
@@ -12991,10 +12991,10 @@ openCutsPlanner = function(id){
     c.hasCuts=(c.cutRequests||[]).some(function(x){return !cutIsOperationallyDone(x);});
     var st=procStats(c,"corte_cable");if(c.hasCuts)st.startedAt=st.startedAt||now();
     applyAlistamientoAutoChecklist(c);
-    persistCase(c,{type:"CUT_REQUESTS_SYNCED_V208",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
+    persistCase(c,{type:"CUT_REQUESTS_SYNCED_V209",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 };
-try{eiV208OperationalHealthCheck();}catch(e){console.warn("QA ERP V208 no pudo ejecutarse",e);}
+try{eiV209OperationalHealthCheck();}catch(e){console.warn("QA ERP V209 no pudo ejecutarse",e);}
 
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
@@ -13002,7 +13002,7 @@ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",
 })();
 
 
-/* V208 - tamaño popup Recepción de pedidos PC */
+/* V209 - tamaño popup Recepción de pedidos PC */
 try{
   if(!document.getElementById("ei205-reception-modal-css")){
     var st=document.createElement("style");
@@ -13014,31 +13014,159 @@ try{
 
 
 
-/* V208 - Merge físico CSV solo para Recepción de pedidos.
+/* V209 - Merge físico CSV solo para Recepción de pedidos.
    Mantiene el ciclo original: mergePdfExtractionIntoCase -> autoCreateCutsFromItems -> checklist -> evidencia -> evento.
 */
-var eiV208LegacyMergePdfItemsIntoCase = mergePdfItemsIntoCase;
+var eiV209LegacyMergePdfItemsIntoCase = mergePdfItemsIntoCase;
 mergePdfItemsIntoCase=function(c,parsed){
   parsed=parsed||{};
-  if(parsed.extractionMode!=="CSV_RECEPCION_PEDIDOS_V208"){
-    return eiV208LegacyMergePdfItemsIntoCase(c,parsed);
+  if(parsed.extractionMode!=="CSV_RECEPCION_PEDIDOS_V209"){
+    return eiV209LegacyMergePdfItemsIntoCase(c,parsed);
   }
   var incoming=(parsed.items||[]).map(function(it,idx){
     var copy=Object.assign({},it);
     copy.id=uid("LIN");
     copy.estado=copy.requiereCorte ? "PENDIENTE_CORTE" : "PENDIENTE_ALISTAMIENTO";
-    copy.origen="CSV_RECEPCION_PEDIDOS_V208";
-    copy.generatedBy="CSV_RECEPCION_PEDIDOS_V208";
+    copy.origen="CSV_RECEPCION_PEDIDOS_V209";
+    copy.generatedBy="CSV_RECEPCION_PEDIDOS_V209";
     copy.createdAt=now();
     copy.csvPhysicalRowNumber=idx+1;
-    copy.detectionReason=(copy.detectionReason||"")+" · CSV V208 conservado como fila física independiente.";
+    copy.detectionReason=(copy.detectionReason||"")+" · CSV V209 conservado como fila física independiente.";
     return copy;
   });
   c.orderItems=c.orderItems||[];
   c.orderItems=c.orderItems.filter(function(it){
     var origin=String(it.origen||it.generatedBy||it.detectionReason||"").toUpperCase();
-    return origin.indexOf("CSV_RECEPCION_PEDIDOS_V208")<0;
+    return origin.indexOf("CSV_RECEPCION_PEDIDOS_V209")<0;
   });
   incoming.forEach(function(it){c.orderItems.push(it);});
   return incoming.length;
 };
+
+
+
+/* ============================================================
+   V209 - Fix móvil Auxiliar de corte / Fabián Duque
+   Alcance:
+   - Corte móvil.
+   - Permite abrir, iniciar, finalizar y registrar corte.
+   - No modifica Recepción de pedidos, PDF/CSV, stickers ni PC.
+============================================================ */
+function eiV209IdentityText(u){
+  u=u||{};
+  var arr=[u.uid,u.id,u.userId,u.authUid,u.profileUid,u.email,u.name,u.displayName,u.role,u.rawRole];
+  if(Array.isArray(u.uidAliases))arr=arr.concat(u.uidAliases);
+  try{
+    if(auth&&auth.currentUser){
+      arr=arr.concat([auth.currentUser.uid,auth.currentUser.email,auth.currentUser.displayName]);
+    }
+  }catch(e){}
+  try{
+    var cached=sessionStorage.getItem(storageKey+"_session")||localStorage.getItem(storageKey+"_session")||"";
+    if(cached){
+      var c=JSON.parse(cached);
+      arr=arr.concat([c.uid,c.id,c.userId,c.authUid,c.email,c.name,c.displayName,c.role,c.rawRole]);
+      if(Array.isArray(c.uidAliases))arr=arr.concat(c.uidAliases);
+    }
+  }catch(e){}
+  return stripAccents(arr.map(function(x){return String(x||"").toLowerCase();}).join(" "));
+}
+function eiV209IsFabianDuqueRuntimeUser(){
+  var raw=eiV209IdentityText(state.user||{});
+  return raw.indexOf("f.duque@ei.com.co")>=0 ||
+         raw.indexOf("f.duque")>=0 ||
+         raw.indexOf("fabian duque")>=0 ||
+         raw.indexOf("fabian")>=0;
+}
+function eiV209IsCutWorkerRuntimeUser(){
+  var r=normalizeRole(state.user&&state.user.role);
+  return r==="auxiliar_corte" ||
+         r==="corte" ||
+         r==="cortes" ||
+         r==="operario_corte" ||
+         r==="operario_de_corte" ||
+         eiV209IsFabianDuqueRuntimeUser();
+}
+function eiV209RepairCutRuntimeUser(){
+  try{
+    if(!state.user)return;
+    if(eiV209IsFabianDuqueRuntimeUser() || normalizeRole(state.user.role)==="auxiliar_corte"){
+      state.user.role="auxiliar_corte";
+      state.user.rawRole=state.user.rawRole||"auxiliar_corte";
+      state.user.email=state.user.email||"f.duque@ei.com.co";
+      state.user.name=state.user.name||state.user.displayName||"Fabian Duque";
+      state.user.uidAliases=uniqueArray((state.user.uidAliases||[]).concat([
+        state.user.uid,state.user.id,state.user.email,state.user.name,
+        "f.duque@ei.com.co","f.duque","fabian duque","fabian","auxiliar_corte","corte_cable"
+      ]).map(function(x){return String(x||"").trim();}).filter(Boolean));
+      try{sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));}catch(e){}
+    }
+  }catch(e){}
+}
+function eiV209CanOperateCutModule(){
+  eiV209RepairCutRuntimeUser();
+  var r=state.user?normalizeRole(state.user.role):"";
+  return eiV209IsCutWorkerRuntimeUser() ||
+         r==="jefe_logistica" ||
+         r==="gerencia" ||
+         isAdminRoleValue(r) ||
+         currentUserIsSuperAdmin();
+}
+
+// Overrides intencionales para que la versión móvil use el permiso corregido.
+isCutWorkerUser=function(){
+  return eiV209CanOperateCutModule();
+};
+isCutRuntimeUser=function(){
+  return eiV209IsCutWorkerRuntimeUser();
+};
+canOperateCutModule=function(){
+  return eiV209CanOperateCutModule();
+};
+
+function eiV209EnsureMobileCutCase(c,cut){
+  try{
+    if(!c)return;
+    eiV209RepairCutRuntimeUser();
+    c.hasCuts=true;
+    c.visibleRoles=Array.isArray(c.visibleRoles)?c.visibleRoles:[];
+    ["auxiliar_corte","corte","cortes","operario_corte","operario_de_corte","jefe_logistica","admin","super_admin","coordinador_logistico","lider_logistico","aux_logistica"].forEach(function(r){
+      if(c.visibleRoles.indexOf(r)<0)c.visibleRoles.push(r);
+    });
+    c.currentProcess=c.currentProcess||"corte_cable";
+    c.cutModuleTouchedAt=now();
+    if(c.currentProcess==="corte_cable"){
+      c.assignedRole="auxiliar_corte";
+      c.assignedName="Auxiliar de corte";
+    }
+    if(cut){
+      cut.id=cut.id||uid("CUT");
+      cut.caseId=c.id;
+      cut.status=cut.status||"PENDIENTE_CORTE";
+      cut.takenByUid=cut.takenByUid||state.user.uid;
+      cut.takenByName=cut.takenByName||state.user.name;
+    }
+  }catch(e){}
+}
+var eiV209LegacyOpenCutModule=openCutModule;
+openCutModule=function(id,cutId){
+  eiV209RepairCutRuntimeUser();
+  var c=caseById(id);
+  if(c){
+    var cut=null;
+    try{cut=findCut(c,cutId);}catch(e){}
+    eiV209EnsureMobileCutCase(c,cut);
+  }
+  return eiV209LegacyOpenCutModule(id,cutId);
+};
+var eiV209LegacyHandleCutAction=handleCutAction;
+handleCutAction=function(c,cut,action){
+  eiV209RepairCutRuntimeUser();
+  eiV209EnsureMobileCutCase(c,cut);
+  if(!eiV209CanOperateCutModule()){
+    alert("No tiene permiso para operar este corte. Verifique que el usuario esté como Auxiliar de corte.");
+    return;
+  }
+  return eiV209LegacyHandleCutAction(c,cut,action);
+};
+try{eiV209RepairCutRuntimeUser();}catch(e){}
