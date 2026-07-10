@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V232';
+var VERSION='V233';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -581,7 +581,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V232_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V233_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -2362,6 +2362,10 @@ function v232OpenReportModal(){
     return;
   }
   var modal=$("smartReportModal");
+  if(!modal){
+    status("El formulario del generador no está disponible en esta versión del HTML.","bad");
+    return;
+  }
   $("smartReportScope").innerHTML="<strong>Alcance que se utilizará:</strong> "+esc(v232CurrentScopeText())+
     "<br><strong>Base actual:</strong> "+Number(app.metrics.totalLoaded||app.cases.length||0)+" pedidos cargados · "+
     Number(app.metrics.cases||0)+" trazados en los indicadores.";
@@ -2376,6 +2380,7 @@ function v232OpenReportModal(){
 }
 function v232CloseReportModal(){
   var modal=$("smartReportModal");
+  if(!modal)return;
   modal.classList.remove("show");
   modal.setAttribute("aria-hidden","true");
 }
@@ -2750,27 +2755,46 @@ async function v232GenerateReport(meta){
 }
 function bind(){
   bindV232Base();
-  $("btnSmartReport").onclick=v232OpenReportModal;
-  $("btnCloseSmartReport").onclick=v232CloseReportModal;
-  $("btnCancelSmartReport").onclick=v232CloseReportModal;
-  $("smartReportModal").addEventListener("click",function(e){
-    if(e.target===$("smartReportModal"))v232CloseReportModal();
-  });
+
+  var openButton=$("btnSmartReport");
+  var closeButton=$("btnCloseSmartReport");
+  var cancelButton=$("btnCancelSmartReport");
+  var modal=$("smartReportModal");
+  var form=$("smartReportForm");
+
+  if(openButton)openButton.onclick=v232OpenReportModal;
+  if(closeButton)closeButton.onclick=v232CloseReportModal;
+  if(cancelButton)cancelButton.onclick=v232CloseReportModal;
+
+  if(modal){
+    modal.addEventListener("click",function(e){
+      if(e.target===modal)v232CloseReportModal();
+    });
+  }
+
   document.addEventListener("keydown",function(e){
-    if(e.key==="Escape"&&$("smartReportModal").classList.contains("show"))v232CloseReportModal();
-  });
-  $("smartReportForm").addEventListener("submit",function(e){
-    e.preventDefault();
-    try{
-      var meta=v232CollectMeta();
-      v232GenerateReport(meta).catch(function(err){
-        loading(false);
-        status("Error generando informe: "+esc(err.message||err),"bad");
-      });
-    }catch(err){
-      status("No se pudo generar el informe: "+esc(err.message||err),"bad");
+    var currentModal=$("smartReportModal");
+    if(e.key==="Escape"&&currentModal&&currentModal.classList.contains("show")){
+      v232CloseReportModal();
     }
   });
+
+  if(form){
+    form.addEventListener("submit",function(e){
+      e.preventDefault();
+      try{
+        var meta=v232CollectMeta();
+        v232GenerateReport(meta).catch(function(err){
+          loading(false);
+          status("Error generando informe: "+esc(err.message||err),"bad");
+        });
+      }catch(err){
+        status("No se pudo generar el informe: "+esc(err.message||err),"bad");
+      }
+    });
+  }else{
+    console.warn("[V233] El formulario del generador no está disponible; el VSM continúa funcionando.");
+  }
 }
 
 function bindBase(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}
