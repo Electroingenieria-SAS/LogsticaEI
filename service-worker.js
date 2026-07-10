@@ -1,4 +1,4 @@
-// V217 service worker: limpieza de caché y carga de red
+// V218 service worker: limpieza total y carga directa de red
 self.addEventListener('install', function() {
   self.skipWaiting();
 });
