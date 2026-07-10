@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v205-fix-x-modal-qty-csv-recepcion";
+var CACHE_VERSION = "ei-trazabilidad-v206-fix-guardar-compromiso-recepcion";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){

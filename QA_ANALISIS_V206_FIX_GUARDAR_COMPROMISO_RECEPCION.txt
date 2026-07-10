@@ -1,0 +1,28 @@
+V206 - Fix guardar archivo, compromiso, datos, líneas y cortes
+
+Error reportado:
+- Uncaught ReferenceError: applyParsedPedidoToCase is not defined
+- Ubicación: onsubmit de openReceptionPdf(id)
+
+Causa:
+- La V205 llamaba una función que no existe en esta base de la app.
+
+Corrección:
+1. Se agrega eiV206ApplyParsedPedidoToCase(c,parsed).
+   - Autocompleta pedido, cliente, NIT, dirección, ciudad, teléfono, forma de pago, vendedor, tipo de entrega y tipo de pedido.
+   - No depende de applyParsedPedidoToCase.
+2. Se agrega eiV206EnsureReceptionDecision(c,parsed).
+   - Conserva/crea confirmación de compromiso al guardar.
+   - Mantiene log de decisión.
+3. El botón Guardar vuelve a funcionar sin saltarse el compromiso.
+4. No se toca Corte.
+5. No se toca stickers.
+6. No se toca Recepción de mercancía.
+
+Nota:
+- net::ERR_BLOCKED_BY_CLIENT normalmente viene de un bloqueador/extensión del navegador bloqueando una petición. No es el error principal del guardado; el bloqueo real era applyParsedPedidoToCase undefined.
+
+QA:
+- node --check app.js OK.
+- node --check vsm-dashboard.js OK.
+- node --check service-worker.js OK.
