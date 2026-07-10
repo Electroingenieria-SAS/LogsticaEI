@@ -1,4 +1,4 @@
-var CACHE_VERSION = "ei-trazabilidad-v209-fix-duque-cortes-movil";
+var CACHE_VERSION = "ei-trazabilidad-v210-corte-movil-simple-sin-cronometro";
 self.addEventListener("install",function(event){
   self.skipWaiting();
   event.waitUntil(caches.keys().then(function(keys){

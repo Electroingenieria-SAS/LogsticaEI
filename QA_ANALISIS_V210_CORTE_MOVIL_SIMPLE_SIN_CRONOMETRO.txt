@@ -1,0 +1,28 @@
+V210 - Corte móvil simple sin cronómetro grande
+
+Solicitud:
+- Quitar cronómetro grande de la vista móvil.
+- Mantener lo necesario:
+  - datos del corte
+  - metros a cortar
+  - tamaño total del carreto/chipa
+  - cálculo de sobrante
+  - permisos/aprobaciones
+  - Iniciar / Finalizar / Registrar
+  - No necesita corte
+  - Medida completa
+
+Corrección:
+1. En móvil se oculta la tercera tarjeta KPI del encabezado donde estaba el cronómetro grande.
+2. Se ocultan #cutLiveTimer y #cutTimerDisplay en móvil.
+3. Se compacta la vista de corte móvil.
+4. Se deja una nota pequeña: el tiempo queda interno, sin cronómetro grande.
+5. No necesita corte y Medida completa permanecen intactos.
+6. El fix V209 de Fabián Duque / auxiliar_corte se conserva.
+
+Alcance:
+- Solo Corte móvil.
+- No se toca Recepción de pedidos.
+- No se toca PDF/CSV.
+- No se toca stickers.
+- No se toca PC.
