@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Centro Operativo VSM · Logística EI</title>
+  <title>Centro Operativo VSM · Capacidad y Áreas</title>
   <meta name="theme-color" content="#061b46">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%23061b46%27/%3E%3Ctext x=%2732%27 y=%2739%27 font-size=%2720%27 text-anchor=%27middle%27 fill=%27%23f2b705%27 font-family=%27Arial%27%3EVSM%3C/text%3E%3C/svg%3E">
   <style>
@@ -85,9 +85,9 @@
     .chart-track i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--gold))}
     .chart-track i.ok{background:var(--ok)}.chart-track i.bad{background:var(--bad)}.chart-track i.warn{background:var(--warn)}
     .stack{height:18px;display:flex;border-radius:999px;overflow:hidden;background:#edf2f7}
-    .stack i{display:block;height:100%}.stack .va{background:var(--ok)}.stack .wait{background:var(--warn)}.stack .dead{background:var(--bad)}
+    .stack i{display:block;height:100%}.stack .va{background:var(--ok)}.stack .wait{background:var(--warn)}.stack .capacity{background:var(--info)}.stack .dead{background:#7c3aed}
     .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;font-size:.75rem;color:var(--muted)}
-    .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.dot.va{background:var(--ok)}.dot.wait{background:var(--warn)}.dot.dead{background:var(--bad)}
+    .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}.dot.va{background:var(--ok)}.dot.wait{background:var(--warn)}.dot.capacity{background:var(--info)}.dot.dead{background:#7c3aed}
     .alert-card{padding:14px}.alert-list{display:grid;gap:8px}
     .alert-item{display:grid;grid-template-columns:minmax(150px,1fr) minmax(150px,1fr) auto;gap:10px;align-items:center;border:1px solid #edf2f7;border-radius:14px;padding:9px 10px;background:#fff}
     .alert-item.bad{border-color:#fecaca;background:#fff7f7}.alert-item.warn{border-color:#fed7aa;background:#fffaf3}
@@ -111,13 +111,23 @@
       table{min-width:980px}
     }
   </style>
+<style>
+  .area-status{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:.68rem;font-weight:900}
+  .area-status.ok{background:#ecfdf5;color:#065f46}
+  .area-status.warn{background:#fff7ed;color:#9a3412}
+  .area-status.bad{background:#fef2f2;color:#991b1b}
+  .formula-box{padding:12px;border-radius:15px;background:#f8fafc;border:1px solid #e2e8f0;line-height:1.55;font-size:.82rem}
+  .method-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
+  .method-grid article{padding:10px;border-radius:14px;background:#fff;border:1px solid #edf2f7}
+  .method-grid strong{display:block;color:#061b46;margin-bottom:4px}
+</style>
 </head>
 <body>
   <main class="shell">
     <section class="top">
       <div>
         <h1>Centro operativo VSM</h1>
-        <p>Tiempos por proceso calculados exclusivamente dentro de la jornada laboral: 7:00–12:00 y 13:40–17:30, excluyendo sábados, domingos y festivos colombianos.</p>
+        <p>Lead Time observado, trabajo directo, bloqueos, colas por capacidad y transferencias, calculados dentro de la jornada laboral 7:00–12:00 y 13:40–17:30.</p>
       </div>
       <div class="actions">
         <button class="btn primary" id="btnLoad">Actualizar datos</button>
@@ -144,7 +154,15 @@
         <label class="field"><span>Desde</span><input class="input" type="date" id="fFrom"></label>
         <label class="field"><span>Hasta</span><input class="input" type="date" id="fTo"></label>
         <label class="field"><span>Tipo de pedido</span><select class="select" id="fOrderType"><option value="">Todos</option><option value="normal">Normal</option><option value="pve">PVE</option></select></label>
-        <label class="field"><span>Proceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label>
+        <label class="field"><span>Proceso</span><select class="select" id="fProcess"><option value="">Todos</option></select></label><label class="field"><span>Área</span><select class="select" id="fArea">
+          <option value="">Todas</option>
+          <option value="ventas">Ventas</option>
+          <option value="compras">Compras</option>
+          <option value="logistica">Logística</option>
+          <option value="facturacion">Facturación</option>
+          <option value="cartera">Cartera / Caja</option>
+          <option value="despacho">Despacho</option>
+        </select></label>
         <label class="field"><span>Estado</span><select class="select" id="fStatus"><option value="">Todos</option><option value="open">WIP / abiertos</option><option value="closed">Cerrados</option><option value="wait">En espera o bloqueo</option><option value="cancelled">Cancelados / anulados</option></select></label>
         <label class="field"><span>Cumplimiento</span><select class="select" id="fSla"><option value="">Todos</option><option value="late">Fuera de meta</option><option value="ontime">Dentro de meta</option></select></label>
         <label class="field"><span>Meta en horas hábiles</span><input class="input" type="number" id="fThreshold" min="0.25" step="0.25" value="8"></label>
@@ -153,7 +171,7 @@
         <label class="field"><span>Vista principal</span><select class="select" id="fView">
           <option value="principal">Centro operativo</option>
           <option value="wip">WIP y atrasos</option>
-          <option value="procesos">Rendimiento por proceso</option>
+          <option value="areas">Áreas, carga y capacidad</option><option value="procesos">Rendimiento por proceso</option>
           <option value="picking">Picking / alistamiento</option>
           <option value="cortes">Cortes</option>
           <option value="usuarios">Productividad por usuario</option>
@@ -183,6 +201,11 @@
     <div class="section-head"><h2>Tiempos críticos</h2><span>Picking, corte, recepción y facturación.</span></div>
     <section id="operationalFocus" class="focus-grid"></section>
 
+    <div class="section-head"><h2>Capacidad y colas por área</h2><span>Demanda, utilización, WIP, variabilidad y espera modelada.</span></div>
+    <section id="areaBoard" class="flow-board"></section>
+
+    <section id="modelPanel" class="alert-card" style="margin-top:14px"></section>
+
     <div class="section-head"><h2>Flujo por proceso</h2><span>Promedio, P50, P90, WIP y cumplimiento de meta.</span></div>
     <section id="processFlow" class="flow-board"></section>
 
@@ -200,15 +223,15 @@
       <article class="card" style="padding:15px"><h3 style="margin:0 0 8px;color:var(--blue)">Cuello de botella</h3><div id="bottleneck"></div></article>
       <article class="card" style="padding:15px">
         <h3 style="margin:0 0 8px;color:var(--blue)">Lectura del tablero</h3>
-        <p class="muted" style="margin:0;line-height:1.5">LT y tiempos por proceso se muestran en horas laborales. P50 representa la mediana y P90 el tiempo bajo el cual termina el 90 % de los casos. La meta es una referencia operativa editable desde los filtros.</p>
+        <p class="muted" style="margin:0;line-height:1.5">El Lead Time observado no se usa como productividad personal. La espera se separa en bloqueo explícito, cola probable por capacidad y transferencia/no clasificado. P50 es la mediana y P90 representa el percentil 90.</p>
       </article>
     </section>
 
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V222 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V223 · VSM de capacidad, colas y áreas. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=222"></script>
+  <script src="./vsm-dashboard.js?v=223"></script>
 </body>
 </html>
