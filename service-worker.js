@@ -1,14 +1,10 @@
-// V218 service worker: limpieza total y carga directa de red
-self.addEventListener('install', function() {
-  self.skipWaiting();
-});
+// V219 service worker: limpieza total y carga sin caché
+self.addEventListener('install', function() { self.skipWaiting(); });
 self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys().then(function(keys) {
       return Promise.all(keys.map(function(key) { return caches.delete(key); }));
-    }).then(function() {
-      return self.clients.claim();
-    })
+    }).then(function() { return self.clients.claim(); })
   );
 });
 self.addEventListener('fetch', function(event) {
