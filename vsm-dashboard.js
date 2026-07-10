@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var VERSION='V231';
+var VERSION='V232';
 var FLOW=['compras','recepcion_pedidos','alistamiento','corte_cable','facturacion','caja','cliente_punto','cliente_recoge','despacho_local','despacho_nacional','cierre_despacho_nacional'];
 var PROCESS={compras:'Compras / liberación PVE',recepcion_pedidos:'Recepción de pedidos',alistamiento:'Alistamiento',corte_cable:'Corte de cable',facturacion:'Facturación',caja:'Caja/Cartera',cliente_punto:'Entrega cliente en punto',cliente_recoge:'Cliente recoge',despacho_local:'Despacho local',despacho_nacional:'Despacho nacional',cierre_despacho_nacional:'Cierre despacho nacional'};
 var ROLE={compras:'Compras',compra:'Compras',area_compras:'Compras',ventas:'Ventas',asesor:'Ventas',asesor_ventas:'Ventas',vendedor:'Ventas',aux_logistica:'Auxiliar logística',auxiliar_corte:'Auxiliar corte',coordinador_logistico:'Logística/despacho',lider_logistico:'Logística/despacho',jefe_logistica:'Jefe logística',gerencia:'Gerencia',caja:'Caja',cartera:'Cartera',admin:'Admin',super_admin:'Super Admin'};
@@ -581,7 +581,7 @@ async function exportExcel(){if(!app.metrics)await refresh();var m=app.metrics,p
   parts.push('<h2>Esperas, bloqueos y requerimientos</h2><table><tr><th>Pedido</th><th>Proceso</th><th>Desde</th><th>Hasta</th><th>Duración</th><th>Horas</th><th>Tipo</th><th>Usuario</th><th>Detalle</th></tr>');await appendRows(parts,m.waitRows,function(w){return row([w.pedido,w.proceso,dateTxt(w.desde),dateTxt(w.hasta),fmt(w.dur),hours(w.dur),w.tipo,w.usuario,w.detalle]);},35);parts.push('</table>');
   parts.push('<h2>Pedidos cancelados / anulados · control excluido del VSM operativo</h2><table><tr><th>Tipo</th><th>Pedido</th><th>OC</th><th>Cliente</th><th>Asesor</th><th>Tipo</th><th>Proceso donde se canceló</th><th>Fecha cancelación</th><th>Usuario</th><th>Motivo</th><th>PDF soporte</th></tr>');await appendRows(parts,m.cancelRows,function(r){return row([r.pedido,r.oc,r.cliente,r.asesor,r.tipo,r.procesoTxt,dateTxt(r.fecha),r.usuario,r.motivo,r.soporte?'Sí':'No']);},35);parts.push('</table>');
   parts.push('<h2>Cortes</h2><table><tr><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Referencia</th><th>Metros</th><th>Estado</th><th>Responsable</th><th>Inicio</th><th>Fin</th><th>Duración</th><th>Horas</th><th>Modo</th><th>SIESA</th></tr>');await appendRows(parts,m.cutRows,function(x){return row([x.pedido,x.cliente,x.corte,x.referencia,x.metros,x.estado,x.responsable,dateTxt(x.inicio),dateTxt(x.fin),fmt(x.duracion),hours(x.duracion),x.modo,x.siesa]);},40);parts.push('</table></body></html>');
-  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V231_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
+  var blob=new Blob(['\ufeff'].concat(parts),{type:'application/vnd.ms-excel;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='VSM_Centro_Operativo_V232_'+new Date().toISOString().slice(0,10)+'.xls';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);loading(false);status('Excel VSM '+VERSION+' generado correctamente con '+m.cases+' pedido(s).','ok');}
 
 /* ============================================================
    V222 · Centro operativo VSM
@@ -1948,7 +1948,7 @@ function renderTableV230Base(){
   }
   renderTableV228Base();$("rowCount").textContent=$("rowCount").textContent+" · total cargado "+m.totalLoaded;
 }
-function bind(){bindV228Base();}
+function bindV232Base(){bindV228Base();}
 
 
 /* ============================================================
@@ -2330,6 +2330,447 @@ function v228NoDeliveryEnd(c,start,report){
     });
   }
   return candidates.length?Math.min.apply(Math,candidates):nowMs();
+}
+
+
+/* ============================================================
+   V232 · GENERADOR DE INFORMES INTELIGENTES
+============================================================ */
+function v232StoredValue(key){
+  try{return localStorage.getItem(key)||"";}catch(e){return "";}
+}
+function v232StoreValue(key,value){
+  try{localStorage.setItem(key,value||"");}catch(e){}
+}
+function v232CurrentScopeText(){
+  var parts=[];
+  var from=$("fFrom")&&$("fFrom").value,to=$("fTo")&&$("fTo").value;
+  if(from||to)parts.push("Periodo: "+(from||"inicio")+" a "+(to||"fecha actual"));
+  else parts.push("Periodo: todo el histórico cargado");
+  if($("fArea")&&$("fArea").value)parts.push("Área: "+v225AreaLabel($("fArea").value));
+  if($("fProcess")&&$("fProcess").value)parts.push("Proceso: "+processTitle($("fProcess").value));
+  if($("fOrderType")&&$("fOrderType").value)parts.push("Tipo: "+($("fOrderType").value==="pve"?"PVE":"Normal"));
+  if($("fStatus")&&$("fStatus").value)parts.push("Estado: "+$("fStatus").options[$("fStatus").selectedIndex].text);
+  if($("fUser")&&$("fUser").value)parts.push("Actor: "+$("fUser").options[$("fUser").selectedIndex].text);
+  if($("fSla")&&$("fSla").value)parts.push("Cumplimiento: "+$("fSla").options[$("fSla").selectedIndex].text);
+  if(clean($("fSearch")&&$("fSearch").value))parts.push('Búsqueda: "'+clean($("fSearch").value)+'"');
+  return parts.join(" · ");
+}
+function v232OpenReportModal(){
+  if(!app.metrics){
+    status("Primero deben cargarse y calcularse los datos del VSM.","bad");
+    return;
+  }
+  var modal=$("smartReportModal");
+  $("smartReportScope").innerHTML="<strong>Alcance que se utilizará:</strong> "+esc(v232CurrentScopeText())+
+    "<br><strong>Base actual:</strong> "+Number(app.metrics.totalLoaded||app.cases.length||0)+" pedidos cargados · "+
+    Number(app.metrics.cases||0)+" trazados en los indicadores.";
+  $("reportAuthor").value=v232StoredValue("ei_vsm_report_author")||((app.user&&app.user.displayName)||"");
+  $("reportPosition").value=v232StoredValue("ei_vsm_report_position");
+  $("reportDepartment").value=v232StoredValue("ei_vsm_report_department");
+  $("reportAudience").value=v232StoredValue("ei_vsm_report_audience");
+  $("reportPeriodName").value=v232StoredValue("ei_vsm_report_period");
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden","false");
+  setTimeout(function(){$("reportAuthor").focus();},50);
+}
+function v232CloseReportModal(){
+  var modal=$("smartReportModal");
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden","true");
+}
+function v232CollectMeta(){
+  var meta={
+    author:clean($("reportAuthor").value),
+    position:clean($("reportPosition").value),
+    department:clean($("reportDepartment").value),
+    audience:clean($("reportAudience").value),
+    type:$("reportType").value,
+    format:$("reportFormat").value,
+    title:clean($("reportDocumentTitle").value),
+    objective:clean($("reportObjective").value),
+    confidentiality:$("reportConfidentiality").value,
+    periodName:clean($("reportPeriodName").value),
+    notes:clean($("reportNotes").value),
+    includeOrders:$("reportIncludeOrders").checked,
+    includeActors:$("reportIncludeActors").checked,
+    includeMethodology:$("reportIncludeMethodology").checked,
+    includeActionPlan:$("reportIncludeActionPlan").checked,
+    includeAlerts:$("reportIncludeAlerts").checked,
+    includeWaits:$("reportIncludeWaits").checked,
+    scope:v232CurrentScopeText(),
+    generatedAt:new Date()
+  };
+  if(!meta.author||!meta.position||!meta.department||!meta.audience||!meta.title||!meta.objective){
+    throw new Error("Complete todos los campos obligatorios del informe.");
+  }
+  v232StoreValue("ei_vsm_report_author",meta.author);
+  v232StoreValue("ei_vsm_report_position",meta.position);
+  v232StoreValue("ei_vsm_report_department",meta.department);
+  v232StoreValue("ei_vsm_report_audience",meta.audience);
+  v232StoreValue("ei_vsm_report_period",meta.periodName);
+  return meta;
+}
+function v232TypeLabel(type){
+  return {
+    ejecutivo:"Informe ejecutivo para toma de decisiones",
+    operativo:"Informe operativo detallado",
+    productividad:"Informe de productividad",
+    auditoria:"Informe de auditoría y confiabilidad",
+    comite:"Informe para comité de seguimiento"
+  }[type]||"Informe analítico";
+}
+function v232Average(values){
+  values=(values||[]).filter(function(x){return isFinite(x);});
+  return values.length?values.reduce(function(s,x){return s+x;},0)/values.length:0;
+}
+function v232OverallScore(m){
+  var proc=(m.processRows||[]).filter(function(r){return r.cases>0;});
+  var compliance=v232Average(proc.map(function(r){return Number(r.slaPct||0);}));
+  var reliability=Number((m.reliability||{}).avg||0);
+  var wipScore=m.wip?Math.max(0,100-(Number(m.lateWip||0)/m.wip*100)):100;
+  var traceBase=Math.max(1,Number(m.totalLoaded||m.cases||1));
+  var traceScore=Math.max(0,100-(Number(m.notTraced||0)/traceBase*100));
+  var noDeliveryRate=Math.min(100,(Number(m.noDeliveryCount||0)/Math.max(1,m.cases))*100);
+  var reworkRate=Math.min(100,((m.specialWait&&m.specialWait.reworkRows||[]).length/Math.max(1,m.cases))*100);
+  return Math.max(0,Math.min(100,Math.round(
+    compliance*.30+reliability*.25+wipScore*.20+traceScore*.10+
+    (100-noDeliveryRate)*.075+(100-reworkRate)*.075
+  )));
+}
+function v232ScoreLabel(score){
+  if(score>=85)return {label:"Favorable",cls:"ok",text:"El desempeño general se mantiene controlado, con oportunidades puntuales de mejora."};
+  if(score>=70)return {label:"Requiere atención",cls:"warn",text:"El flujo presenta desviaciones que deben gestionarse para evitar crecimiento del WIP y de los tiempos."};
+  return {label:"Crítico",cls:"bad",text:"El resultado exige intervención prioritaria sobre tiempos, cumplimiento, trazabilidad y causas recurrentes."};
+}
+function v232Analyze(meta){
+  var m=app.metrics||{},processes=(m.processRows||[]).filter(function(r){return r.cases||r.wip;});
+  var areas=(m.areaRows||[]).slice(),actors=(m.actorRows||[]).filter(function(r){return !v231IsExcludedSuperAdmin(r);});
+  var score=v232OverallScore(m),scoreState=v232ScoreLabel(score);
+  var slowest=processes.slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);})[0]||{};
+  var lowestCompliance=processes.slice().filter(function(r){return r.slaCount||r.cases;}).sort(function(a,b){return Number(a.slaPct||0)-Number(b.slaPct||0);})[0]||{};
+  var highestWip=processes.slice().sort(function(a,b){return Number(b.wip||0)-Number(a.wip||0);})[0]||{};
+  var weakestArea=areas.slice().sort(function(a,b){return Number(a.compliance||0)-Number(b.compliance||0);})[0]||{};
+  var highestAreaLt=areas.slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);})[0]||{};
+  var topWorkActor=actors.slice().sort(function(a,b){return Number(b.active||0)-Number(a.active||0);})[0]||{};
+  var highestActorWip=actors.slice().sort(function(a,b){return Number(b.open||0)-Number(a.open||0);})[0]||{};
+  var findings=[],recommendations=[],actions=[];
+  findings.push("La base del informe contiene "+Number(m.totalLoaded||app.cases.length||0)+" pedidos cargados; "+Number(m.cases||0)+" cuentan con trazabilidad suficiente para los indicadores.");
+  findings.push("El índice compuesto de desempeño es "+score+"% y se clasifica como "+scoreState.label.toLowerCase()+".");
+  findings.push("El Lead Time mediano es "+v225Time(m.leadP50||0)+" y el percentil 90 alcanza "+v225Time(m.leadP90||0)+".");
+  if(slowest.label)findings.push("El proceso con mayor LT promedio es "+slowest.label+" con "+v225Time(slowest.avg||0)+".");
+  if(lowestCompliance.label)findings.push("El menor cumplimiento se presenta en "+lowestCompliance.label+" con "+Number(lowestCompliance.slaPct||0)+"%.");
+  if(highestWip.label)findings.push("La mayor concentración de WIP está en "+highestWip.label+" con "+Number(highestWip.wip||0)+" pedido(s), de los cuales "+Number(highestWip.wipLate||0)+" están fuera de meta.");
+  if(weakestArea.label)findings.push("El área con menor cumplimiento es "+weakestArea.label+" con "+Number(weakestArea.compliance||0)+"%.");
+  if(highestAreaLt.label)findings.push("El área con mayor tiempo promedio es "+highestAreaLt.label+" con "+v225Time(highestAreaLt.avg||0)+".");
+  if(topWorkActor.user)findings.push("El mayor volumen de trabajo directo trazado corresponde a "+topWorkActor.user+" con "+v225Time(topWorkActor.active||0)+"; este dato representa carga registrada, no una calificación aislada del desempeño.");
+  if(highestActorWip.user&&highestActorWip.open>0)findings.push(highestActorWip.user+" concentra el mayor WIP individual con "+highestActorWip.open+" caso(s) abiertos.");
+  if((m.reliability||{}).avg<90)findings.push("La confiabilidad promedio de la trazabilidad es "+Number((m.reliability||{}).avg||0)+"%, por debajo del objetivo recomendado de 90%.");
+  if(m.specialWait){
+    findings.push("Las esperas especiales suman "+v225Time((m.specialWait.novelty||0)+(m.specialWait.rework||0)+(m.specialWait.noDelivery||0))+": novedades "+v225Time(m.specialWait.novelty||0)+", reprocesos "+v225Time(m.specialWait.rework||0)+" y no entregas "+v225Time(m.specialWait.noDelivery||0)+".");
+  }
+
+  if(Number(m.lateWip||0)>0){
+    recommendations.push("Definir una rutina diaria de priorización para los "+m.lateWip+" pedidos fuera de meta.");
+    actions.push({priority:"Alta",issue:"WIP fuera de meta",action:"Revisar y reasignar diariamente los pedidos vencidos, registrando causa y próxima acción.",owner:highestWip.label||"Operaciones",target:"Reducir atrasados en al menos 50% en el siguiente corte"});
+  }
+  if(lowestCompliance.label&&Number(lowestCompliance.slaPct||0)<80){
+    recommendations.push("Intervenir el proceso "+lowestCompliance.label+" mediante análisis de causa y ajuste de tiempos estándar.");
+    actions.push({priority:"Alta",issue:"Bajo cumplimiento en "+lowestCompliance.label,action:"Revisar actividades, responsables, puntos de espera y meta del proceso.",owner:v225AreaLabel(v225AreaForProcess(lowestCompliance.process)),target:"Cumplimiento ≥ 85%"});
+  }
+  if((m.reliability||{}).avg<90){
+    recommendations.push("Establecer obligatoriedad de fecha, responsable, estado y proceso en cada transición.");
+    actions.push({priority:"Alta",issue:"Confiabilidad de datos",action:"Corregir registros incompletos y bloquear cierres sin trazabilidad mínima.",owner:"Calidad / Sistemas",target:"Confiabilidad ≥ 90%"});
+  }
+  if(m.specialWait&&m.specialWait.noveltyOpen>0){
+    recommendations.push("Asignar SLA y responsables visibles a las novedades pendientes.");
+    actions.push({priority:"Media",issue:"Novedades abiertas",action:"Cerrar o responder las "+m.specialWait.noveltyOpen+" novedades abiertas con fecha y responsable.",owner:"Áreas destinatarias",target:"Primera respuesta dentro de la meta"});
+  }
+  if(m.specialWait&&m.specialWait.rework>0){
+    recommendations.push("Realizar análisis de causa raíz sobre los retornos que exceden la meta.");
+    actions.push({priority:"Media",issue:"Reprocesos fuera de meta",action:"Clasificar los reprocesos por causa, área de origen y reincidencia.",owner:"Calidad / Área responsable",target:"Reducir tiempo de reproceso 20%"});
+  }
+  if(Number(m.noDeliveryCount||0)>0){
+    recommendations.push("Separar las causas de no entrega por transportadora, cliente, documentación y preparación del pedido.");
+    actions.push({priority:"Media",issue:"No entregas",action:"Cerrar trazabilidad y causa de los "+m.noDeliveryCount+" pedido(s) identificados.",owner:"Despacho / Cartera",target:"100% de no entregas con causa y cierre"});
+  }
+  if(highestActorWip.user&&Number(highestActorWip.open||0)>3){
+    recommendations.push("Balancear la carga operativa del actor con mayor WIP antes de asignar nuevos casos.");
+    actions.push({priority:"Media",issue:"Concentración de carga",action:"Redistribuir casos abiertos y revisar capacidad disponible.",owner:"Líder del área",target:"Ningún actor con concentración desproporcionada"});
+  }
+  if(!recommendations.length)recommendations.push("Mantener el seguimiento periódico, validar la estabilidad de los indicadores y documentar las mejoras implementadas.");
+  if(!actions.length)actions.push({priority:"Baja",issue:"Sostenimiento",action:"Mantener revisión semanal de KPIs y alertas.",owner:"Líderes de proceso",target:"Conservar desempeño favorable"});
+
+  return {
+    m:m,score:score,scoreState:scoreState,findings:findings,
+    recommendations:recommendations,actions:actions,
+    processes:processes,areas:areas,actors:actors,
+    slowest:slowest,lowestCompliance:lowestCompliance,highestWip:highestWip
+  };
+}
+function v232FileName(meta,ext){
+  var base=normKey(meta.title||"informe_vsm").replace(/_/g,"-").slice(0,70)||"informe-vsm";
+  return base+"-"+meta.generatedAt.toISOString().slice(0,10)+"."+ext;
+}
+function v232ReportCss(){
+  return `
+    *{box-sizing:border-box}body{margin:0;background:#eef3f9;color:#102033;font-family:"Century Gothic",Arial,sans-serif}
+    .report{width:100%;max-width:1060px;margin:auto;background:#fff}
+    .cover{min-height:680px;padding:55px 54px;background:linear-gradient(145deg,#061b46,#12376d);color:#fff;display:flex;flex-direction:column;justify-content:space-between}
+    .cover h1{font-size:34px;line-height:1.16;margin:0 0 18px}.cover h2{font-size:17px;font-weight:normal;margin:0;opacity:.86}
+    .cover .meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:38px}.cover .meta div{padding:12px;border:1px solid rgba(255,255,255,.2);border-radius:12px}
+    .cover small{opacity:.8}.section{padding:28px 34px;border-bottom:1px solid #e2e8f0;page-break-inside:avoid}
+    .section h2{margin:0 0 14px;color:#061b46;font-size:21px}.section h3{color:#0f2d5c;margin:18px 0 8px}
+    .lead{font-size:14px;line-height:1.6;color:#334155}.muted{color:#64748b}
+    .score{display:flex;align-items:center;gap:18px;padding:17px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0}
+    .score strong{font-size:34px;color:#061b46}.score.ok{border-left:6px solid #0f9f6e}.score.warn{border-left:6px solid #d97706}.score.bad{border-left:6px solid #dc2626}
+    .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpi{padding:12px;border-radius:13px;border:1px solid #dbe4f0;background:#fff}
+    .kpi span{display:block;font-size:10px;font-weight:bold;color:#64748b;text-transform:uppercase}.kpi strong{display:block;font-size:20px;color:#061b46;margin-top:5px}.kpi small{display:block;font-size:10px;color:#64748b;margin-top:4px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}.panel{border:1px solid #dbe4f0;border-radius:15px;padding:14px;page-break-inside:avoid}
+    .bar-row{display:grid;grid-template-columns:130px 1fr 70px;gap:8px;align-items:center;margin:8px 0;font-size:11px}
+    .bar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar-track{height:12px;background:#edf2f7;border-radius:999px;overflow:hidden}.bar{height:100%;background:#2563eb;border-radius:999px}.bar.ok{background:#0f9f6e}.bar.warn{background:#d97706}.bar.bad{background:#dc2626}
+    table{width:100%;border-collapse:collapse;margin-top:10px;font-size:10px}th,td{border:1px solid #d8e2ef;padding:6px;text-align:left;vertical-align:top}th{background:#061b46;color:#fff}
+    ul{margin:8px 0 0;padding-left:20px}li{margin:6px 0;line-height:1.45}
+    .priority{font-weight:bold}.priority.Alta{color:#b91c1c}.priority.Media{color:#b45309}.priority.Baja{color:#047857}
+    .note{padding:11px;border-radius:12px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:11px;line-height:1.45}
+    .footer{padding:18px 34px;font-size:9px;color:#64748b;background:#f8fafc}
+    @media print{body{background:#fff}.report{max-width:none}.section{break-inside:auto}.cover{page-break-after:always}.page-break{page-break-before:always}}
+    @media(max-width:720px){.kpis{grid-template-columns:1fr 1fr}.grid2,.cover .meta{grid-template-columns:1fr}.bar-row{grid-template-columns:1fr}}
+  `;
+}
+function v232Kpi(title,value,detail){
+  return '<article class="kpi"><span>'+esc(title)+'</span><strong>'+esc(value)+'</strong><small>'+esc(detail||"")+'</small></article>';
+}
+function v232BarChart(rows,valueFn,labelFn,metaFn,classFn){
+  rows=(rows||[]).slice(0,12);
+  var max=rows.reduce(function(a,r){return Math.max(a,Number(valueFn(r))||0);},0)||1;
+  return rows.map(function(r){
+    var v=Number(valueFn(r))||0,cls=classFn?classFn(r):"";
+    return '<div class="bar-row"><b class="bar-label">'+esc(labelFn(r))+'</b><div class="bar-track"><div class="bar '+cls+'" style="width:'+Math.max(2,Math.min(100,v/max*100))+'%"></div></div><span>'+esc(metaFn(r))+'</span></div>';
+  }).join("")||'<p class="muted">Sin datos suficientes.</p>';
+}
+function v232Rows(headers,rows){
+  return '<table><thead><tr>'+headers.map(function(h){return '<th>'+esc(h)+'</th>';}).join("")+'</tr></thead><tbody>'+rows.join("")+'</tbody></table>';
+}
+function v232ReportBody(meta,analysis,mode){
+  var m=analysis.m,w=m.specialWait||{},r=m.reliability||{};
+  var processByLt=analysis.processes.slice().sort(function(a,b){return Number(b.avg||0)-Number(a.avg||0);});
+  var processByCompliance=analysis.processes.slice().sort(function(a,b){return Number(a.slaPct||0)-Number(b.slaPct||0);});
+  var areasByCompliance=analysis.areas.slice().sort(function(a,b){return Number(a.compliance||0)-Number(b.compliance||0);});
+  var actorsByWork=analysis.actors.slice().sort(function(a,b){return Number(b.active||0)-Number(a.active||0);});
+  var period=meta.periodName||meta.scope;
+  var body='';
+
+  body+='<div class="cover"><div><small>'+esc(meta.confidentiality)+' · '+esc(v232TypeLabel(meta.type))+'</small><h1>'+esc(meta.title)+'</h1><h2>'+esc(meta.objective)+'</h2></div>'+
+    '<div class="meta"><div><small>Elaborado por</small><br><strong>'+esc(meta.author)+'</strong><br>'+esc(meta.position)+'</div>'+
+    '<div><small>Área responsable</small><br><strong>'+esc(meta.department)+'</strong></div>'+
+    '<div><small>Dirigido a</small><br><strong>'+esc(meta.audience)+'</strong></div>'+
+    '<div><small>Periodo / alcance</small><br><strong>'+esc(period)+'</strong></div></div>'+
+    '<small>Generado el '+esc(meta.generatedAt.toLocaleString("es-CO"))+' · VSM '+esc(VERSION)+' · Super Admin excluido de productividad y tiempos operativos.</small></div>';
+
+  body+='<section class="section"><h2>1. Resumen ejecutivo</h2><div class="score '+analysis.scoreState.cls+'"><strong>'+analysis.score+'%</strong><div><b>'+esc(analysis.scoreState.label)+'</b><p class="lead">'+esc(analysis.scoreState.text)+'</p></div></div>'+
+    '<div class="kpis" style="margin-top:14px">'+
+    v232Kpi("Total cargado",m.totalLoaded||app.cases.length,"Pedidos disponibles")+
+    v232Kpi("Trazados VSM",m.cases||0,"Pedidos calculables")+
+    v232Kpi("WIP actual",m.wip||0,(m.lateWip||0)+" fuera de meta")+
+    v232Kpi("Cerrados",m.closed||0,"Throughput "+(m.throughput||0)+"/día")+
+    v232Kpi("LT P50",v225Time(m.leadP50||0),"P90 "+v225Time(m.leadP90||0))+
+    v232Kpi("Picking promedio",v225Time(m.pickingAvg||0),"P90 "+v225Time(m.pickingP90||0))+
+    v232Kpi("Confiabilidad",Number(r.avg||0)+"%",Number(r.low||0)+" registros críticos")+
+    v232Kpi("No entregas",m.noDeliveryCount||0,"Filtro actual")+
+    '</div></section>';
+
+  body+='<section class="section"><h2>2. Hallazgos analíticos</h2><ul>'+analysis.findings.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>';
+  if(meta.notes)body+='<div class="note" style="margin-top:14px"><strong>Contexto suministrado:</strong> '+esc(meta.notes)+'</div>';
+  body+='</section>';
+
+  body+='<section class="section"><h2>3. Desempeño por proceso</h2><div class="grid2"><article class="panel"><h3>Lead Time promedio</h3>'+
+    v232BarChart(processByLt,function(x){return x.avg;},function(x){return x.label;},function(x){return v225Time(x.avg);})+
+    '</article><article class="panel"><h3>Cumplimiento de meta</h3>'+
+    v232BarChart(processByCompliance,function(x){return x.slaPct;},function(x){return x.label;},function(x){return Number(x.slaPct||0)+"%";},function(x){return x.slaPct>=85?"ok":(x.slaPct>=65?"warn":"bad");})+
+    '</article></div>'+
+    v232Rows(["Proceso","Casos","WIP","Atrasados","LT promedio","P50","P90","Cumplimiento"],analysis.processes.map(function(x){
+      return '<tr><td><strong>'+esc(x.label)+'</strong></td><td>'+Number(x.cases||0)+'</td><td>'+Number(x.wip||0)+'</td><td>'+Number(x.wipLate||0)+'</td><td>'+esc(v225Time(x.avg||0))+'</td><td>'+esc(v225Time(x.p50||0))+'</td><td>'+esc(v225Time(x.p90||0))+'</td><td>'+Number(x.slaPct||0)+'%</td></tr>';
+    }))+'</section>';
+
+  body+='<section class="section"><h2>4. Desempeño por área</h2><div class="grid2"><article class="panel"><h3>Cumplimiento por área</h3>'+
+    v232BarChart(areasByCompliance,function(x){return x.compliance;},function(x){return x.label;},function(x){return Number(x.compliance||0)+"%";},function(x){return x.compliance>=85?"ok":(x.compliance>=65?"warn":"bad");})+
+    '</article><article class="panel"><h3>WIP por área</h3>'+
+    v232BarChart(analysis.areas.slice().sort(function(a,b){return b.wip-a.wip;}),function(x){return x.wip;},function(x){return x.label;},function(x){return Number(x.wip||0)+" pedido(s)";})+
+    '</article></div>'+
+    v232Rows(["Área","Casos","WIP","Cerrados","LT promedio","Trabajo","Cumplimiento","Confiabilidad","No entregas"],analysis.areas.map(function(x){
+      return '<tr><td><strong>'+esc(x.label)+'</strong></td><td>'+Number(x.cases||0)+'</td><td>'+Number(x.wip||0)+'</td><td>'+Number(x.closed||0)+'</td><td>'+esc(v225Time(x.avg||0))+'</td><td>'+esc(v225Time(x.work||0))+'</td><td>'+Number(x.compliance||0)+'%</td><td>'+Number(x.reliability||0)+'%</td><td>'+Number(x.noDeliveries||0)+'</td></tr>';
+    }))+'</section>';
+
+  if(meta.includeActors){
+    body+='<section class="section"><h2>5. Productividad por actor</h2><div class="note">El Super Admin está excluido. La carga directa no debe interpretarse aisladamente como evaluación de desempeño.</div>'+
+      '<article class="panel" style="margin-top:12px"><h3>Trabajo directo trazado</h3>'+
+      v232BarChart(actorsByWork,function(x){return x.active;},function(x){return x.user;},function(x){return v225Time(x.active||0);})+'</article>'+
+      v232Rows(["Actor","Rol","Casos","WIP","Cerrados","Trabajo directo","Promedio directo","Cumplimiento","Carga directa"],analysis.actors.slice(0,30).map(function(x){
+        return '<tr><td><strong>'+esc(x.user)+'</strong></td><td>'+esc(roleTitle(x.role))+'</td><td>'+Number(x.count||0)+'</td><td>'+Number(x.open||0)+'</td><td>'+Number(x.closed||0)+'</td><td>'+esc(v225Time(x.active||0))+'</td><td>'+esc(v225Time(x.directPerCase||0))+'</td><td>'+Number(x.compliance||0)+'%</td><td>'+Number(x.directLoadPct||0)+'%</td></tr>';
+      }))+'</section>';
+  }
+
+  if(meta.includeWaits){
+    body+='<section class="section"><h2>6. Novedades, reprocesos y no entregas</h2><div class="kpis">'+
+      v232Kpi("Espera en novedades",v225Time(w.novelty||0),(w.noveltyOpen||0)+" abiertas")+
+      v232Kpi("Espera en reproceso",v225Time(w.rework||0),(w.reworkOpen||0)+" abiertos")+
+      v232Kpi("Espera en no entregas",v225Time(w.noDelivery||0),(w.noDeliveryOpen||0)+" abiertas")+
+      v232Kpi("No entregas",m.noDeliveryCount||0,"Pedidos identificados")+
+      '</div><div class="grid2" style="margin-top:14px"><article class="panel"><h3>Composición de esperas especiales</h3>'+
+      v232BarChart([
+        {label:"Novedades",value:w.novelty||0,cls:"warn"},
+        {label:"Reprocesos",value:w.rework||0,cls:"bad"},
+        {label:"No entregas",value:w.noDelivery||0,cls:"warn"}
+      ],function(x){return x.value;},function(x){return x.label;},function(x){return v225Time(x.value);},function(x){return x.cls;})+
+      '</article><article class="panel"><h3>Registros principales</h3>'+
+      v232Rows(["Pedido","Categoría","Área","Duración"],(w.all||[]).slice(0,12).map(function(x){
+        return '<tr><td>'+esc(x.pedido)+'</td><td>'+esc(x.category)+'</td><td>'+esc(v225AreaLabel(x.area))+'</td><td>'+esc(v225Time(x.duration||0))+'</td></tr>';
+      }))+'</article></div></section>';
+  }
+
+  if(meta.includeAlerts){
+    body+='<section class="section"><h2>7. Alertas y riesgos prioritarios</h2>'+
+      v232Rows(["Prioridad","Pedido","Proceso","Hallazgo","Acción sugerida"],(m.alertRows||[]).slice(0,25).map(function(x){
+        return '<tr><td>'+(x.severity==="bad"?"Alta":"Media")+'</td><td>'+esc(x.pedido||"")+'</td><td>'+esc(x.proceso||"")+'</td><td>'+esc(x.detalle||"")+'</td><td>'+esc(x.accion||"")+'</td></tr>';
+      }))+'</section>';
+  }
+
+  body+='<section class="section"><h2>8. Recomendaciones</h2><ul>'+analysis.recommendations.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul></section>';
+
+  if(meta.includeActionPlan){
+    body+='<section class="section"><h2>9. Plan de acción propuesto</h2>'+
+      v232Rows(["Prioridad","Situación","Acción","Responsable sugerido","Meta"],analysis.actions.map(function(x){
+        return '<tr><td class="priority '+esc(x.priority)+'">'+esc(x.priority)+'</td><td>'+esc(x.issue)+'</td><td>'+esc(x.action)+'</td><td>'+esc(x.owner)+'</td><td>'+esc(x.target)+'</td></tr>';
+      }))+'</section>';
+  }
+
+  if(meta.includeOrders){
+    var critical=(m.wipRows||[]).slice(0,mode==="excel"?500:50);
+    body+='<section class="section page-break"><h2>10. Anexo de pedidos críticos</h2>'+
+      v232Rows(["Pedido","OC","Cliente","Proceso","Responsable","Tiempo en proceso","Meta","Estado","Bloqueo","Próxima acción"],critical.map(function(x){
+        return '<tr><td><strong>'+esc(x.pedido)+'</strong></td><td>'+esc(x.oc)+'</td><td>'+esc(x.cliente)+'</td><td>'+esc(x.processLabel)+'</td><td>'+esc(x.responsable)+'</td><td>'+esc(v225Time(x.age||0))+'</td><td>'+Number(x.slaHours||0)+' h</td><td>'+(x.late?"Fuera de meta":"Dentro de meta")+'</td><td>'+esc(x.blocker||"")+'</td><td>'+esc(x.next||"")+'</td></tr>';
+      }))+'</section>';
+  }
+
+  if(meta.includeMethodology){
+    body+='<section class="section"><h2>11. Metodología, fórmulas y fuentes</h2>'+
+      v232Rows(["Elemento","Criterio aplicado"],[
+        '<tr><td>Jornada laboral</td><td>07:00–12:00 y 13:40–17:30; se excluyen sábados, domingos y festivos colombianos cargados.</td></tr>',
+        '<tr><td>Lead Time</td><td>Tiempo laboral desde el inicio del pedido o etapa hasta su cierre o corte de análisis.</td></tr>',
+        '<tr><td>P50 / P90</td><td>P50 es la mediana; P90 representa el tiempo bajo el cual termina el 90% de los casos.</td></tr>',
+        '<tr><td>Trabajo directo</td><td>Actividad registrada o inferida mediante eventos operativos; no incluye las intervenciones del Super Admin.</td></tr>',
+        '<tr><td>Reproceso</td><td>Exceso sobre la meta cuando el pedido regresa a Ventas u otra etapa por corrección, diferencia, rechazo o no conformidad.</td></tr>',
+        '<tr><td>No entrega</td><td>Desde la confirmación mediante noDelivery, noDeliveryReports, requirementType=no_entrega o NO_DELIVERY_* hasta solución o cierre.</td></tr>',
+        '<tr><td>Índice compuesto</td><td>30% cumplimiento, 25% confiabilidad, 20% WIP en meta, 10% cobertura de trazabilidad, 7,5% no entregas y 7,5% reprocesos.</td></tr>',
+        '<tr><td>Fuentes</td><td>cases, case_events, reportes_novedad, processStats, requirements, openRequirement, noDeliveryReports, stateHistory y flowTrace.</td></tr>'
+      ])+'</section>';
+  }
+
+  body+='<section class="section"><h2>Conclusión</h2><p class="lead">'+esc(analysis.scoreState.text)+' El seguimiento debe concentrarse en '+esc((analysis.lowestCompliance.label||"los procesos con menor cumplimiento"))+', el WIP fuera de meta y la mejora de la confiabilidad de los registros.</p></section>'+
+    '<footer class="footer">Elaborado por '+esc(meta.author)+' · '+esc(meta.position)+' · '+esc(meta.department)+' · '+esc(meta.confidentiality)+' · '+esc(meta.generatedAt.toLocaleString("es-CO"))+'</footer>';
+  return body;
+}
+function v232FullReportHtml(meta,analysis,mode){
+  return '<!doctype html><html><head><meta charset="utf-8"><title>'+esc(meta.title)+'</title><style>'+v232ReportCss()+'</style></head><body><main class="report">'+v232ReportBody(meta,analysis,mode)+'</main></body></html>';
+}
+async function v232LoadPdfLibraries(){
+  if(!window.html2canvas){
+    await loadOne([
+      "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+      "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
+      "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
+    ],function(){return !!window.html2canvas;},"html2canvas");
+  }
+  if(!(window.jspdf&&window.jspdf.jsPDF)){
+    await loadOne([
+      "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js",
+      "https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"
+    ],function(){return !!(window.jspdf&&window.jspdf.jsPDF);},"jsPDF");
+  }
+}
+function v232OpenPrintFallback(meta,analysis){
+  var win=window.open("","_blank");
+  if(!win)throw new Error("El navegador bloqueó la ventana de impresión. Habilite las ventanas emergentes.");
+  win.document.open();
+  win.document.write(v232FullReportHtml(meta,analysis,"pdf"));
+  win.document.close();
+  setTimeout(function(){try{win.focus();win.print();}catch(e){}},900);
+}
+async function v232GeneratePdf(meta,analysis){
+  var host=document.createElement("div");
+  host.style.cssText="position:fixed;left:-12000px;top:0;width:794px;background:#fff;z-index:-1";
+  host.innerHTML='<style>'+v232ReportCss()+'</style><main class="report">'+v232ReportBody(meta,analysis,"pdf")+'</main>';
+  document.body.appendChild(host);
+  try{
+    await v232LoadPdfLibraries();
+    var PDF=window.jspdf.jsPDF;
+    var pdf=new PDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});
+    await pdf.html(host,{
+      x:18,y:18,width:559,windowWidth:794,autoPaging:"text",
+      html2canvas:{scale:.75,useCORS:true,backgroundColor:"#ffffff",logging:false}
+    });
+    pdf.save(v232FileName(meta,"pdf"));
+  }catch(e){
+    console.warn("[V232 Informe] PDF directo no disponible, se usa impresión.",e);
+    v232OpenPrintFallback(meta,analysis);
+    status("Se abrió la versión imprimible. Seleccione «Guardar como PDF» en el diálogo de impresión.","ok");
+  }finally{
+    try{host.remove();}catch(e){}
+  }
+}
+function v232GenerateExcel(meta,analysis){
+  var html=v232FullReportHtml(meta,analysis,"excel");
+  var blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=v232FileName(meta,"xls");
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1200);
+}
+async function v232GenerateReport(meta){
+  if(!app.metrics)await refresh();
+  var analysis=v232Analyze(meta);
+  loading(true,"Construyendo diagnóstico, gráficas y plan de acción...");
+  try{
+    if(meta.format==="excel")v232GenerateExcel(meta,analysis);
+    else if(meta.format==="pdf")await v232GeneratePdf(meta,analysis);
+    else{
+      v232GenerateExcel(meta,analysis);
+      await sleep(350);
+      await v232GeneratePdf(meta,analysis);
+    }
+    v232CloseReportModal();
+    status("Informe inteligente generado correctamente para "+analysis.m.cases+" pedido(s) trazados.","ok");
+  }finally{
+    loading(false);
+  }
+}
+function bind(){
+  bindV232Base();
+  $("btnSmartReport").onclick=v232OpenReportModal;
+  $("btnCloseSmartReport").onclick=v232CloseReportModal;
+  $("btnCancelSmartReport").onclick=v232CloseReportModal;
+  $("smartReportModal").addEventListener("click",function(e){
+    if(e.target===$("smartReportModal"))v232CloseReportModal();
+  });
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"&&$("smartReportModal").classList.contains("show"))v232CloseReportModal();
+  });
+  $("smartReportForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    try{
+      var meta=v232CollectMeta();
+      v232GenerateReport(meta).catch(function(err){
+        loading(false);
+        status("Error generando informe: "+esc(err.message||err),"bad");
+      });
+    }catch(err){
+      status("No se pudo generar el informe: "+esc(err.message||err),"bad");
+    }
+  });
 }
 
 function bindBase(){['fFrom','fTo','fProcess','fStatus','fOrderType','fUser','fView'].forEach(function(id){$(id).addEventListener('change',function(){refresh().catch(function(e){loading(false);status('Error recalculando: '+esc(e.message||e),'bad');});});});$('fSearch').addEventListener('input',function(){clearTimeout(window.__vsmSearch);window.__vsmSearch=setTimeout(function(){refresh().catch(function(e){loading(false);status('Error filtrando: '+esc(e.message||e),'bad');});},250);});$('btnLoad').onclick=function(){loadCases(false).catch(function(e){loading(false);status('Error cargando datos: '+esc(e.message||e),'bad');});};$('btnLoadAll').onclick=function(){loadCases(true).catch(function(e){loading(false);status('Error cargando histórico: '+esc(e.message||e),'bad');});};$('btnExport').onclick=function(){exportExcel().catch(function(e){loading(false);status('Error exportando Excel: '+esc(e.message||e),'bad');});};if($('btnReset'))$('btnReset').onclick=resetVsmFilters;}

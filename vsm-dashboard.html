@@ -156,6 +156,58 @@
       .wait-detail-row{grid-template-columns:1fr}
     }
 
+  
+    .btn.report{background:linear-gradient(135deg,#f2b705,#ffd85e);color:#111827}
+    .report-modal{
+      position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;
+      padding:18px;background:rgba(2,12,35,.72);backdrop-filter:blur(7px)
+    }
+    .report-modal.show{display:flex}
+    .report-dialog{
+      width:min(1040px,100%);max-height:94vh;overflow:auto;background:#fff;border-radius:26px;
+      box-shadow:0 32px 90px rgba(0,0,0,.34);border:1px solid #dbe4f0
+    }
+    .report-head{
+      position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;gap:16px;
+      padding:19px 22px;background:linear-gradient(135deg,#061b46,#0f2d5c);color:#fff
+    }
+    .report-head h2{margin:0;font-size:1.2rem}.report-head p{margin:5px 0 0;font-size:.78rem;opacity:.86}
+    .report-close{width:40px;height:40px;border:0;border-radius:12px;background:rgba(255,255,255,.13);color:#fff;font-size:1.3rem;cursor:pointer}
+    .report-body{padding:20px 22px}
+    .report-scope{
+      padding:12px 14px;border-radius:15px;background:#eff6ff;border:1px solid #bfdbfe;
+      color:#1e3a8a;font-size:.8rem;line-height:1.45;margin-bottom:15px
+    }
+    .report-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+    .report-field{display:block;min-width:0}
+    .report-field.full{grid-column:1/-1}
+    .report-field span{display:block;margin-bottom:6px;color:#475569;font-size:.72rem;font-weight:900}
+    .report-field input,.report-field select,.report-field textarea{
+      width:100%;border:1px solid #d8e2ef;border-radius:13px;background:#fff;color:#102033;
+      padding:10px 11px;min-height:44px;outline:none
+    }
+    .report-field textarea{min-height:82px;resize:vertical;line-height:1.45}
+    .report-field input:focus,.report-field select:focus,.report-field textarea:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+    .report-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:13px}
+    .report-check{
+      display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid #e2e8f0;
+      border-radius:13px;background:#f8fafc;font-size:.75rem;color:#334155;line-height:1.35
+    }
+    .report-check input{margin-top:2px}
+    .report-foot{
+      position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:12px;
+      padding:15px 22px;background:#fff;border-top:1px solid #e2e8f0
+    }
+    .report-foot small{color:#64748b;line-height:1.35}
+    .report-foot-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .report-required{color:#dc2626}
+    @media(max-width:760px){
+      .report-modal{padding:6px}.report-dialog{max-height:98vh;border-radius:18px}
+      .report-form-grid,.report-options{grid-template-columns:1fr}
+      .report-foot{display:block}.report-foot-actions{margin-top:10px}
+      .report-foot-actions .btn{width:100%}
+    }
+
   </style>
 </head>
 <body>
@@ -168,6 +220,7 @@
       <div class="actions">
         <button class="btn primary" id="btnLoad">Actualizar datos</button>
         <button class="btn" id="btnLoadAll">Cargar histórico</button>
+        <button class="btn report" id="btnSmartReport">Generar informe</button>
         <button class="btn dark" id="btnExport" disabled>Exportar Excel</button>
       </div>
     </section>
@@ -277,8 +330,106 @@
     <div class="section-head"><h2 id="tableTitle">Resultados operativos</h2><span id="rowCount"></span></div>
     <section class="results-wrap"><div id="mainTable"></div></section>
 
-    <p class="footer">V231 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
+    <p class="footer">V232 · Centro operativo VSM. La exactitud depende de las marcas de entrada, inicio, espera y cierre registradas por cada proceso. Los tiempos se normalizan sobre la jornada laboral definida.</p>
   </main>
-  <script src="./vsm-dashboard.js?v=231"></script>
+  <script src="./vsm-dashboard.js?v=232"></script>
+
+  <div class="report-modal" id="smartReportModal" aria-hidden="true">
+    <section class="report-dialog" role="dialog" aria-modal="true" aria-labelledby="smartReportTitle">
+      <header class="report-head">
+        <div>
+          <h2 id="smartReportTitle">Generador de informes inteligentes</h2>
+          <p>El análisis se construirá con los datos, filtros y métricas visibles en el VSM.</p>
+        </div>
+        <button class="report-close" id="btnCloseSmartReport" type="button" aria-label="Cerrar">×</button>
+      </header>
+
+      <form id="smartReportForm">
+        <div class="report-body">
+          <div class="report-scope" id="smartReportScope">Alcance actual del tablero.</div>
+
+          <div class="report-form-grid">
+            <label class="report-field">
+              <span>Nombre de quien elabora <b class="report-required">*</b></span>
+              <input id="reportAuthor" name="reportAuthor" required maxlength="100" autocomplete="name">
+            </label>
+            <label class="report-field">
+              <span>Cargo <b class="report-required">*</b></span>
+              <input id="reportPosition" name="reportPosition" required maxlength="100">
+            </label>
+            <label class="report-field">
+              <span>Área responsable <b class="report-required">*</b></span>
+              <input id="reportDepartment" name="reportDepartment" required maxlength="100" placeholder="Ej. Calidad y Mejoramiento Continuo">
+            </label>
+            <label class="report-field">
+              <span>Dirigido a <b class="report-required">*</b></span>
+              <input id="reportAudience" name="reportAudience" required maxlength="140" placeholder="Ej. Dirección de Operaciones">
+            </label>
+            <label class="report-field">
+              <span>Tipo de informe <b class="report-required">*</b></span>
+              <select id="reportType" name="reportType" required>
+                <option value="ejecutivo">Ejecutivo para toma de decisiones</option>
+                <option value="operativo">Seguimiento operativo detallado</option>
+                <option value="productividad">Productividad por área y actor</option>
+                <option value="auditoria">Auditoría y confiabilidad</option>
+                <option value="comite">Comité de seguimiento</option>
+              </select>
+            </label>
+            <label class="report-field">
+              <span>Formato <b class="report-required">*</b></span>
+              <select id="reportFormat" name="reportFormat" required>
+                <option value="pdf">PDF</option>
+                <option value="excel">Excel</option>
+                <option value="both">PDF y Excel</option>
+              </select>
+            </label>
+            <label class="report-field full">
+              <span>Título del informe <b class="report-required">*</b></span>
+              <input id="reportDocumentTitle" name="reportDocumentTitle" required maxlength="160" value="Informe analítico de desempeño operativo VSM">
+            </label>
+            <label class="report-field full">
+              <span>Objetivo del informe <b class="report-required">*</b></span>
+              <textarea id="reportObjective" name="reportObjective" required maxlength="700">Analizar el desempeño del flujo operativo, los tiempos laborales, el cumplimiento, la productividad, la confiabilidad y las oportunidades de mejora para apoyar la toma de decisiones.</textarea>
+            </label>
+            <label class="report-field">
+              <span>Clasificación</span>
+              <select id="reportConfidentiality" name="reportConfidentiality">
+                <option value="Uso interno">Uso interno</option>
+                <option value="Confidencial">Confidencial</option>
+                <option value="Comité directivo">Comité directivo</option>
+                <option value="Auditoría">Auditoría</option>
+              </select>
+            </label>
+            <label class="report-field">
+              <span>Nombre del periodo o corte</span>
+              <input id="reportPeriodName" name="reportPeriodName" maxlength="100" placeholder="Ej. Seguimiento mensual julio 2026">
+            </label>
+            <label class="report-field full">
+              <span>Observaciones o contexto adicional</span>
+              <textarea id="reportNotes" name="reportNotes" maxlength="900" placeholder="Situaciones del periodo, decisiones anteriores, restricciones o aspectos que deban quedar documentados."></textarea>
+            </label>
+          </div>
+
+          <div class="report-options">
+            <label class="report-check"><input type="checkbox" id="reportIncludeOrders" checked> <span>Incluir anexo de pedidos y casos críticos.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeActors" checked> <span>Incluir productividad por actor, excluyendo Super Admin.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeMethodology" checked> <span>Incluir fórmulas, fuentes y metodología.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeActionPlan" checked> <span>Generar plan de acción priorizado.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeAlerts" checked> <span>Incluir alertas, riesgos y pedidos críticos.</span></label>
+            <label class="report-check"><input type="checkbox" id="reportIncludeWaits" checked> <span>Incluir novedades, reprocesos y no entregas.</span></label>
+          </div>
+        </div>
+
+        <footer class="report-foot">
+          <small>Los datos se toman del tablero con los filtros actuales. El informe no modifica Firebase.</small>
+          <div class="report-foot-actions">
+            <button class="btn soft" id="btnCancelSmartReport" type="button">Cancelar</button>
+            <button class="btn report" id="btnGenerateSmartReport" type="submit">Generar informe</button>
+          </div>
+        </footer>
+      </form>
+    </section>
+  </div>
+
 </body>
 </html>
