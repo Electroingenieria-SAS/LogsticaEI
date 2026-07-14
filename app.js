@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v239-corte-no-disponible-envio-parcial";
+var EI_CANONICAL_APP_VERSION = "v240-alistamiento-visible-corte-no-disponible";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -5640,7 +5640,7 @@ function orderItemsPanel(c){
   var pdfLink=(c.documentFlow&&c.documentFlow.receptionPdfDriveUrl)?'<a class="btn btn-small" href="'+esc(c.documentFlow.receptionPdfDriveUrl)+'" target="_blank" rel="noopener">Abrir PDF del pedido</a>':'';
   if(!items.length)return c.currentProcess==="recepcion_pedidos"?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3><div class="empty">Pendiente cargar PDF en Recepción de pedidos.</div></section>':(pdfLink?'<section class="card" style="margin-top:16px"><h3>Documento del pedido</h3>'+pdfLink+'</section>':"");
   var html='<section class="card" style="margin-top:16px"><div class="section-title"><div><h3>Líneas del pedido validadas</h3><p>Vista limpia de las líneas extraídas del PDF. Solo se muestran los datos operativos necesarios: referencia, descripción, cantidad, unidad de medida y ubicación. Recepción puede corregirlos antes de enviar a alistamiento.</p></div>'+pdfLink+'</div><div class="table-wrap"><table><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Decisión recepción</th><th>Destino</th></tr></thead><tbody>'+items.map(function(it){var decision=it.posibleCorte?(it.requiereCorte?"Enviar a corte":"No cortar · carreto completo"):"No aplica";return'<tr><td>'+esc(it.referencia||'')+'</td><td>'+esc(it.descripcion||'')+'</td><td>'+esc(it.cantidad||'')+'</td><td>'+esc(it.unidad||'')+'</td><td>'+esc(it.ubicacion||'')+'</td><td>'+esc(decision)+'</td><td>'+esc(it.requiereCorte?"Corte de cable":"Alistamiento")+'</td></tr>';}).join("")+'</tbody></table></div></section>';
-  if(c.currentProcess==="alistamiento")html+=alistamientoLineChecklistPanel(c,false);
+  if(v240ShouldShowAlistamientoPanel(c))html+=alistamientoLineChecklistPanel(c,false);
   return html;
 }
 function alistamientoStatusChip(st){
@@ -5651,7 +5651,7 @@ function alistamientoStatusChip(st){
 function alistamientoLineChecklistPanel(c, compact){
   var items=c.orderItems||[];
   if(!items.length)return '<section class="card" style="margin-top:16px"><h3>Lista marcable de alistamiento</h3><div class="empty">No hay líneas leídas del PDF. Recepción debe cargar, leer y validar el PDF antes de alistar.</div></section>';
-  var canMark=c.status==="en_proceso" && c.currentProcess==="alistamiento" && canOperateCurrentProcess(c);
+  var canMark=v240CanMarkAlistamiento(c);
   var rows=items.map(function(it,i){
     var st=it.alistamientoStatus||'PENDIENTE';
     var note=it.alistamientoNote||it.alistamientoNoveltyDetail||'';
@@ -5665,7 +5665,7 @@ function alistamientoLineChecklistPanel(c, compact){
   var readyBilling=canMark && total>0 && found===total && pending===0 && novelty===0 && cutsOk;
   var finishAction=readyBilling?'<button class="btn btn-success" data-action="alistToBilling" data-id="'+esc(c.id)+'">Finalizar alistamiento y enviar a facturación</button>':'';
   var pendingCutNotice=(!cutsOk)?'<div class="notice warning" style="margin-top:12px"><strong>Cortes pendientes:</strong> el pedido tiene '+esc(cd.done)+'/'+esc(cd.total)+' cortes finalizados. Facturación se habilita cuando Corte quede completo.</div>':'';
-  return '<section class="card alistamiento-check-panel" style="margin-top:16px"><div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada referencia validada desde el PDF. Si una línea tiene novedad o no se encuentra, se envía solicitud al líder/coordinador logístico unificado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla reforzada:</strong> el pedido solo avanza a facturación cuando las líneas quedan guardadas como encontradas, sin novedades pendientes y con cortes finalizados si aplica. El envío a facturación revalida Firebase antes de cambiar la etapa.</div>'+pendingCutNotice+(canMark?'<div class="top-actions" style="margin-top:12px">'+finishAction+'<button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
+  var parallelNotice=c.currentProcess==="corte_cable"?'<div class="notice" style="margin-bottom:12px"><strong>Alistamiento paralelo:</strong> el pedido está temporalmente en Corte, pero las demás referencias pueden seguir marcándose como Encontrado o No encontrado.</div>':'';  return '<section class="card alistamiento-check-panel" style="margin-top:16px">'+parallelNotice+'<div class="section-title"><div><h3>Lista marcable de alistamiento</h3><p>Marque cada referencia validada desde el PDF. Las líneas vinculadas a un corte no disponible se actualizan automáticamente como No encontrado.</p></div><span class="chip primary">'+found+'/'+total+' encontrados</span></div><div class="case-meta" style="margin-bottom:10px"><span>Pendientes: <strong>'+pending+'</strong></span><span>Novedades/no encontrados: <strong>'+novelty+'</strong></span></div><div class="table-wrap"><table><thead><tr><th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="notice" style="margin-top:12px"><strong>Regla reforzada:</strong> el pedido solo avanza a facturación cuando las líneas quedan guardadas como encontradas, sin novedades pendientes y con cortes finalizados si aplica. El envío a facturación revalida Firebase antes de cambiar la etapa.</div>'+pendingCutNotice+(canMark?'<div class="top-actions" style="margin-top:12px">'+finishAction+'<button class="btn btn-success" data-action="alistPartial" data-id="'+esc(c.id)+'">Crear envío parcial con lo disponible</button></div>':'')+'</section>';
 }
 function refreshAlistamientoChecklist(c){
   applyAlistamientoAutoChecklist(c);
@@ -7707,7 +7707,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V239</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V240</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -14729,6 +14729,285 @@ document.addEventListener("click",function(e){
     ".v239-cut-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.v239-cut-actions .btn{margin:0}"+
     ".v239-unavailable-note{margin-top:7px;padding:8px 9px;border:1px solid #fecaca;border-radius:11px;background:#fff5f5;color:#7f1d1d;line-height:1.35}.v239-unavailable-note strong,.v239-unavailable-note span,.v239-unavailable-note small{display:block}.v239-unavailable-note strong{font-size:.72rem}.v239-unavailable-note span{margin-top:3px;font-size:.68rem}.v239-unavailable-note small{margin-top:3px;color:#991b1b;font-size:.63rem}"+
     "@media(max-width:790px){.v239-cut-actions{display:grid;grid-template-columns:1fr 1fr}.v239-cut-actions .btn{width:100%;min-height:44px}.v239-unavailable-note{margin-bottom:8px}}";
+  document.head.appendChild(style);
+})();
+
+
+
+/* ============================================================
+   V240 · RESTAURACIÓN DEL MARCABLE DE ALISTAMIENTO
+   - Visible durante Alistamiento y mientras el pedido está en Corte.
+   - Corte no disponible marca la línea como NO_ENCONTRADO.
+   - Retomar corte devuelve la línea a PENDIENTE.
+   - Reconexión segura después de una caída del canal Firestore.
+============================================================ */
+function v240ShouldShowAlistamientoPanel(c){
+  if(!c||!(c.orderItems||[]).length)return false;
+  if(c.currentProcess==="alistamiento"||c.currentProcess==="corte_cable")return true;
+  if(c.cutUnavailableOpen===true)return true;
+  return (c.cutRequests||[]).some(function(cut){
+    return v239IsCutUnavailable(cut);
+  });
+}
+function v240AlistamientoOperationalRole(){
+  var role=normalizeRole(state.user&&state.user.role);
+  return [
+    "aux_logistica",
+    "coordinador_logistico",
+    "lider_logistico",
+    "jefe_logistica",
+    "logistica_despacho",
+    "admin",
+    "super_admin",
+    "super_administrador"
+  ].indexOf(role)>=0;
+}
+function v240CanMarkAlistamiento(c){
+  if(!state.user||!c||c.closedAt)return false;
+  if(isAdminRoleValue(state.user.role))return true;
+  if(!v240AlistamientoOperationalRole())return false;
+
+  if(c.currentProcess==="alistamiento"){
+    return canOperateCurrentProcess(c) || canAccessProcess(state.user.role,"alistamiento");
+  }
+
+  /* Mientras Corte trabaja, Alistamiento puede validar las demás líneas en paralelo. */
+  if(c.currentProcess==="corte_cable"){
+    return true;
+  }
+
+  return c.cutUnavailableOpen===true;
+}
+function v240SameCutLine(cut,it){
+  if(!cut||!it)return false;
+  var cutSource=String(cut.sourceLineId||cut.lineId||"").trim();
+  var itemId=String(it.id||it.lineId||it.sourceLineId||"").trim();
+  if(cutSource&&itemId&&cutSource===itemId)return true;
+
+  var cutRef=normalizeRefText(cut.referencia||"");
+  var itemRef=normalizeRefText(it.referencia||"");
+  if(cutRef&&itemRef&&cutRef===itemRef)return true;
+
+  var cutDesc=normalizeRefText(cut.descripcion||"");
+  var itemDesc=normalizeRefText(it.descripcion||"");
+  return !!(cutDesc&&itemDesc&&cutDesc===itemDesc);
+}
+function v240CutOrderLines(c,cut){
+  return (c&&c.orderItems||[]).filter(function(it){
+    return v240SameCutLine(cut,it);
+  });
+}
+function v240MarkCutLineUnavailableInMemory(c,cut,reason,detail,incidentId){
+  var stamp=now();
+  var lines=v240CutOrderLines(c,cut);
+  lines.forEach(function(it){
+    it.alistamientoStatus="NO_ENCONTRADO";
+    it.alistamientoNote="Corte no disponible: "+reason+". "+detail;
+    it.alistamientoUpdatedAt=stamp;
+    it.alistamientoUpdatedBy=state.user?state.user.name:"";
+    it.alistamientoNoveltyReason=reason;
+    it.alistamientoNoveltyDetail=detail;
+    it.estado="NOVEDAD_ALISTAMIENTO";
+    it.encontrado=false;
+    it.cutUnavailableIncidentId=incidentId||"";
+    it.cutUnavailableCutId=cut.id;
+    it.cutUnavailableAt=stamp;
+    it.cutUnavailableByName=state.user?state.user.name:"";
+  });
+  if(lines.length)refreshAlistamientoChecklist(c);
+  return lines.length;
+}
+function v240ResetCutLinePendingInMemory(c,cut){
+  var stamp=now();
+  var lines=v240CutOrderLines(c,cut);
+  lines.forEach(function(it){
+    if(
+      it.alistamientoStatus==="NO_ENCONTRADO" &&
+      (!it.cutUnavailableCutId || String(it.cutUnavailableCutId)===String(cut.id))
+    ){
+      it.alistamientoStatus="PENDIENTE";
+      it.alistamientoNote="Corte retomado; pendiente finalizar y registrar para validar la referencia.";
+      it.alistamientoUpdatedAt=stamp;
+      it.alistamientoUpdatedBy=state.user?state.user.name:"";
+      it.alistamientoNoveltyReason="";
+      it.alistamientoNoveltyDetail="";
+      it.estado="PENDIENTE_CORTE";
+      it.encontrado=false;
+      it.cutUnavailableResumedAt=stamp;
+      it.cutUnavailableResumedByName=state.user?state.user.name:"";
+    }
+  });
+  if(lines.length)refreshAlistamientoChecklist(c);
+  return lines.length;
+}
+
+/* Reemplazo puntual: permite guardar marcas aunque el pedido esté temporalmente en Corte. */
+var v240LegacyMarkAlistamientoItem=markAlistamientoItem;
+markAlistamientoItem=function(id,idx,status,detail,reason,lineKey){
+  var fallback=caseById(id);
+  if(!fallback)return Promise.resolve(false);
+
+  if(fallback.currentProcess!=="corte_cable"){
+    return v240LegacyMarkAlistamientoItem(id,idx,status,detail,reason,lineKey);
+  }
+
+  if(!v240CanMarkAlistamiento(fallback)){
+    alert("No tiene permiso para marcar las líneas de Alistamiento.");
+    return Promise.resolve(false);
+  }
+
+  state.alistamientoSavingLocks=state.alistamientoSavingLocks||{};
+  var lockKey=["parallel",id,lineKey||idx,status].join("_");
+  if(state.alistamientoSavingLocks[lockKey])return Promise.resolve(false);
+  state.alistamientoSavingLocks[lockKey]=true;
+
+  return loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)return false;
+    if(c.currentProcess!=="corte_cable"&&c.currentProcess!=="alistamiento"){
+      alert("El pedido ya no está disponible para marcar en Alistamiento.");
+      return false;
+    }
+    var items=c.orderItems||[];
+    var pos=locateAlistamientoLine(items,idx,lineKey);
+    if(pos<0){
+      alert("No se encontró la línea del pedido. Actualice la vista y vuelva a intentar.");
+      return false;
+    }
+    var it=items[pos];
+    it.alistamientoStatus=status;
+    it.alistamientoNote=detail||"";
+    it.alistamientoUpdatedAt=now();
+    it.alistamientoUpdatedBy=state.user?state.user.name:"";
+
+    if(status==="ENCONTRADO"){
+      it.estado=it.requiereCorte?"PENDIENTE_CORTE":"ALISTADO";
+      it.encontrado=true;
+      it.encontradoAt=it.alistamientoUpdatedAt;
+      it.encontradoPor=it.alistamientoUpdatedBy;
+      it.alistamientoNoveltyReason="";
+      it.alistamientoNoveltyDetail="";
+    }else if(status==="PENDIENTE"){
+      it.estado=it.requiereCorte?"PENDIENTE_CORTE":"PENDIENTE_ALISTAMIENTO";
+      it.encontrado=false;
+      it.alistamientoNoveltyReason="";
+      it.alistamientoNoveltyDetail="";
+    }else{
+      it.estado="NOVEDAD_ALISTAMIENTO";
+      it.encontrado=false;
+      it.alistamientoNoveltyReason=reason||status;
+      it.alistamientoNoveltyDetail=detail||"";
+    }
+
+    refreshAlistamientoChecklist(c);
+    var eventType=status==="ENCONTRADO"
+      ?"ALISTAMIENTO_ITEM_FOUND_PARALLEL"
+      :(status==="PENDIENTE"?"ALISTAMIENTO_ITEM_PENDING_PARALLEL":"ALISTAMIENTO_ITEM_NOVELTY_PARALLEL");
+
+    return persistCase(c,{
+      type:eventType,
+      detail:(it.referencia||"")+" · "+(it.descripcion||"")+" · "+(detail||status)+" · marcado mientras Corte continúa.",
+      targetRole:(status==="ENCONTRADO"||status==="PENDIENTE")?"aux_logistica":"coordinador_logistico",
+      visibleRoles:["aux_logistica","coordinador_logistico","lider_logistico","jefe_logistica","auxiliar_corte","admin","super_admin","super_administrador"]
+    }).then(function(){
+      renderDetail(id);
+      return true;
+    });
+  }).catch(function(e){
+    showError((e&&e.message)||e||"No fue posible guardar la marca de alistamiento.");
+    return false;
+  }).then(function(ok){
+    state.alistamientoSavingLocks[lockKey]=false;
+    return ok;
+  });
+};
+
+/* Se ejecuta antes de crear el parcial para que la línea quede visible como No encontrado. */
+var v240LegacyPreparePartialShipment=v239PreparePartialShipment;
+v239PreparePartialShipment=function(c,selected,reason,incidentId){
+  return v240LegacyPreparePartialShipment(c,selected,reason,incidentId);
+};
+
+/* Inserción dentro del envío de no disponibilidad. */
+var v240LegacySubmitCutUnavailable=v239SubmitCutUnavailable;
+v239SubmitCutUnavailable=function(c,cut,fd,candidates){
+  var reason=String(fd.get("reason")||"").trim();
+  var detail=String(fd.get("detail")||"").trim();
+  if(reason&&detail){
+    var incidentId=cut.unavailableIncidentId||uid("CUTNDLINE");
+    v240MarkCutLineUnavailableInMemory(c,cut,reason,detail,incidentId);
+  }
+  return v240LegacySubmitCutUnavailable(c,cut,fd,candidates);
+};
+
+/* Al retomar, la línea vuelve a Pendiente para no quedar bloqueada como novedad. */
+var v240LegacyResumeUnavailableCut=v239ResumeUnavailableCut;
+v239ResumeUnavailableCut=function(id,cutId){
+  var c=caseById(id);
+  var cut=c?findCut(c,cutId):null;
+  if(c&&cut)v240ResetCutLinePendingInMemory(c,cut);
+  return v240LegacyResumeUnavailableCut(id,cutId);
+};
+
+/* Fuerza la presencia del panel en la vista de detalle y dentro del popup. */
+var v240LegacyOpenAlistamientoChecklist=openAlistamientoChecklist;
+openAlistamientoChecklist=function(id){
+  var c=caseById(id);
+  if(!c)return;
+  drawer(modal(
+    "Lista marcable de alistamiento",
+    alistamientoLineChecklistPanel(c,true)+
+    '<div style="margin-top:14px"><button class="btn" data-action="closeDrawer">Cerrar</button></div>'
+  ));
+};
+
+/* Reconexión no destructiva para errores WebChannel / ERR_CONNECTION_RESET. */
+var v240ReconnectTimer=null;
+function v240ReconnectFirestore(reason){
+  if(v240ReconnectTimer)clearTimeout(v240ReconnectTimer);
+  v240ReconnectTimer=setTimeout(function(){
+    v240ReconnectTimer=null;
+    if(!db||!firebaseReady||!state.user||navigator.onLine===false)return;
+    Promise.resolve()
+      .then(function(){
+        try{
+          var result=db.enableNetwork();
+          return result&&typeof result.then==="function"?result:Promise.resolve();
+        }catch(e){
+          return Promise.resolve();
+        }
+      })
+      .then(function(){return loadData();})
+      .then(function(){
+        if(state.detailId)renderDetail(state.detailId);
+        else renderAfterLiveChange();
+        cleanupProtectedToast();
+      })
+      .catch(function(e){
+        console.warn("[V240] Reconexión Firestore pendiente",reason,e);
+      });
+  },900);
+}
+window.addEventListener("online",function(){
+  showLiveToast("Conexión recuperada","Sincronizando nuevamente con Firebase.",false);
+  v240ReconnectFirestore("online");
+});
+window.addEventListener("offline",function(){
+  showLiveToast("Sin conexión","La vista actual permanece disponible. Los datos se sincronizarán al recuperar internet.",false);
+});
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="visible"&&navigator.onLine!==false){
+    v240ReconnectFirestore("visible");
+  }
+});
+
+/* Estilos móviles para que los cuatro marcables permanezcan visibles. */
+(function v240InjectStyles(){
+  if(document.getElementById("v240-alistamiento-css"))return;
+  var style=document.createElement("style");
+  style.id="v240-alistamiento-css";
+  style.textContent=
+    ".alistamiento-check-panel .row-actions{display:flex;gap:5px;flex-wrap:wrap}.alistamiento-check-panel .row-actions .btn{margin:0}"+
+    "@media(max-width:790px){.alistamiento-check-panel .table-wrap{overflow:visible}.alistamiento-check-panel table,.alistamiento-check-panel thead,.alistamiento-check-panel tbody,.alistamiento-check-panel tr,.alistamiento-check-panel td{display:block;width:100%}.alistamiento-check-panel thead{display:none}.alistamiento-check-panel tr{margin:0 0 12px;padding:12px;border:1px solid #dbe7f3;border-radius:15px;background:#fff}.alistamiento-check-panel td{padding:4px 0;border:0}.alistamiento-check-panel .row-actions{display:grid;grid-template-columns:1fr 1fr;margin-top:8px}.alistamiento-check-panel .row-actions .btn{width:100%;min-height:42px}}";
   document.head.appendChild(style);
 })();
 
