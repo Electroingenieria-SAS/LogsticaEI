@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v238-corte-secuencial-referencia-rollos";
+var EI_CANONICAL_APP_VERSION = "v239-corte-no-disponible-envio-parcial";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -7689,14 +7689,14 @@ function renderCutsQueue(){
         return '<article class="ei191-cut-item">'+
           '<div class="ei191-cut-item-top">'+
             '<div class="ei191-order"><strong>'+esc(r.c.reference||r.cut.pedido||"")+'</strong><small>'+esc(r.c.client||"")+'</small></div>'+
-            '<div class="ei191-status">'+cutStatusChip(r.cut.status)+'</div>'+
+            '<div class="ei191-status">'+v239CutStatusChip(r.cut)+'</div>'+
           '</div>'+
           '<div class="ei191-cut-item-metrics">'+
             '<div><span>Código corte</span><b>'+esc(r.cut.code||r.cut.id||"")+'</b></div>'+
             '<div><span>Metros a cortar</span><b>'+esc(r.cut.metrosSolicitados||r.cut.metrajeFinal||"")+' m</b></div>'+
           '</div>'+
-          '<div class="ei191-cut-item-ref"><span>Referencia</span><strong>'+esc(r.cut.referencia||"")+'</strong><p>'+esc(r.cut.descripcion||"")+'</p></div>'+
-          '<button class="btn btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button>'+
+          '<div class="ei191-cut-item-ref"><span>Referencia</span><strong>'+esc(r.cut.referencia||"")+'</strong><p>'+esc(r.cut.descripcion||"")+'</p>'+v239UnavailableNoteHtml(r.cut)+'</div>'+
+          '<div class="v239-cut-actions"><button class="btn btn-primary" data-action="'+(v239IsCutUnavailable(r.cut)?"resumeUnavailableCut":"launchCut")+'" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?"Retomar corte":"Abrir corte")+'</button><button class="btn btn-danger" data-action="cutUnavailable" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?"Actualizar novedad":"Corte no disponible")+'</button></div>'+
         '</article>';
       }).join("");
       return '<details class="ei191-cut-group" open>'+
@@ -7707,7 +7707,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V238</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V239</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -7715,7 +7715,7 @@ function renderCutsQueue(){
 
   var groupHtml=Object.keys(groups).sort(function(a,b){return groups[b].meters-groups[a].meters;}).map(function(k){
     var g=groups[k];
-    var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join('');
+    var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+v239CutStatusChip(r.cut)+'</td><td><div class="v239-cut-actions"><button class="btn btn-small btn-primary" data-action="'+(v239IsCutUnavailable(r.cut)?'resumeUnavailableCut':'launchCut')+'" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?'Retomar corte':'Abrir corte')+'</button><button class="btn btn-small btn-danger" data-action="cutUnavailable" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?'Actualizar novedad':'Corte no disponible')+'</button></div>'+v239UnavailableNoteHtml(r.cut)+'</td></tr>';}).join('');
     return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y opere los cortes en secuencia desde un mismo rollo.<div class="top-actions" style="margin-top:10px"><button class="btn btn-success" data-action="startReferenceCuts" data-ref="'+esc(g.key)+'">Iniciar cortes por referencia</button></div></div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
   }).join('');
   layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Completa</strong><small>Misma lógica de PC</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
@@ -14258,6 +14258,477 @@ document.addEventListener("click",function(e){
     ".v238-roll-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v238-roll-metrics article{padding:10px;border:1px solid #dbe7f3;border-radius:14px;background:#fff}.v238-roll-metrics strong{display:block;color:#061b46;font-size:1rem;margin-top:4px}.v238-roll-actions{display:flex;justify-content:flex-end;margin-top:10px}.v238-locked{background:#eef4fa!important;font-weight:800!important;color:#061b46!important}"+
     ".v238-next-card{display:grid;grid-template-columns:1fr auto 1.25fr;align-items:center;gap:14px;padding:16px;margin:14px 0;border:1px solid #cfe0ef;border-radius:20px;background:linear-gradient(135deg,#f7fbff,#fff)}.v238-next-roll,.v238-next-cut{padding:13px;border-radius:15px;background:#fff;border:1px solid #e1e9f1}.v238-next-card strong{display:block;color:#061b46;font-size:1rem;margin:5px 0}.v238-next-card small{color:#64748b}.v238-next-arrow{font-size:1.7rem;color:#0b66c3;font-weight:900}"+
     "@media(max-width:790px){.v238-roll-title{display:block}.v238-roll-title b{display:inline-block;margin-top:8px}.v238-roll-metrics{grid-template-columns:1fr 1fr}.v238-roll-actions .btn{width:100%}.v238-next-card{grid-template-columns:1fr}.v238-next-arrow{transform:rotate(90deg);text-align:center}.drawer [data-cut-action='pauseCut']{order:2}.drawer [data-cut-action='finishCut']{order:3}.drawer [data-cut-action='registerCut']{order:4}}";
+  document.head.appendChild(style);
+})();
+
+
+
+/* ============================================================
+   V239 · CORTE NO DISPONIBLE + ENVÍO PARCIAL
+   - Botón paralelo a Abrir corte.
+   - Registra motivo y anotación.
+   - Envía a facturación las líneas realmente listas.
+   - Mantiene el corte pendiente para retomarlo después.
+   - Omite temporalmente el corte de la secuencia automática.
+============================================================ */
+function v239IsCutUnavailable(cut){
+  return !!(cut&&(
+    cut.availabilityStatus==="NO_DISPONIBLE"||
+    cut.status==="NO_DISPONIBLE_CORTE"||
+    cut.unavailableActive===true
+  ));
+}
+function v239CutStatusChip(cut){
+  if(v239IsCutUnavailable(cut)){
+    var partial=cut.unavailablePartialShipmentId?" · parcial":"";
+    return '<span class="chip danger">No disponible'+partial+'</span>';
+  }
+  return cutStatusChip(cut&&cut.status);
+}
+function v239UnavailableNoteHtml(cut){
+  if(!v239IsCutUnavailable(cut))return "";
+  var reason=cut.unavailableReason||"Corte temporalmente no disponible";
+  var detail=cut.unavailableDetail||"";
+  var when=cut.unavailableAt?fmtDate(cut.unavailableAt):"";
+  return '<div class="v239-unavailable-note"><strong>'+esc(reason)+'</strong>'+
+    (detail?'<span>'+esc(detail)+'</span>':'')+
+    (when?'<small>'+esc(when)+' · '+esc(cut.unavailableByName||"")+'</small>':'')+
+    (cut.unavailablePartialShipmentId?'<small>Envío parcial: '+esc(cut.unavailablePartialReference||cut.unavailablePartialShipmentId)+'</small>':'')+
+  '</div>';
+}
+function v239CutForOrderItem(c,it){
+  var cuts=c.cutRequests||[];
+  var direct=cuts.filter(function(x){return String(x.sourceLineId||"")===String(it.id||"");})[0];
+  if(direct)return direct;
+  var key=normalizeRefText(it.referencia||it.descripcion||"");
+  return cuts.filter(function(x){return normalizeRefText(x.referencia||x.descripcion||"")===key;})[0]||null;
+}
+function v239ItemReadyForPartial(c,it){
+  var requested=partialQtyParse(it.cantidad||it.qty||it.quantity);
+  var dispatched=partialQtyParse(it.partialDispatchedQty||0);
+  var pending=Math.max(0,requested-dispatched);
+  if(pending<=0)return null;
+  var text=normalizePersonComparableText([it.alistamientoStatus,it.estado,it.alistamientoNote].join(" "));
+  var ready=/encontrado|alistado|listo|conforme|ok|parcial saldo pendiente/.test(text);
+  if(it.requiereCorte){
+    var related=v239CutForOrderItem(c,it);
+    ready=!!related&&cutIsOperationallyDone(related);
+  }
+  if(!ready)return null;
+  return {
+    item:it,
+    index:(c.orderItems||[]).indexOf(it),
+    requested:requested,
+    already:dispatched,
+    pending:pending
+  };
+}
+function v239PartialCandidates(c,currentCut){
+  return (c.orderItems||[]).map(function(it){
+    return v239ItemReadyForPartial(c,it);
+  }).filter(Boolean).filter(function(x){
+    var related=v239CutForOrderItem(c,x.item);
+    return !related||!currentCut||String(related.id)!==String(currentCut.id);
+  });
+}
+function v239UnavailableReasonOptions(selected){
+  var list=[
+    "Rollo no disponible físicamente",
+    "El rollo no alcanza para el metraje solicitado",
+    "Rollo reservado o utilizado en otro corte",
+    "Rollo averiado o no conforme",
+    "No se encontró la ubicación del rollo",
+    "Diferencia entre inventario y existencia física",
+    "Otro"
+  ];
+  return list.map(function(x){
+    return '<option '+(selected===x?'selected':'')+'>'+esc(x)+'</option>';
+  }).join("");
+}
+function v239OpenCutUnavailable(id,cutId){
+  var c=caseById(id);if(!c)return;
+  var cut=findCut(c,cutId);if(!cut)return;
+  if(!canOperateCutModule()){alert("No tiene permiso para registrar la no disponibilidad del corte.");return;}
+  if(cut.startedAt||cut.status==="EN_CORTE"){
+    alert("El corte está activo. Primero debe pausarlo o finalizarlo antes de marcarlo como no disponible.");
+    return;
+  }
+  var candidates=v239PartialCandidates(c,cut);
+  var candidateRows=candidates.map(function(x){
+    var it=x.item;
+    return '<tr>'+
+      '<td><input type="checkbox" name="include_'+x.index+'" checked></td>'+
+      '<td><strong>'+esc(it.referencia||"")+'</strong><br><small>'+esc(it.descripcion||"")+'</small></td>'+
+      '<td>'+esc(partialQtyFormat(x.pending))+' '+esc(it.unidad||"")+'</td>'+
+      '<td><input class="input" type="number" step="0.0001" min="0" max="'+esc(x.pending)+'" name="qty_'+x.index+'" value="'+esc(x.pending)+'"></td>'+
+      '<td><input class="input" name="note_'+x.index+'" value="Disponible para envío parcial"></td>'+
+    '</tr>';
+  }).join("");
+  var partialBlock=candidates.length
+    ? '<div class="notice success"><strong>Envío parcial disponible:</strong> seleccione las líneas que sí están listas. Se creará un pedido parcial para Facturación y el pedido original seguirá abierto con este corte pendiente.</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Enviar</th><th>Línea disponible</th><th>Saldo pendiente</th><th>Cantidad a enviar</th><th>Observación</th></tr></thead><tbody>'+candidateRows+'</tbody></table></div>'
+    : '<div class="notice warning"><strong>No hay otras líneas listas para facturar.</strong><br>Se registrará la no disponibilidad y el corte quedará pendiente para retomarse. No se creará un envío parcial vacío.</div>';
+  var available=v238Num(cut.rollRemainingBefore||cut.disponibleAntes);
+  var html='<form class="form" id="v239CutUnavailableForm">'+
+    '<div class="notice danger"><strong>Corte no disponible.</strong><br>Use esta opción cuando el rollo no está físicamente o su saldo no alcanza. El corte no se cierra: queda pendiente para retomarlo después.</div>'+
+    '<section class="grid grid-3">'+
+      '<article class="card kpi"><span>Pedido</span><strong>'+esc(c.reference||cut.pedido||c.id)+'</strong><small>'+esc(c.client||"")+'</small></article>'+
+      '<article class="card kpi"><span>Referencia</span><strong>'+esc(cut.referencia||"")+'</strong><small>'+esc(cut.descripcion||"")+'</small></article>'+
+      '<article class="card kpi"><span>Metros solicitados</span><strong>'+esc(v238Meters(cut.metrosSolicitados||cut.metrajeFinal))+' m</strong><small>Rollo '+esc(cut.sourceRollCode||"sin asignar")+'</small></article>'+
+    '</section>'+
+    '<div class="grid grid-2">'+
+      '<label class="field"><span>Motivo *</span><select class="select" name="reason" required>'+v239UnavailableReasonOptions(cut.unavailableReason||"")+'</select></label>'+
+      '<label class="field"><span>Metros disponibles encontrados</span><input class="input" name="availableReported" inputmode="decimal" value="'+esc(Number.isFinite(available)?v238Meters(available):"")+'" placeholder="0 si no existe rollo"></label>'+
+      '<label class="field" style="grid-column:1/-1"><span>Anotación obligatoria *</span><textarea class="textarea" name="detail" required placeholder="Ej.: el rollo registrado no aparece en la ubicación; se envía lo disponible y este corte queda pendiente.">'+esc(cut.unavailableDetail||"")+'</textarea></label>'+
+    '</div>'+
+    partialBlock+
+    '<label class="field"><span>Observación del envío parcial</span><textarea class="textarea" name="partialReason" '+(candidates.length?'required':'')+' placeholder="Explique qué se envía y qué queda pendiente.">'+esc(cut.unavailablePartialReason||"Se envía lo disponible; el corte de "+(cut.referencia||"la referencia")+" queda pendiente por falta o insuficiencia del rollo.")+'</textarea></label>'+
+    '<button class="btn btn-danger" type="submit">'+(candidates.length?'Registrar no disponibilidad y crear envío parcial':'Registrar no disponibilidad y dejar pendiente')+'</button>'+
+  '</form>';
+  drawer(modal("Corte no disponible",html));
+  var form=qs("#v239CutUnavailableForm");
+  if(form)form.onsubmit=function(e){
+    e.preventDefault();
+    v239SubmitCutUnavailable(c,cut,new FormData(form),candidates);
+  };
+}
+function v239SelectedPartialItems(c,fd,candidates){
+  var selected=[];
+  (candidates||[]).forEach(function(x){
+    if(!fd.get("include_"+x.index))return;
+    var qty=partialQtyParse(fd.get("qty_"+x.index));
+    if(qty<=0)return;
+    if(qty>x.pending)qty=x.pending;
+    var it=x.item;
+    selected.push({
+      index:x.index,lineId:it.id||String(x.index),referencia:it.referencia||"",
+      descripcion:it.descripcion||"",cantidad:partialQtyFormat(qty),unidad:it.unidad||"",
+      ubicacion:it.ubicacion||"",cantidadSolicitada:partialQtyFormat(x.requested),
+      cantidadPendienteAntes:partialQtyFormat(x.pending),
+      observacion:String(fd.get("note_"+x.index)||"Disponible para envío parcial"),
+      requiereCorte:!!it.requiereCorte
+    });
+  });
+  return selected;
+}
+function v239PreparePartialShipment(c,selected,reason,incidentId){
+  if(!selected.length)return null;
+  var seq=(c.partialShipments||[]).length+1;
+  var stamp=now(),partialId=uid("PAR");
+  c.partialShipments=c.partialShipments||[];
+  c.partialShipments.push({
+    id:partialId,sequence:seq,status:"en_facturacion",createdAt:stamp,
+    createdBy:state.user.uid,createdByName:state.user.name,reason:reason,
+    source:"CORTE_NO_DISPONIBLE",incidentId:incidentId,items:selected
+  });
+  c.hasPartialShipment=true;
+  c.partialShipmentOpen=true;
+  c.partialPendingReason=reason;
+  c.orderItems=(c.orderItems||[]).map(function(it,i){
+    var sel=selected.filter(function(s){return Number(s.index)===i;})[0];
+    if(!sel)return it;
+    var dispatched=partialQtyParse(it.partialDispatchedQty||0)+partialQtyParse(sel.cantidad);
+    var requested=partialQtyParse(it.cantidad||it.qty||it.quantity);
+    it.partialDispatchedQty=partialQtyFormat(dispatched);
+    it.partialPendingQty=partialQtyFormat(Math.max(0,requested-dispatched));
+    it.partialLastShipmentId=partialId;
+    it.partialLastShipmentAt=stamp;
+    if(partialQtyParse(it.partialPendingQty)>0){
+      it.estado="ENTREGA_PARCIAL_SALDO_PENDIENTE";
+      it.alistamientoStatus=it.alistamientoStatus||"PENDIENTE";
+      it.alistamientoNote="Entrega parcial creada desde Corte. Saldo pendiente: "+it.partialPendingQty+" "+(it.unidad||"");
+    }else{
+      it.estado=it.requiereCorte?"CORTE_ALISTADO_PARCIAL":"ALISTADO_PARCIAL";
+      it.alistamientoStatus="ENCONTRADO";
+      it.alistamientoNote="Cantidad enviada en parcial "+seq+" por corte no disponible.";
+    }
+    return it;
+  });
+  var child=JSON.parse(JSON.stringify(c));
+  child.id=partialId;
+  child.parentCaseId=c.id;
+  child.isPartialShipment=true;
+  child.partialSequence=seq;
+  child.partialReason=reason;
+  child.reference=(c.reference||c.id)+"-PARCIAL-"+String(seq).padStart(2,"0");
+  child.description="Envío parcial generado porque un corte no está disponible. "+reason;
+  child.currentProcess="facturacion";
+  child.status="asignado";
+  child.assignedRole=primaryOwnerRole("facturacion");
+  child.assignedName=processOwnerTitle("facturacion");
+  child.assignedTo="";
+  child.assignedUid="";
+  child.assignedUsers=[];
+  child.assignedUserIds=[];
+  child.createdAt=stamp;
+  child.createdBy=state.user.uid;
+  child.createdByName=state.user.name;
+  child.updatedAt=stamp;
+  child.closedAt=null;
+  child.openRequirement=null;
+  child.checklist={};
+  processes.facturacion.checklist.forEach(function(x){child.checklist[x]="pending";});
+  child.orderItems=selected.map(function(s){
+    return {
+      id:s.lineId,referencia:s.referencia,descripcion:s.descripcion,cantidad:s.cantidad,
+      unidad:s.unidad,sourceRequestedQty:s.cantidadSolicitada,
+      sourcePendingBefore:s.cantidadPendienteAntes,observacion:s.observacion,
+      requiereCorte:s.requiereCorte,alistamientoStatus:"ENCONTRADO",
+      estado:"PARCIAL_A_FACTURAR"
+    };
+  });
+  child.cutRequests=[];
+  child.hasCuts=false;
+  child.processStats={};
+  procStats(child,"facturacion").startedAt=stamp;
+  child.partialSource={
+    caseId:c.id,shipmentId:partialId,sequence:seq,reason:reason,
+    source:"CORTE_NO_DISPONIBLE",incidentId:incidentId,
+    createdAt:stamp,createdByName:state.user.name
+  };
+  return child;
+}
+function v239UpdateRollUnavailable(cut,reason,detail,availableReported){
+  if(!cut.sourceRollId||!db)return Promise.resolve(null);
+  return v238GetRollDoc(cut.sourceRollId).then(function(record){
+    if(!record)return null;
+    var queue=Array.isArray(record.sessionQueue)?record.sessionQueue.map(function(x){
+      if(String(x.cutId)===String(cut.id)){
+        return Object.assign({},x,{
+          status:"NO_DISPONIBLE",unavailableAt:now(),
+          unavailableReason:reason,unavailableDetail:detail
+        });
+      }
+      return x;
+    }):[];
+    var available=Number.isFinite(availableReported)?availableReported:v238RollAvailable(record);
+    var rollStatus=/no alcanza|insuficiente/i.test(reason)
+      ?(available>0?"REMANENTE_INSUFICIENTE":"AGOTADO")
+      :(record.status||"DISPONIBLE");
+    return db.collection(V238_ROLL_COLLECTION).doc(cut.sourceRollId).set({
+      status:rollStatus,
+      availableMeters:Number.isFinite(available)?v238Meters(available):record.availableMeters,
+      sobrante:Number.isFinite(available)?v238Meters(available):record.sobrante,
+      activeCaseId:"",activeCutId:"",activeCutCode:"",activeStatus:"",
+      referenceSessionStatus:"PAUSA_DISPONIBILIDAD",
+      sessionQueue:queue,
+      lastUnavailableCutId:cut.id,
+      lastUnavailableReason:reason,
+      lastUnavailableDetail:detail,
+      lastUnavailableAt:now(),
+      lastUnavailableByName:state.user?state.user.name:"",
+      updatedAt:now(),
+      updatedByName:state.user?state.user.name:""
+    },{merge:true}).then(function(){
+      return Object.assign(record,{
+        status:rollStatus,availableMeters:v238Meters(available),
+        sobrante:v238Meters(available),sessionQueue:queue,
+        activeCaseId:"",activeCutId:"",activeCutCode:"",activeStatus:""
+      });
+    });
+  });
+}
+function v239SubmitCutUnavailable(c,cut,fd,candidates){
+  var reason=String(fd.get("reason")||"").trim();
+  var detail=String(fd.get("detail")||"").trim();
+  var partialReason=String(fd.get("partialReason")||"").trim();
+  if(!reason||!detail){alert("Debe seleccionar el motivo y escribir la anotación.");return;}
+  var selected=v239SelectedPartialItems(c,fd,candidates);
+  if(candidates.length&&!selected.length){
+    alert("Hay líneas listas para envío parcial. Seleccione al menos una o quite la disponibilidad de esas líneas antes de continuar.");
+    return;
+  }
+  if(selected.length&&!partialReason){alert("Debe escribir la observación del envío parcial.");return;}
+  var stamp=now(),incidentId=uid("CUTND");
+  var availableReported=v238Num(fd.get("availableReported"));
+  var previousStatus=v239IsCutUnavailable(cut)
+    ?(cut.statusBeforeUnavailable||"PENDIENTE_CORTE")
+    :(cut.status||"PENDIENTE_CORTE");
+
+  cut.statusBeforeUnavailable=previousStatus==="NO_DISPONIBLE_CORTE"?"PENDIENTE_CORTE":previousStatus;
+  cut.status="NO_DISPONIBLE_CORTE";
+  cut.availabilityStatus="NO_DISPONIBLE";
+  cut.unavailableActive=true;
+  cut.unavailableIncidentId=incidentId;
+  cut.unavailableReason=reason;
+  cut.unavailableDetail=detail;
+  cut.unavailableAvailableMeters=Number.isFinite(availableReported)?v238Meters(availableReported):"";
+  cut.unavailableAt=stamp;
+  cut.unavailableBy=state.user.uid;
+  cut.unavailableByName=state.user.name;
+  cut.unavailablePartialReason=partialReason;
+  cut.referenceBatchPausedForAvailability=true;
+  cut.startedAt=null;
+
+  c.cutUnavailableNotes=c.cutUnavailableNotes||[];
+  c.cutUnavailableNotes.push({
+    id:incidentId,cutId:cut.id,cutCode:cut.code||cut.id,
+    reference:cut.referencia||"",reason:reason,detail:detail,
+    availableMeters:Number.isFinite(availableReported)?v238Meters(availableReported):"",
+    createdAt:stamp,createdBy:state.user.uid,createdByName:state.user.name,
+    status:"ABIERTO"
+  });
+  if(c.cutUnavailableNotes.length>100)c.cutUnavailableNotes=c.cutUnavailableNotes.slice(-100);
+  c.cutUnavailableOpen=true;
+  c.hasCuts=true;
+  c.updatedAt=stamp;
+
+  var child=v239PreparePartialShipment(
+    c,selected,
+    partialReason||("Corte no disponible: "+reason+". "+detail),
+    incidentId
+  );
+  if(child){
+    cut.unavailablePartialShipmentId=child.id;
+    cut.unavailablePartialReference=child.reference;
+    cut.unavailablePartialCreatedAt=stamp;
+  }
+
+  addStateHistory(c,"espera",
+    "Corte no disponible: "+reason+". "+detail+
+    (child?" Se creó envío parcial "+child.reference+".":" El corte queda pendiente para retomar."),
+    {
+      tipo_estado:"espera",
+      process:"corte_cable",
+      cutId:cut.id,
+      cutUnavailableIncidentId:incidentId,
+      partialShipmentId:child?child.id:"",
+      motivo_novedad:reason,
+      detalle_novedad:detail
+    }
+  );
+
+  var batch=db.batch();
+  batch.set(db.collection("cases").doc(c.id),c,{merge:true});
+  if(child)batch.set(db.collection("cases").doc(child.id),child);
+  batch.commit().then(function(){
+    if(child)state.cases.unshift(child);
+    return v239UpdateRollUnavailable(cut,reason,detail,availableReported);
+  }).then(function(record){
+    var events=[
+      createEvent(enrichCaseEvent(c,{
+        caseId:c.id,type:"CUT_UNAVAILABLE_RECORDED",process:"corte_cable",
+        cutId:cut.id,
+        detail:"Corte no disponible · "+reason+" · "+detail+
+          (child?" · Envío parcial "+child.reference:" · Sin líneas listas para parcial"),
+        targetRole:"coordinador_logistico",
+        visibleRoles:["auxiliar_corte","coordinador_logistico","lider_logistico","jefe_logistica","facturacion","ventas","admin","super_admin","super_administrador"]
+      })).catch(function(){})
+    ];
+    if(child){
+      events.push(createEvent(enrichCaseEvent(child,{
+        caseId:child.id,type:"PARTIAL_SHIPMENT_SENT_TO_BILLING",
+        process:"facturacion",
+        detail:"Envío parcial "+child.partialSequence+" generado por corte no disponible desde "+(c.reference||c.id),
+        targetRole:"facturacion",
+        visibleRoles:["coordinador_logistico","lider_logistico","jefe_logistica","facturacion","admin","super_admin","super_administrador"]
+      })).catch(function(){}));
+    }
+    return Promise.all(events).then(function(){return record;});
+  }).then(function(record){
+    closeDrawer();
+    state.route="corte_cable";
+    renderCutsQueue();
+    if(record&&cut.referenceBatchMode){
+      setTimeout(function(){v238OfferNextCut(c,cut,record);},350);
+    }
+  }).catch(function(err){showError(err.message||err);});
+}
+function v239ResumeUnavailableCut(id,cutId){
+  var c=caseById(id);if(!c)return;
+  var cut=findCut(c,cutId);if(!cut)return;
+  if(!v239IsCutUnavailable(cut)){openCutModule(id,cutId);return;}
+  var previous=cut.statusBeforeUnavailable||"PENDIENTE_CORTE";
+  cut.status=previous;
+  cut.availabilityStatus="REANUDADO";
+  cut.unavailableActive=false;
+  cut.referenceBatchPausedForAvailability=false;
+  cut.unavailableResolvedAt=now();
+  cut.unavailableResolvedBy=state.user.uid;
+  cut.unavailableResolvedByName=state.user.name;
+  (c.cutUnavailableNotes||[]).forEach(function(n){
+    if(String(n.id)===String(cut.unavailableIncidentId)&&n.status==="ABIERTO"){
+      n.status="RETOMADO";
+      n.resolvedAt=now();
+      n.resolvedByName=state.user.name;
+    }
+  });
+  c.cutUnavailableOpen=(c.cutRequests||[]).some(function(x){
+    return String(x.id)!==String(cut.id)&&v239IsCutUnavailable(x);
+  });
+  persistCase(c,{
+    type:"CUT_UNAVAILABLE_RESUMED",cutId:cut.id,
+    detail:"El corte "+(cut.code||cut.id)+" fue retomado después de la no disponibilidad. Motivo anterior: "+(cut.unavailableReason||""),
+    targetRole:"auxiliar_corte",
+    visibleRoles:["auxiliar_corte","coordinador_logistico","jefe_logistica","admin","super_admin","super_administrador"]
+  }).then(function(){
+    closeDrawer();
+    openCutModule(id,cutId);
+  }).catch(function(err){showError(err.message||err);});
+}
+
+/* Los cortes no disponibles no se ofrecen automáticamente hasta que el auxiliar pulse Retomar corte. */
+var v239LegacyReferenceQueue=v238ReferenceQueue;
+v238ReferenceQueue=function(refKey,includeUnavailable){
+  var rows=v239LegacyReferenceQueue(refKey);
+  return includeUnavailable?rows:rows.filter(function(x){return !v239IsCutUnavailable(x.cutObj);});
+};
+var v239LegacyResolveQueueItem=v238ResolveQueueItem;
+v238ResolveQueueItem=function(entry,refKey){
+  var item=v239LegacyResolveQueueItem(entry,refKey);
+  if(item&&v239IsCutUnavailable(item.cutObj))return null;
+  return item;
+};
+
+/* Al finalizar posteriormente el corte, se cierra la incidencia de disponibilidad. */
+var v239LegacyUpsertCutInventoryChip=upsertCutInventoryChip;
+upsertCutInventoryChip=function(c,cut){
+  return Promise.resolve(v239LegacyUpsertCutInventoryChip(c,cut)).then(function(result){
+    if(cut&&cut.unavailableIncidentId){
+      cut.availabilityStatus="RESUELTO";
+      cut.unavailableActive=false;
+      cut.unavailableFinalizedAt=now();
+      cut.unavailableFinalizedByName=state.user?state.user.name:"";
+      (c.cutUnavailableNotes||[]).forEach(function(n){
+        if(String(n.id)===String(cut.unavailableIncidentId)){
+          n.status="RESUELTO";
+          n.resolvedAt=n.resolvedAt||now();
+          n.resolvedByName=n.resolvedByName||(state.user?state.user.name:"");
+        }
+      });
+      c.cutUnavailableOpen=(c.cutRequests||[]).some(function(x){
+        return String(x.id)!==String(cut.id)&&v239IsCutUnavailable(x);
+      });
+      db.collection("cases").doc(c.id).set({
+        cutRequests:c.cutRequests,
+        cutUnavailableNotes:c.cutUnavailableNotes||[],
+        cutUnavailableOpen:c.cutUnavailableOpen,
+        updatedAt:now()
+      },{merge:true}).catch(function(){});
+    }
+    return result;
+  });
+};
+
+document.addEventListener("click",function(e){
+  var button=e.target&&e.target.closest?e.target.closest("[data-action]"):null;
+  if(!button)return;
+  var action=button.getAttribute("data-action");
+  if(action!=="cutUnavailable"&&action!=="resumeUnavailableCut")return;
+  e.preventDefault();
+  e.stopPropagation();
+  if(action==="cutUnavailable")v239OpenCutUnavailable(button.getAttribute("data-id"),button.getAttribute("data-cut"));
+  else v239ResumeUnavailableCut(button.getAttribute("data-id"),button.getAttribute("data-cut"));
+},true);
+
+(function v239InjectStyles(){
+  if(document.getElementById("v239-cut-unavailable-css"))return;
+  var style=document.createElement("style");
+  style.id="v239-cut-unavailable-css";
+  style.textContent=
+    ".v239-cut-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.v239-cut-actions .btn{margin:0}"+
+    ".v239-unavailable-note{margin-top:7px;padding:8px 9px;border:1px solid #fecaca;border-radius:11px;background:#fff5f5;color:#7f1d1d;line-height:1.35}.v239-unavailable-note strong,.v239-unavailable-note span,.v239-unavailable-note small{display:block}.v239-unavailable-note strong{font-size:.72rem}.v239-unavailable-note span{margin-top:3px;font-size:.68rem}.v239-unavailable-note small{margin-top:3px;color:#991b1b;font-size:.63rem}"+
+    "@media(max-width:790px){.v239-cut-actions{display:grid;grid-template-columns:1fr 1fr}.v239-cut-actions .btn{width:100%;min-height:44px}.v239-unavailable-note{margin-bottom:8px}}";
   document.head.appendChild(style);
 })();
 
