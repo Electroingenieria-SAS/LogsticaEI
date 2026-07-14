@@ -32,10 +32,12 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v242-firestore-estable-sin-webchannel";
+var EI_CANONICAL_APP_VERSION = "v244-cache-reset-firestore-merge";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
+  window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
+  console.info("[EI] app.js cargado:",EI_CANONICAL_APP_VERSION);
 }catch(e){}
 
 var state = {
@@ -1851,10 +1853,11 @@ function initFirebase(){
     try{
       db.settings({
         experimentalForceLongPolling:true,
-        ignoreUndefinedProperties:true
+        ignoreUndefinedProperties:true,
+        merge:true
       });
     }catch(settingsError){
-      console.warn("[V242] No fue posible aplicar la configuración de transporte Firestore.",settingsError);
+      console.warn("[V244] No fue posible combinar la configuración de transporte Firestore.",settingsError);
     }
     firebaseReady=true;
     firebaseInitError="";
@@ -2286,7 +2289,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V242] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V244] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -7723,7 +7726,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V242</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V244</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -15505,7 +15508,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V242] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V244] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -15572,7 +15575,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V242] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V244] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -15627,7 +15630,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V242] Actualización periódica no disponible:",reason,error);
+        console.warn("[V244] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);

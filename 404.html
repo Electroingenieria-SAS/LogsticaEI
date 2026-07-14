@@ -16,28 +16,41 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v221-cargues-movil-galeria-archivos-10">
-  <link rel="stylesheet" href="./mobile-v221.css?v=v221-cargues-movil-galeria-archivos-10">
+  <link rel="stylesheet" href="./styles.css?v=v244-cache-reset-firestore-merge">
+  <link rel="stylesheet" href="./mobile-v221.css?v=v244-cache-reset-firestore-merge">
 
 
   <script>
     (function(){
-      var V="v221-cargues-movil-galeria-archivos-10";
+      var V="v244-cache-reset-firestore-merge";
       try{
         window.EI_REQUIRED_VERSION=V;
         localStorage.setItem("EI_REQUIRED_VERSION",V);
         window.__EI_V221_CLEAN_PROMISE=(function(){
           var tasks=[];
           if("serviceWorker" in navigator){
-            tasks.push(navigator.serviceWorker.getRegistrations().then(function(regs){
-              return Promise.all(regs.map(function(r){return r.unregister();}));
-            }));
+            tasks.push(
+              navigator.serviceWorker.getRegistrations().then(function(regs){
+                return Promise.all(regs.map(function(r){
+                  try{return r.unregister();}catch(e){return false;}
+                }));
+              })
+            );
           }
           if(window.caches){
-            tasks.push(caches.keys().then(function(keys){
-              return Promise.all(keys.map(function(k){return caches.delete(k);}));
-            }));
+            tasks.push(
+              caches.keys().then(function(keys){
+                return Promise.all(keys.map(function(k){
+                  return caches.delete(k);
+                }));
+              })
+            );
           }
+          try{
+            sessionStorage.removeItem("ei_v242_firestore_recovery");
+            localStorage.setItem("EI_REQUIRED_VERSION",V);
+          }catch(e){}
+          console.info("[EI] index.html cargado:",V);
           return Promise.all(tasks).catch(function(){});
         })();
       }catch(e){window.__EI_V221_CLEAN_PROMISE=Promise.resolve();}
@@ -56,9 +69,9 @@
     </main>
   </div>
 
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer data-ei-pdf-lib="true" src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script defer src="https://accounts.google.com/gsi/client"></script>
@@ -72,8 +85,25 @@
         existing.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
         var s=document.createElement("script");
         s.setAttribute("data-ei-main-app","true");
-        s.src="./app.js?v=v221-cargues-movil-galeria-archivos-10&t="+Date.now();
+        s.src="./app.js?v=v244-cache-reset-firestore-merge&t="+Date.now();
         s.async=false;
+        s.onload=function(){
+          setTimeout(function(){
+            if(window.EI_BUILD_LOADED!==V){
+              console.error("[EI] Incompatibilidad de versión. Index:",V,"App:",window.EI_BUILD_LOADED);
+              var url=new URL(window.location.href);
+              url.searchParams.set("force_build",V);
+              url.searchParams.set("t",String(Date.now()));
+              window.location.replace(url.toString());
+            }else{
+              console.info("[EI] versión confirmada:",V);
+            }
+          },100);
+        };
+        s.onerror=function(){
+          document.getElementById("app").innerHTML=
+            '<main class="boot-screen"><section class="boot-card"><strong>No fue posible cargar app.js</strong><span>Abra reset-cache.html y vuelva a intentar.</span></section></main>';
+        };
         document.body.appendChild(s);
       });
     });

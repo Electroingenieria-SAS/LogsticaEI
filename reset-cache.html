@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Restablecer EI Logística</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f3f7fb;font-family:Arial,sans-serif;color:#102033}
+    .card{width:min(92vw,520px);padding:28px;border:1px solid #dbe5ef;border-radius:24px;background:#fff;box-shadow:0 20px 55px rgba(6,27,70,.12)}
+    h1{margin:0;color:#061b46;font-size:1.45rem}
+    p{line-height:1.55;color:#526174}
+    .bar{height:12px;margin:20px 0;border-radius:999px;background:#e8eef5;overflow:hidden}
+    .bar span{display:block;width:15%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0b66c3,#f2b705);transition:width .25s ease}
+    .status{padding:12px;border-radius:14px;background:#eef6ff;color:#0b3e73;font-weight:700}
+    button{width:100%;margin-top:18px;padding:13px;border:0;border-radius:13px;background:#061b46;color:#fff;font-weight:700;cursor:pointer}
+  </style>
+</head>
+<body>
+  <section class="card">
+    <h1>Restableciendo EI Logística</h1>
+    <p>Se eliminarán únicamente la PWA y los archivos almacenados en caché. Los pedidos y registros de Firebase no se eliminan.</p>
+    <div class="bar"><span id="progress"></span></div>
+    <div class="status" id="status">Preparando limpieza…</div>
+    <button id="retry" hidden>Volver a intentar</button>
+  </section>
+  <script>
+    (function(){
+      var VERSION="v244-cache-reset-firestore-merge";
+      var status=document.getElementById("status");
+      var progress=document.getElementById("progress");
+      var retry=document.getElementById("retry");
+
+      function setStep(text,width){
+        status.textContent=text;
+        progress.style.width=width+"%";
+      }
+      async function clean(){
+        retry.hidden=true;
+        try{
+          setStep("Desregistrando versiones anteriores de la PWA…",25);
+          if("serviceWorker" in navigator){
+            var regs=await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(function(reg){
+              try{return reg.unregister();}catch(e){return false;}
+            }));
+          }
+
+          setStep("Eliminando archivos almacenados en caché…",55);
+          if(window.caches){
+            var keys=await caches.keys();
+            await Promise.all(keys.map(function(key){return caches.delete(key);}));
+          }
+
+          setStep("Actualizando la versión requerida…",80);
+          try{
+            sessionStorage.clear();
+            localStorage.setItem("EI_REQUIRED_VERSION",VERSION);
+            localStorage.setItem("EI_CANONICAL_APP_VERSION",VERSION);
+          }catch(e){}
+
+          setStep("Limpieza terminada. Abriendo la aplicación V244…",100);
+          setTimeout(function(){
+            window.location.replace("./?clean="+encodeURIComponent(VERSION)+"&t="+Date.now());
+          },700);
+        }catch(error){
+          console.error(error);
+          status.textContent="No se pudo completar la limpieza: "+(error.message||error);
+          retry.hidden=false;
+        }
+      }
+      retry.onclick=clean;
+      clean();
+    })();
+  </script>
+</body>
+</html>
