@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v221-cargues-movil-galeria-archivos-10";
+var EI_CANONICAL_APP_VERSION = "v238-corte-secuencial-referencia-rollos";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -7701,13 +7701,13 @@ function renderCutsQueue(){
       }).join("");
       return '<details class="ei191-cut-group" open>'+
         '<summary><div class="ei191-group-title"><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s)</small></div><aside><b>'+esc(cutNormalizeDecimal(g.meters))+' m</b><span>prealistamiento</span></aside></summary>'+
-        '<div class="ei191-prep"><strong>Prealistamiento:</strong> reúna este cable por referencia y abra cada pedido para registrar su corte.</div>'+
+        '<div class="ei191-prep"><strong>Prealistamiento:</strong> reúna este cable por referencia y opere todos los tramos consecutivamente desde el mismo rollo.<button class="btn btn-success" style="margin-top:9px;width:100%" data-action="startReferenceCuts" data-ref="'+esc(g.key)+'">Iniciar cortes por referencia</button></div>'+
         '<section class="ei191-cut-items">'+items+'</section>'+
       '</details>';
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V221</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V238</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -7716,7 +7716,7 @@ function renderCutsQueue(){
   var groupHtml=Object.keys(groups).sort(function(a,b){return groups[b].meters-groups[a].meters;}).map(function(k){
     var g=groups[k];
     var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+cutStatusChip(r.cut.status)+'</td><td><button class="btn btn-small btn-primary" data-action="launchCut" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">Abrir corte</button></td></tr>';}).join('');
-    return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y luego despliegue pedido por pedido. Así corte funciona como subárea y se reducen búsquedas repetidas.</div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
+    return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y opere los cortes en secuencia desde un mismo rollo.<div class="top-actions" style="margin-top:10px"><button class="btn btn-success" data-action="startReferenceCuts" data-ref="'+esc(g.key)+'">Iniciar cortes por referencia</button></div></div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
   }).join('');
   layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Completa</strong><small>Misma lógica de PC</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
 }
@@ -13694,6 +13694,573 @@ try{
   eiV221Style.textContent="\n/* V221 - selector m\u00f3vil de c\u00e1mara, galer\u00eda y archivos */\n@media(max-width:790px){\n  input[type=\"file\"][data-mobile-upload=\"true\"]{\n    min-height:48px!important;\n    padding:10px!important;\n    background:#fff!important;\n  }\n  .ei221-file-counter{\n    display:block!important;\n    margin-top:6px!important;\n    line-height:1.35!important;\n  }\n}\n";
   document.head.appendChild(eiV221Style);
 }catch(e){}
+
+
+/* ============================================================
+   V238 · CORTE SECUENCIAL POR REFERENCIA Y ROLLO
+   - Agrupa cortes pendientes por referencia.
+   - Permite iniciar, pausar, continuar y finalizar cada tramo.
+   - Conserva el mismo rollo hasta agotar o quedar insuficiente.
+   - Actualiza inventario_chipas mediante transacción.
+   - Funciona igual en escritorio y móvil.
+============================================================ */
+var V238_ROLL_COLLECTION="inventario_chipas";
+var V238_ROLL_RECORD_TYPE="ROLLO_CORTE_REFERENCIA";
+
+function v238Num(value){
+  var n=cutParseDecimal(value);
+  return Number.isFinite(n)?Number(n):NaN;
+}
+function v238Meters(value){
+  var n=v238Num(value);
+  return Number.isFinite(n)?cutNormalizeDecimal(Math.max(0,n)):"0";
+}
+function v238RefKey(value){
+  return normalizeRefText(value||"")||"SIN_REFERENCIA";
+}
+function v238ReferenceQueue(refKey){
+  var rows=[];
+  (state.cases||[]).forEach(function(c){
+    (c.cutRequests||[]).forEach(function(cut){
+      if(cutIsOperationallyDone(cut))return;
+      if(v238RefKey(cut.referencia||cut.descripcion)!==refKey)return;
+      rows.push({
+        caseId:c.id,
+        cutId:cut.id,
+        caseReference:c.reference||cut.pedido||c.id,
+        client:c.client||cut.cliente||"",
+        code:cut.code||cut.id,
+        referencia:cut.referencia||"",
+        descripcion:cut.descripcion||"",
+        meters:v238Num(cut.metrosSolicitados||cut.metrajeFinal)||0,
+        createdAt:cut.createdAt||c.createdAt||"",
+        caseObj:c,
+        cutObj:cut
+      });
+    });
+  });
+  rows.sort(function(a,b){
+    var ta=tms(a.createdAt)||0,tb=tms(b.createdAt)||0;
+    return ta-tb||String(a.caseReference).localeCompare(String(b.caseReference))||String(a.code).localeCompare(String(b.code));
+  });
+  return rows;
+}
+function v238RollAvailable(record){
+  if(!record)return NaN;
+  var candidates=[record.availableMeters,record.sobrante,record.metrosDisponibles,record.remainingMeters,record.disponibleAntes];
+  for(var i=0;i<candidates.length;i++){
+    var n=v238Num(candidates[i]);
+    if(Number.isFinite(n))return Math.max(0,n);
+  }
+  return NaN;
+}
+function v238RollCode(record){
+  return String((record&&(record.rollCode||record.codigoRollo||record.cutCode||record.id))||"Rollo sin código");
+}
+function v238RollMatchesReference(record,refKey){
+  if(!record)return false;
+  return v238RefKey(record.referencia||record.reference||record.descripcion)===refKey;
+}
+function v238RollUsable(record){
+  var available=v238RollAvailable(record);
+  var status=String(record&&record.status||"").toUpperCase();
+  return Number.isFinite(available)&&available>0&&["AGOTADO","CERRADO","CONSUMIDO"].indexOf(status)<0;
+}
+function v238GetRollDoc(id){
+  if(!id||!db)return Promise.resolve(null);
+  return db.collection(V238_ROLL_COLLECTION).doc(String(id)).get().then(function(snap){
+    if(!snap.exists)return null;
+    return Object.assign({id:snap.id},snap.data()||{});
+  });
+}
+function v238LoadReferenceRolls(refKey){
+  var local=(state.inventoryChips||[]).filter(function(x){return v238RollMatchesReference(x,refKey)&&v238RollUsable(x);});
+  if(!db)return Promise.resolve(local);
+  return db.collection(V238_ROLL_COLLECTION).orderBy("updatedAt","desc").limit(1000).get().then(docsToList).then(function(remote){
+    var combined=uniqueById(remote.concat(local));
+    state.inventoryChips=sortByUpdated(uniqueById(combined.concat(state.inventoryChips||[])));
+    return combined.filter(function(x){return v238RollMatchesReference(x,refKey)&&v238RollUsable(x);});
+  }).catch(function(e){
+    console.warn("[V238] No se pudieron consultar rollos; se usan datos locales.",e);
+    return local;
+  });
+}
+function v238QueueSnapshot(queue){
+  return (queue||[]).map(function(x,i){
+    return {
+      sequence:i+1,
+      caseId:x.caseId,
+      cutId:x.cutId,
+      caseReference:x.caseReference,
+      client:x.client,
+      cutCode:x.code,
+      meters:v238Meters(x.meters),
+      status:"PENDIENTE"
+    };
+  });
+}
+function v238CreateOrActivateRoll(data,queue){
+  if(!db)return Promise.reject(new Error("Firebase no está disponible para registrar el rollo."));
+  var existingId=String(data.existingRollId||"").trim();
+  var id=existingId||uid("ROLL");
+  var ref=db.collection(V238_ROLL_COLLECTION).doc(id);
+  return db.runTransaction(function(tx){
+    return tx.get(ref).then(function(snap){
+      var old=snap.exists?(snap.data()||{}):{};
+      var available=existingId?v238RollAvailable(old):v238Num(data.initialMeters);
+      if(!Number.isFinite(available)||available<=0)throw new Error("El rollo debe tener un metraje disponible mayor que cero.");
+      var initial=existingId?(v238Num(old.initialMeters)||v238Num(old.disponibleAntes)||available):available;
+      var sessionId=uid("CUTREF");
+      var record=Object.assign({},old,{
+        id:id,
+        recordType:V238_ROLL_RECORD_TYPE,
+        source:old.source||"corte_cable_referencia",
+        referencia:data.referencia||old.referencia||"",
+        referenceKey:data.referenceKey,
+        descripcion:data.descripcion||old.descripcion||"",
+        rollCode:data.rollCode||v238RollCode(old),
+        codigoRollo:data.rollCode||v238RollCode(old),
+        bodega:data.bodega||old.bodega||"",
+        ubicacion:data.ubicacion||old.ubicacion||"",
+        initialMeters:cutNormalizeDecimal(initial),
+        disponibleAntes:cutNormalizeDecimal(initial),
+        availableMeters:cutNormalizeDecimal(available),
+        sobrante:cutNormalizeDecimal(available),
+        consumedMeters:cutNormalizeDecimal(Math.max(0,initial-available)),
+        status:"DISPONIBLE",
+        referenceSessionId:sessionId,
+        referenceSessionStatus:"ACTIVA",
+        sessionQueue:v238QueueSnapshot(queue),
+        sessionTotalCuts:queue.length,
+        sessionCompletedCuts:0,
+        activeCaseId:"",
+        activeCutId:"",
+        activeCutCode:"",
+        activeStatus:"",
+        startedAt:old.startedAt||now(),
+        updatedAt:now(),
+        updatedByName:state.user?state.user.name:"",
+        createdAt:old.createdAt||now(),
+        createdByName:old.createdByName||(state.user?state.user.name:"")
+      });
+      tx.set(ref,record,{merge:true});
+      return record;
+    });
+  });
+}
+function v238AssignRollToCut(record,item,sequence,total){
+  var c=item.caseObj||caseById(item.caseId);
+  if(!c)return Promise.reject(new Error("No se encontró el pedido del siguiente corte."));
+  var cut=item.cutObj||findCut(c,item.cutId);
+  if(!cut)return Promise.reject(new Error("No se encontró la solicitud de corte."));
+  var available=v238RollAvailable(record);
+  var required=v238Num(cut.metrosSolicitados||cut.metrajeFinal);
+  if(!Number.isFinite(required)||required<=0)return Promise.reject(new Error("El corte no tiene metros solicitados válidos."));
+  if(!Number.isFinite(available)||available<required){
+    var err=new Error("El rollo tiene "+v238Meters(available)+" m y el siguiente corte requiere "+v238Meters(required)+" m.");
+    err.code="ROLL_INSUFFICIENT";err.available=available;err.required=required;err.item=item;throw err;
+  }
+  cut.referenceBatchMode=true;
+  cut.referenceBatchSessionId=record.referenceSessionId||"";
+  cut.referenceBatchSequence=sequence||1;
+  cut.referenceBatchTotal=total||1;
+  cut.sourceRollId=record.id;
+  cut.sourceRollCode=v238RollCode(record);
+  cut.rollInitialMeters=v238Meters(record.initialMeters||record.disponibleAntes||available);
+  cut.rollRemainingBefore=v238Meters(available);
+  cut.disponibleAntes=v238Meters(available);
+  cut.rollWarehouse=record.bodega||"";
+  cut.rollLocation=record.ubicacion||"";
+  cut.siesaBodega=cut.siesaBodega||record.bodega||((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"");
+  cut.rollAssignedAt=now();
+  cut.rollAssignedByName=state.user?state.user.name:"";
+  c.hasCuts=true;
+  return db.collection("cases").doc(c.id).set({cutRequests:c.cutRequests,hasCuts:true,updatedAt:now()},{merge:true}).then(function(){
+    return db.collection(V238_ROLL_COLLECTION).doc(record.id).set({
+      activeCaseId:c.id,activeCutId:cut.id,activeCutCode:cut.code||cut.id,
+      activeStatus:"ASIGNADO",referenceSessionStatus:"ACTIVA",
+      updatedAt:now(),updatedByName:state.user?state.user.name:""
+    },{merge:true});
+  }).then(function(){
+    createEvent(enrichCaseEvent(c,{
+      caseId:c.id,type:"CUT_ROLL_ASSIGNED",process:"corte_cable",cutId:cut.id,
+      detail:"Rollo "+v238RollCode(record)+" asignado al corte "+(cut.code||cut.id)+". Disponible antes: "+v238Meters(available)+" m.",
+      targetRole:"auxiliar_corte",
+      visibleRoles:["auxiliar_corte","jefe_logistica","coordinador_logistico","admin","super_admin"]
+    })).catch(function(){});
+    return {caseObj:c,cutObj:cut,record:record};
+  });
+}
+function v238OpenReplacementRoll(item,oldRecord,errorInfo){
+  var required=v238Num(item&&item.meters)||v238Num(item&&item.cutObj&&(item.cutObj.metrosSolicitados||item.cutObj.metrajeFinal))||0;
+  var available=errorInfo&&Number.isFinite(errorInfo.available)?errorInfo.available:v238RollAvailable(oldRecord);
+  var refText=(item&&item.referencia)||(oldRecord&&oldRecord.referencia)||"";
+  var html='<form class="form" id="v238ReplacementRollForm">'+
+    '<div class="notice danger"><strong>El rollo actual no alcanza para el siguiente corte.</strong><br>Disponible: <b>'+esc(v238Meters(available))+' m</b> · Requerido: <b>'+esc(v238Meters(required))+' m</b>.<br>Registre otro rollo para continuar la secuencia.</div>'+
+    '<section class="card"><div class="grid grid-3"><div><span class="muted">Siguiente pedido</span><strong>'+esc(item.caseReference||"")+'</strong></div><div><span class="muted">Referencia</span><strong>'+esc(refText)+'</strong></div><div><span class="muted">Metros</span><strong>'+esc(v238Meters(required))+' m</strong></div></div></section>'+
+    '<div class="grid grid-2">'+
+      '<label class="field"><span>Código, lote o identificación del nuevo rollo *</span><input class="input" name="rollCode" required placeholder="Ej. ROLLO-REF-002"></label>'+
+      '<label class="field"><span>Metros totales del nuevo rollo *</span><input class="input" name="initialMeters" inputmode="decimal" required placeholder="Debe ser igual o mayor a '+esc(v238Meters(required))+'"></label>'+
+      '<label class="field"><span>Bodega / CO SIESA</span><input class="input" name="bodega" value="'+esc((oldRecord&&oldRecord.bodega)||"")+'"></label>'+
+      '<label class="field"><span>Ubicación física</span><input class="input" name="ubicacion" value="'+esc((oldRecord&&oldRecord.ubicacion)||"")+'" placeholder="Rack, zona o ubicación"></label>'+
+    '</div>'+
+    '<button class="btn btn-success" type="submit">Registrar nuevo rollo e iniciar siguiente corte</button>'+
+  '</form>';
+  drawer(modal("Cambiar rollo · "+esc(refText),html));
+  var form=qs("#v238ReplacementRollForm");
+  if(!form)return;
+  form.onsubmit=function(e){
+    e.preventDefault();
+    var fd=new FormData(form);
+    var initial=v238Num(fd.get("initialMeters"));
+    if(!Number.isFinite(initial)||initial<required){alert("El nuevo rollo debe tener al menos "+v238Meters(required)+" metros.");return;}
+    var queue=v238ReferenceQueue(v238RefKey(refText));
+    v238CreateOrActivateRoll({
+      existingRollId:"",referenceKey:v238RefKey(refText),referencia:refText,descripcion:item.descripcion||"",
+      rollCode:String(fd.get("rollCode")||"").trim(),initialMeters:initial,
+      bodega:String(fd.get("bodega")||"").trim(),ubicacion:String(fd.get("ubicacion")||"").trim()
+    },queue).then(function(record){
+      if(oldRecord&&oldRecord.id){
+        db.collection(V238_ROLL_COLLECTION).doc(oldRecord.id).set({
+          status:Number(available)>0?"REMANENTE_INSUFICIENTE":"AGOTADO",
+          referenceSessionStatus:"CAMBIO_DE_ROLLO",activeCaseId:"",activeCutId:"",
+          activeCutCode:"",activeStatus:"",updatedAt:now(),updatedByName:state.user?state.user.name:""
+        },{merge:true}).catch(function(){});
+      }
+      return v238AssignRollToCut(record,item,1,queue.length);
+    }).then(function(result){closeDrawer();openCutModule(result.caseObj.id,result.cutObj.id);})
+      .catch(function(err){showError(err.message||err);});
+  };
+}
+function v238OpenReferenceSession(refKey){
+  var queue=v238ReferenceQueue(refKey);
+  if(!queue.length){alert("No hay cortes pendientes para esta referencia.");return;}
+  var first=queue[0];
+  v238LoadReferenceRolls(refKey).then(function(rolls){
+    var options='<option value="">Registrar un rollo nuevo</option>'+rolls.map(function(r){
+      return '<option value="'+esc(r.id)+'">'+esc(v238RollCode(r))+' · '+esc(v238Meters(v238RollAvailable(r)))+' m disponibles'+(r.ubicacion?' · '+esc(r.ubicacion):'')+'</option>';
+    }).join("");
+    var firstOptions=queue.map(function(x,i){
+      return '<option value="'+i+'">'+esc((i+1)+". "+x.caseReference+" · "+x.code+" · "+v238Meters(x.meters)+" m")+'</option>';
+    }).join("");
+    var rows=queue.slice(0,60).map(function(x,i){
+      return '<tr><td>'+(i+1)+'</td><td>'+esc(x.caseReference)+'</td><td>'+esc(x.client)+'</td><td>'+esc(x.code)+'</td><td>'+esc(v238Meters(x.meters))+' m</td></tr>';
+    }).join("");
+    var total=queue.reduce(function(s,x){return s+(Number(x.meters)||0);},0);
+    var html='<form class="form" id="v238ReferenceSessionForm">'+
+      '<div class="notice success"><strong>Sesión secuencial por referencia.</strong><br>El saldo del rollo se actualizará después de registrar cada corte. El sistema ofrecerá automáticamente el siguiente tramo.</div>'+
+      '<section class="grid grid-3">'+
+        '<article class="card kpi"><span>Referencia</span><strong>'+esc(first.referencia||refKey)+'</strong><small>'+esc(first.descripcion||"")+'</small></article>'+
+        '<article class="card kpi"><span>Cortes pendientes</span><strong>'+queue.length+'</strong><small>Pedidos agrupados</small></article>'+
+        '<article class="card kpi"><span>Metros solicitados</span><strong>'+esc(v238Meters(total))+' m</strong><small>Total de la referencia</small></article>'+
+      '</section>'+
+      '<div class="grid grid-2">'+
+        '<label class="field"><span>Usar rollo disponible</span><select class="select" name="existingRollId" id="v238ExistingRoll">'+options+'</select><small>Puede usar un sobrante existente de inventario o registrar un rollo nuevo.</small></label>'+
+        '<label class="field"><span>Primer corte de la secuencia</span><select class="select" name="firstIndex">'+firstOptions+'</select></label>'+
+        '<label class="field"><span>Código, lote o identificación del rollo *</span><input class="input" name="rollCode" id="v238RollCode" placeholder="Ej. ROLLO-REF-001"></label>'+
+        '<label class="field"><span>Metros disponibles del rollo *</span><input class="input" name="initialMeters" id="v238RollMeters" inputmode="decimal" placeholder="Ej. 1000"></label>'+
+        '<label class="field"><span>Bodega / CO SIESA</span><input class="input" name="bodega" id="v238RollWarehouse" value="'+esc((window.appSettings&&window.appSettings.siesaFlatFile&&window.appSettings.siesaFlatFile.warehouse)||"")+'"></label>'+
+        '<label class="field"><span>Ubicación física</span><input class="input" name="ubicacion" id="v238RollLocation" placeholder="Rack, zona o ubicación"></label>'+
+      '</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th>Pedido</th><th>Cliente</th><th>Corte</th><th>Metros</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<button class="btn btn-success" type="submit">Crear sesión e iniciar primer corte</button>'+
+    '</form>';
+    drawer(modal("Iniciar cortes por referencia",html));
+    var select=qs("#v238ExistingRoll");
+    function fillRoll(){
+      var selected=(rolls||[]).filter(function(r){return String(r.id)===String(select&&select.value||"");})[0]||null;
+      var code=qs("#v238RollCode"),meters=qs("#v238RollMeters"),warehouse=qs("#v238RollWarehouse"),location=qs("#v238RollLocation");
+      if(selected){
+        if(code)code.value=v238RollCode(selected);
+        if(meters)meters.value=v238Meters(v238RollAvailable(selected));
+        if(warehouse)warehouse.value=selected.bodega||warehouse.value||"";
+        if(location)location.value=selected.ubicacion||"";
+        if(code)code.readOnly=true;if(meters)meters.readOnly=true;
+      }else{
+        if(code){code.readOnly=false;code.value="";}
+        if(meters){meters.readOnly=false;meters.value="";}
+      }
+    }
+    if(select){select.onchange=fillRoll;fillRoll();}
+    var form=qs("#v238ReferenceSessionForm");
+    form.onsubmit=function(e){
+      e.preventDefault();
+      var fd=new FormData(form),firstIndex=Number(fd.get("firstIndex")||0),item=queue[firstIndex]||queue[0];
+      var existingId=String(fd.get("existingRollId")||"").trim();
+      var selected=(rolls||[]).filter(function(r){return String(r.id)===existingId;})[0]||null;
+      var initial=selected?v238RollAvailable(selected):v238Num(fd.get("initialMeters"));
+      var required=Number(item.meters)||0;
+      if(!existingId&&!String(fd.get("rollCode")||"").trim()){alert("Registre el código o identificación del rollo.");return;}
+      if(!Number.isFinite(initial)||initial<=0){alert("Registre los metros disponibles del rollo.");return;}
+      if(initial<required){alert("El rollo tiene "+v238Meters(initial)+" m y el primer corte requiere "+v238Meters(required)+" m.");return;}
+      v238CreateOrActivateRoll({
+        existingRollId:existingId,referenceKey:refKey,referencia:item.referencia||refKey,descripcion:item.descripcion||"",
+        rollCode:String(fd.get("rollCode")||"").trim(),initialMeters:initial,
+        bodega:String(fd.get("bodega")||"").trim(),ubicacion:String(fd.get("ubicacion")||"").trim()
+      },queue).then(function(record){return v238AssignRollToCut(record,item,firstIndex+1,queue.length);})
+        .then(function(result){closeDrawer();openCutModule(result.caseObj.id,result.cutObj.id);})
+        .catch(function(err){
+          if(err&&err.code==="ROLL_INSUFFICIENT")v238OpenReplacementRoll(item,selected,err);
+          else showError(err.message||err);
+        });
+    };
+  });
+}
+function v238SessionPanel(cut){
+  if(!cut||!cut.referenceBatchMode||!cut.sourceRollId)return "";
+  var before=v238Num(cut.rollRemainingBefore||cut.disponibleAntes);
+  var requested=v238Num(cut.metrajeFinal||cut.metrosSolicitados);
+  var after=(Number.isFinite(before)&&Number.isFinite(requested))?Math.max(0,before-requested):NaN;
+  return '<section class="v238-roll-panel">'+
+    '<div class="v238-roll-title"><div><span>Sesión por referencia</span><strong>'+esc(cut.sourceRollCode||cut.sourceRollId)+'</strong></div><b>Corte '+esc(cut.referenceBatchSequence||1)+' de '+esc(cut.referenceBatchTotal||1)+'</b></div>'+
+    '<div class="v238-roll-metrics">'+
+      '<article><span>Rollo inicial</span><strong>'+esc(v238Meters(cut.rollInitialMeters))+' m</strong></article>'+
+      '<article><span>Disponible antes</span><strong>'+esc(v238Meters(before))+' m</strong></article>'+
+      '<article><span>Corte actual</span><strong>'+esc(v238Meters(requested))+' m</strong></article>'+
+      '<article><span>Saldo proyectado</span><strong>'+esc(v238Meters(after))+' m</strong></article>'+
+    '</div><div class="v238-roll-actions"><button type="button" class="btn" data-v238-action="changeRoll">Cambiar rollo</button></div></section>';
+}
+function v238InjectCutSessionPanel(c,cut){
+  try{
+    if(!cut||!cut.referenceBatchMode)return;
+    var form=qs("#cutFullForm");if(!form)return;
+    if(!form.querySelector(".v238-roll-panel")){
+      var panel=document.createElement("div");panel.innerHTML=v238SessionPanel(cut);
+      var node=panel.firstElementChild;form.insertBefore(node,form.firstChild);
+      var change=node.querySelector('[data-v238-action="changeRoll"]');
+      if(change)change.onclick=function(){
+        var item={caseId:c.id,cutId:cut.id,caseReference:c.reference||cut.pedido||c.id,client:c.client||"",code:cut.code||cut.id,referencia:cut.referencia||"",descripcion:cut.descripcion||"",meters:v238Num(cut.metrosSolicitados||cut.metrajeFinal)||0,caseObj:c,cutObj:cut};
+        v238GetRollDoc(cut.sourceRollId).then(function(record){v238OpenReplacementRoll(item,record,{available:v238Num(cut.rollRemainingBefore||cut.disponibleAntes),required:item.meters});});
+      };
+    }
+    var availableInput=form.querySelector('[name="disponibleAntes"]');
+    if(availableInput){availableInput.readOnly=true;availableInput.classList.add("v238-locked");}
+    var refInput=form.querySelector('[name="referencia"]');if(refInput)refInput.readOnly=true;
+    var start=form.querySelector('[data-cut-action="startCut"]');
+    if(start&&cut.status==="PAUSADO_CORTE"){start.disabled=false;start.textContent="Continuar corte";}
+    var finish=form.querySelector('[data-cut-action="finishCut"]');
+    if(finish&&cut.status==="PAUSADO_CORTE")finish.disabled=true;
+    var actions=form.querySelector(".cut-measure .top-actions");
+    if(actions&&!actions.querySelector('[data-cut-action="pauseCut"]')){
+      var pause=document.createElement("button");
+      pause.type="button";pause.className="btn btn-danger";pause.setAttribute("data-cut-action","pauseCut");pause.textContent="Pausar corte";
+      pause.disabled=!cut.startedAt||cutIsOperationallyDone(cut);
+      if(finish)actions.insertBefore(pause,finish);else actions.appendChild(pause);
+      pause.onclick=function(){handleCutAction(c,cut,"pauseCut");};
+    }
+  }catch(e){console.warn("[V238] No se pudo mejorar el formulario de corte.",e);}
+}
+function v238UpdateRollActive(recordId,data){
+  if(!recordId||!db)return Promise.resolve();
+  return db.collection(V238_ROLL_COLLECTION).doc(recordId).set(Object.assign({updatedAt:now(),updatedByName:state.user?state.user.name:""},data||{}),{merge:true});
+}
+function v238StartBatchCut(c,cut){
+  if(!c||!cut)return;
+  try{if(qs("#cutFullForm"))applyCutFormValues(cut);}catch(e){}
+  var requested=v238Num(cut.metrosSolicitados||cut.metrajeFinal);
+  if(!Number.isFinite(requested)||requested<=0){alert("El corte no tiene un metraje válido.");return;}
+  v238GetRollDoc(cut.sourceRollId).then(function(record){
+    if(!record)throw new Error("No se encontró el rollo asignado. Registre o seleccione otro rollo.");
+    var available=v238RollAvailable(record);
+    if(!Number.isFinite(available)||available<requested){
+      var item={caseId:c.id,cutId:cut.id,caseReference:c.reference||cut.pedido||c.id,client:c.client||"",code:cut.code||cut.id,referencia:cut.referencia||"",descripcion:cut.descripcion||"",meters:requested,caseObj:c,cutObj:cut};
+      v238OpenReplacementRoll(item,record,{available:available,required:requested});return null;
+    }
+    cut.rollRemainingBefore=v238Meters(available);cut.disponibleAntes=v238Meters(available);
+    var calc=cutCalc(cut);
+    if(!cutCanMeasure(cut)){alert("El corte está bloqueado por cálculo o aprobación pendiente. "+((calc.rule&&calc.rule.message)||""));return null;}
+    return db.runTransaction(function(tx){
+      var ref=db.collection(V238_ROLL_COLLECTION).doc(cut.sourceRollId);
+      return tx.get(ref).then(function(snap){
+        if(!snap.exists)throw new Error("El rollo asignado ya no existe.");
+        var current=Object.assign({id:snap.id},snap.data()||{}),currentAvailable=v238RollAvailable(current);
+        if(current.activeCutId&&String(current.activeCutId)!==String(cut.id)&&String(current.activeStatus)!=="FINALIZADO")throw new Error("El rollo está siendo utilizado por el corte "+(current.activeCutCode||current.activeCutId)+".");
+        if(currentAvailable<requested){var error=new Error("El rollo no tiene saldo suficiente.");error.code="ROLL_INSUFFICIENT";error.available=currentAvailable;error.required=requested;throw error;}
+        tx.set(ref,{activeCaseId:c.id,activeCutId:cut.id,activeCutCode:cut.code||cut.id,activeStatus:"EN_CORTE",referenceSessionStatus:"ACTIVA",updatedAt:now(),updatedByName:state.user?state.user.name:""},{merge:true});
+        return currentAvailable;
+      });
+    }).then(function(currentAvailable){
+      cut.rollRemainingBefore=v238Meters(currentAvailable);cut.disponibleAntes=v238Meters(currentAvailable);
+      cut.status="EN_CORTE";cut.startedAt=now();cut.lastStartedAt=cut.startedAt;cut.pausedAt="";
+      cut.horaInicio=cut.horaInicio||new Date().toTimeString().slice(0,8);cut.fechaCorte=cut.fechaCorte||new Date().toISOString().slice(0,10);
+      cut.startedBy=state.user.uid;cut.startedByName=state.user.name;
+      c.currentProcess="corte_cable";c.status="en_proceso";c.hasCuts=true;
+      procStats(c,"corte_cable").startedAt=procStats(c,"corte_cable").startedAt||now();
+      return persistCase(c,{type:cut.durationMs?"CUT_REFERENCE_RESUMED":"CUT_REFERENCE_STARTED",cutId:cut.id,detail:(cut.durationMs?"Corte continuado":"Corte iniciado")+" desde el rollo "+cut.sourceRollCode+". Saldo antes: "+v238Meters(currentAvailable)+" m.",targetRole:"auxiliar_corte"})
+        .then(function(){closeDrawer();openCutModule(c.id,cut.id);});
+    }).catch(function(err){
+      if(err&&err.code==="ROLL_INSUFFICIENT"){
+        var item={caseId:c.id,cutId:cut.id,caseReference:c.reference||cut.pedido||c.id,client:c.client||"",code:cut.code||cut.id,referencia:cut.referencia||"",descripcion:cut.descripcion||"",meters:requested,caseObj:c,cutObj:cut};
+        v238OpenReplacementRoll(item,record,err);
+      }else showError(err.message||err);
+    });
+  }).catch(function(err){showError(err.message||err);});
+}
+function v238PauseBatchCut(c,cut){
+  if(!cut.startedAt){alert("El corte no está activo.");return;}
+  try{if(qs("#cutFullForm"))applyCutFormValues(cut);}catch(e){}
+  var extra=msSince(cut.startedAt);
+  cut.durationMs=Number(cut.durationMs||0)+Math.max(0,extra);cut.durationText=fmt(cut.durationMs);
+  cut.startedAt=null;cut.status="PAUSADO_CORTE";cut.pausedAt=now();cut.pausedBy=state.user.uid;cut.pausedByName=state.user.name;
+  v238UpdateRollActive(cut.sourceRollId,{activeStatus:"PAUSADO"}).catch(function(){});
+  persistCase(c,{type:"CUT_REFERENCE_PAUSED",cutId:cut.id,detail:"Corte pausado en "+cut.durationText+". El rollo "+cut.sourceRollCode+" permanece reservado.",targetRole:"auxiliar_corte"})
+    .then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+}
+function v238FinishBatchCut(c,cut){
+  try{if(qs("#cutFullForm"))applyCutFormValues(cut);}catch(e){}
+  if(!cut.startedAt){alert("Primero debe iniciar o continuar el corte.");return;}
+  var extra=msSince(cut.startedAt);
+  cut.durationMs=Number(cut.durationMs||0)+Math.max(0,extra);cut.durationText=fmt(cut.durationMs);
+  cut.horaFin=new Date().toTimeString().slice(0,8);cut.finishedAt=now();cut.completedAt=cut.finishedAt;
+  cut.finishedBy=state.user.uid;cut.finishedByName=state.user.name;cut.startedAt=null;cut.status="PENDIENTE_REGISTRO";
+  var before=v238Num(cut.rollRemainingBefore||cut.disponibleAntes),actual=v238Num(cut.metrajeFinal||cut.metrosSolicitados);
+  if(Number.isFinite(before)&&Number.isFinite(actual))cut.remanenteReal=v238Meters(before-actual);
+  v238UpdateRollActive(cut.sourceRollId,{activeStatus:"FINALIZADO_PENDIENTE_REGISTRO"}).catch(function(){});
+  refreshCutStats(c);
+  persistCase(c,{type:"CUT_FINISHED_PENDING_REGISTER",cutId:cut.id,detail:"Corte de referencia finalizado. Rollo "+cut.sourceRollCode+" · "+v238Meters(actual)+" m · pendiente evidencia y registro.",targetRole:"auxiliar_corte"})
+    .then(function(){closeDrawer();openCutModule(c.id,cut.id);}).catch(function(e){showError(e.message||e);});
+}
+function v238MergeQueue(record,refKey){
+  var dynamic=v238ReferenceQueue(refKey),map={};
+  (record.sessionQueue||[]).forEach(function(x){map[String(x.caseId)+"|"+String(x.cutId)]=Object.assign({},x);});
+  dynamic.forEach(function(x){
+    var key=String(x.caseId)+"|"+String(x.cutId);
+    if(!map[key])map[key]={sequence:Object.keys(map).length+1,caseId:x.caseId,cutId:x.cutId,caseReference:x.caseReference,client:x.client,cutCode:x.code,meters:v238Meters(x.meters),status:"PENDIENTE"};
+  });
+  return Object.keys(map).map(function(k){return map[k];}).sort(function(a,b){return Number(a.sequence||0)-Number(b.sequence||0);});
+}
+function v238CommitRollAfterCut(c,cut){
+  if(!cut||!cut.sourceRollId||!cut.referenceBatchMode)return Promise.resolve(null);
+  if(cut.rollInventoryCommittedAt)return v238GetRollDoc(cut.sourceRollId);
+  var actual=v238Num(cut.metrajeFinal||cut.metrosSolicitados);
+  if(!Number.isFinite(actual)||actual<=0)return Promise.reject(new Error("No se puede descontar inventario: el metraje final no es válido."));
+  var rollRef=db.collection(V238_ROLL_COLLECTION).doc(cut.sourceRollId);
+  return db.runTransaction(function(tx){
+    return tx.get(rollRef).then(function(snap){
+      if(!snap.exists)throw new Error("El rollo asignado no existe en inventario.");
+      var record=Object.assign({id:snap.id},snap.data()||{}),committed=Array.isArray(record.committedCutIds)?record.committedCutIds.slice():[];
+      if(committed.indexOf(cut.id)>=0)return {record:record,already:true,before:v238RollAvailable(record),after:v238RollAvailable(record)};
+      var before=v238RollAvailable(record);
+      if(!Number.isFinite(before))before=v238Num(cut.rollRemainingBefore||cut.disponibleAntes);
+      if(!Number.isFinite(before)||before<actual)throw new Error("El saldo del rollo es menor al metraje final del corte.");
+      var after=Math.max(0,Number((before-actual).toFixed(4)));
+      committed.push(cut.id);if(committed.length>250)committed=committed.slice(-250);
+      var queue=v238MergeQueue(record,v238RefKey(cut.referencia||record.referencia));
+      queue=queue.map(function(x){return String(x.caseId)===String(c.id)&&String(x.cutId)===String(cut.id)?Object.assign({},x,{status:"FINALIZADO",completedAt:now(),meters:v238Meters(actual)}):x;});
+      var completed=queue.filter(function(x){return x.status==="FINALIZADO";}).length;
+      var history=Array.isArray(record.cutHistory)?record.cutHistory.slice():[];
+      history.push({caseId:c.id,caseReference:c.reference||cut.pedido||"",cutId:cut.id,cutCode:cut.code||cut.id,meters:v238Meters(actual),before:v238Meters(before),after:v238Meters(after),completedAt:now(),completedByName:state.user?state.user.name:""});
+      if(history.length>100)history=history.slice(-100);
+      var update={
+        recordType:V238_ROLL_RECORD_TYPE,availableMeters:v238Meters(after),sobrante:v238Meters(after),
+        consumedMeters:v238Meters((v238Num(record.consumedMeters)||0)+actual),status:after>0?"DISPONIBLE":"AGOTADO",
+        activeCaseId:"",activeCutId:"",activeCutCode:"",activeStatus:"",
+        sessionQueue:queue,sessionTotalCuts:queue.length,sessionCompletedCuts:completed,
+        referenceSessionStatus:completed>=queue.length?"FINALIZADA":"ACTIVA",
+        committedCutIds:committed,cutHistory:history,lastCutId:cut.id,lastCutCode:cut.code||cut.id,lastCutMeters:v238Meters(actual),
+        lastCutAt:now(),lastCutByName:state.user?state.user.name:"",updatedAt:now(),updatedByName:state.user?state.user.name:""
+      };
+      tx.set(rollRef,update,{merge:true});
+      return {record:Object.assign(record,update,{id:snap.id}),already:false,before:before,after:after};
+    });
+  }).then(function(result){
+    cut.rollRemainingBefore=v238Meters(result.before);cut.rollRemainingAfter=v238Meters(result.after);
+    cut.remanenteReal=v238Meters(result.after);cut.rollInventoryCommittedAt=cut.rollInventoryCommittedAt||now();
+    cut.rollInventoryCommittedByName=state.user?state.user.name:"";
+    return db.collection("cases").doc(c.id).set({cutRequests:c.cutRequests,updatedAt:now()},{merge:true}).then(function(){
+      var rec=result.record;state.inventoryChips=sortByUpdated(uniqueById([rec].concat(state.inventoryChips||[])));
+      setTimeout(function(){v238OfferNextCut(c,cut,rec);},500);return rec;
+    });
+  });
+}
+function v238ResolveQueueItem(entry,refKey){
+  var c=caseById(entry.caseId);if(!c)return null;
+  var cut=findCut(c,entry.cutId);
+  if(!cut||cutIsOperationallyDone(cut)||v238RefKey(cut.referencia||cut.descripcion)!==refKey)return null;
+  return {caseId:c.id,cutId:cut.id,caseReference:c.reference||cut.pedido||c.id,client:c.client||"",code:cut.code||cut.id,referencia:cut.referencia||"",descripcion:cut.descripcion||"",meters:v238Num(cut.metrosSolicitados||cut.metrajeFinal)||0,caseObj:c,cutObj:cut};
+}
+function v238OfferNextCut(c,cut,record){
+  if(!record||!cut)return;
+  var refKey=v238RefKey(cut.referencia||record.referencia),queue=v238MergeQueue(record,refKey),next=null,nextSequence=0;
+  for(var i=0;i<queue.length;i++){
+    if(queue[i].status==="FINALIZADO")continue;
+    var resolved=v238ResolveQueueItem(queue[i],refKey);
+    if(resolved){next=resolved;nextSequence=Number(queue[i].sequence||i+1);break;}
+  }
+  var available=v238RollAvailable(record);
+  if(!next){
+    drawer(modal("Secuencia de referencia finalizada",
+      '<div class="notice success"><strong>Todos los cortes pendientes de esta referencia quedaron registrados.</strong><br>Rollo: '+esc(v238RollCode(record))+' · Saldo disponible: <b>'+esc(v238Meters(available))+' m</b>.</div>'+
+      '<section class="card"><p>El saldo permanece registrado en inventario para próximos cortes de la misma referencia.</p></section>'+
+      '<button class="btn btn-primary" data-v238-finish-session>Volver a la bandeja de cortes</button>'));
+    var done=qs("[data-v238-finish-session]");if(done)done.onclick=function(){closeDrawer();renderCutsQueue();};return;
+  }
+  var required=v238Num(next.meters)||0;
+  if(!Number.isFinite(available)||available<required){v238OpenReplacementRoll(next,record,{available:available,required:required});return;}
+  var projected=Math.max(0,available-required);
+  var html='<div class="notice success"><strong>Corte registrado e inventario actualizado.</strong><br>El siguiente corte puede salir del mismo rollo.</div>'+
+    '<section class="v238-next-card"><div class="v238-next-roll"><span>Rollo activo</span><strong>'+esc(v238RollCode(record))+'</strong><small>Disponible: '+esc(v238Meters(available))+' m</small></div>'+
+    '<div class="v238-next-arrow">→</div><div class="v238-next-cut"><span>Siguiente corte</span><strong>'+esc(next.caseReference+' · '+next.code)+'</strong><small>'+esc(v238Meters(required))+' m · saldo después '+esc(v238Meters(projected))+' m</small></div></section>'+
+    '<div class="top-actions"><button class="btn btn-success" data-v238-next-cut>Iniciar siguiente corte</button><button class="btn" data-v238-back-queue>Volver a la bandeja</button></div>';
+  drawer(modal("Continuar cortes de "+esc(next.referencia||refKey),html));
+  var nextBtn=qs("[data-v238-next-cut]");
+  if(nextBtn)nextBtn.onclick=function(){
+    v238AssignRollToCut(record,next,nextSequence,queue.length).then(function(result){closeDrawer();openCutModule(result.caseObj.id,result.cutObj.id);})
+      .catch(function(err){if(err&&err.code==="ROLL_INSUFFICIENT")v238OpenReplacementRoll(next,record,err);else showError(err.message||err);});
+  };
+  var back=qs("[data-v238-back-queue]");if(back)back.onclick=function(){closeDrawer();renderCutsQueue();};
+}
+
+var v238LegacyUpsertCutInventoryChip=upsertCutInventoryChip;
+upsertCutInventoryChip=function(c,cut){
+  if(cut&&cut.referenceBatchMode&&cut.sourceRollId)return v238CommitRollAfterCut(c,cut);
+  return v238LegacyUpsertCutInventoryChip(c,cut);
+};
+
+var v238LegacyCutStatusChip=cutStatusChip;
+cutStatusChip=function(st){
+  if(st==="PAUSADO_CORTE")return '<span class="chip warning">Pausado</span>';
+  return v238LegacyCutStatusChip(st);
+};
+
+var v238LegacyHandleCutAction=handleCutAction;
+handleCutAction=function(c,cut,action){
+  if(cut&&cut.referenceBatchMode){
+    if(action==="startCut"){v238StartBatchCut(c,cut);return;}
+    if(action==="pauseCut"){v238PauseBatchCut(c,cut);return;}
+    if(action==="finishCut"){v238FinishBatchCut(c,cut);return;}
+  }
+  return v238LegacyHandleCutAction(c,cut,action);
+};
+
+var v238LegacyOpenCutModule=openCutModule;
+openCutModule=function(id,cutId){
+  var result=v238LegacyOpenCutModule(id,cutId);
+  setTimeout(function(){var c=caseById(id),cut=c?findCut(c,cutId):null;if(c&&cut)v238InjectCutSessionPanel(c,cut);},0);
+  setTimeout(function(){var c=caseById(id),cut=c?findCut(c,cutId):null;if(c&&cut)v238InjectCutSessionPanel(c,cut);},160);
+  return result;
+};
+
+document.addEventListener("click",function(e){
+  var button=e.target&&e.target.closest?e.target.closest('[data-action="startReferenceCuts"]'):null;
+  if(!button)return;
+  e.preventDefault();e.stopPropagation();
+  var refKey=String(button.getAttribute("data-ref")||"");
+  if(refKey)v238OpenReferenceSession(refKey);
+},true);
+
+(function v238InjectStyles(){
+  if(document.getElementById("v238-cut-reference-css"))return;
+  var style=document.createElement("style");style.id="v238-cut-reference-css";
+  style.textContent=
+    ".v238-roll-panel{margin:0 0 16px;padding:15px;border:1px solid #b8d6f1;border-radius:20px;background:linear-gradient(135deg,#f0f7ff,#fff);box-shadow:0 10px 26px rgba(6,27,70,.08)}"+
+    ".v238-roll-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.v238-roll-title span,.v238-roll-metrics span,.v238-next-card span{display:block;color:#64748b;font-size:.67rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.v238-roll-title strong{display:block;color:#061b46;font-size:1.05rem;margin-top:3px}.v238-roll-title b{padding:6px 10px;border-radius:999px;background:#061b46;color:#fff;font-size:.72rem}"+
+    ".v238-roll-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.v238-roll-metrics article{padding:10px;border:1px solid #dbe7f3;border-radius:14px;background:#fff}.v238-roll-metrics strong{display:block;color:#061b46;font-size:1rem;margin-top:4px}.v238-roll-actions{display:flex;justify-content:flex-end;margin-top:10px}.v238-locked{background:#eef4fa!important;font-weight:800!important;color:#061b46!important}"+
+    ".v238-next-card{display:grid;grid-template-columns:1fr auto 1.25fr;align-items:center;gap:14px;padding:16px;margin:14px 0;border:1px solid #cfe0ef;border-radius:20px;background:linear-gradient(135deg,#f7fbff,#fff)}.v238-next-roll,.v238-next-cut{padding:13px;border-radius:15px;background:#fff;border:1px solid #e1e9f1}.v238-next-card strong{display:block;color:#061b46;font-size:1rem;margin:5px 0}.v238-next-card small{color:#64748b}.v238-next-arrow{font-size:1.7rem;color:#0b66c3;font-weight:900}"+
+    "@media(max-width:790px){.v238-roll-title{display:block}.v238-roll-title b{display:inline-block;margin-top:8px}.v238-roll-metrics{grid-template-columns:1fr 1fr}.v238-roll-actions .btn{width:100%}.v238-next-card{grid-template-columns:1fr}.v238-next-arrow{transform:rotate(90deg);text-align:center}.drawer [data-cut-action='pauseCut']{order:2}.drawer [data-cut-action='finishCut']{order:3}.drawer [data-cut-action='registerCut']{order:4}}";
+  document.head.appendChild(style);
+})();
+
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 
