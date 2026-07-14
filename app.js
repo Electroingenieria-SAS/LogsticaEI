@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v240-alistamiento-visible-corte-no-disponible";
+var EI_CANONICAL_APP_VERSION = "v241-alistamiento-movil-parcial-no-encontrado";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -7707,7 +7707,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V240</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V241</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -15008,6 +15008,430 @@ document.addEventListener("visibilitychange",function(){
   style.textContent=
     ".alistamiento-check-panel .row-actions{display:flex;gap:5px;flex-wrap:wrap}.alistamiento-check-panel .row-actions .btn{margin:0}"+
     "@media(max-width:790px){.alistamiento-check-panel .table-wrap{overflow:visible}.alistamiento-check-panel table,.alistamiento-check-panel thead,.alistamiento-check-panel tbody,.alistamiento-check-panel tr,.alistamiento-check-panel td{display:block;width:100%}.alistamiento-check-panel thead{display:none}.alistamiento-check-panel tr{margin:0 0 12px;padding:12px;border:1px solid #dbe7f3;border-radius:15px;background:#fff}.alistamiento-check-panel td{padding:4px 0;border:0}.alistamiento-check-panel .row-actions{display:grid;grid-template-columns:1fr 1fr;margin-top:8px}.alistamiento-check-panel .row-actions .btn{width:100%;min-height:42px}}";
+  document.head.appendChild(style);
+})();
+
+
+
+/* ============================================================
+   V241 · ALISTAMIENTO MÓVIL + PARCIAL CON NO ENCONTRADOS
+   - Vista móvil mediante tarjetas compactas.
+   - Permite enviar a Facturación las líneas disponibles aunque
+     existan faltantes, siempre que estén marcados NO_ENCONTRADO.
+   - El pedido original conserva los faltantes para retomarlos.
+============================================================ */
+function v241PendingQty(it){
+  var requested=partialQtyParse(it&&(
+    it.cantidad||it.qty||it.quantity
+  ));
+  var dispatched=partialQtyParse(it&&it.partialDispatchedQty||0);
+  return Math.max(0,requested-dispatched);
+}
+function v241CutForItem(c,it){
+  return v239CutForOrderItem(c,it);
+}
+function v241CutReady(c,it){
+  if(!it||!it.requiereCorte)return true;
+  var cut=v241CutForItem(c,it);
+  return !!cut&&cutIsOperationallyDone(cut);
+}
+function v241PartialState(c){
+  var stateInfo={
+    ready:[],
+    missing:[],
+    pending:[],
+    novelty:[],
+    unresolved:[],
+    alreadySent:[],
+    canSendMissingPartial:false,
+    canSendNormalPartial:false,
+    canSend:false
+  };
+
+  (c&&c.orderItems||[]).forEach(function(it,index){
+    var pendingQty=v241PendingQty(it);
+    if(pendingQty<=0){
+      stateInfo.alreadySent.push({item:it,index:index});
+      return;
+    }
+
+    var status=String(it.alistamientoStatus||"PENDIENTE").toUpperCase();
+    var cutReady=v241CutReady(c,it);
+    var row={
+      item:it,
+      index:index,
+      status:status,
+      pending:pendingQty,
+      cutReady:cutReady
+    };
+
+    if(status==="NO_ENCONTRADO"){
+      stateInfo.missing.push(row);
+      return;
+    }
+    if(status==="NOVEDAD"){
+      stateInfo.novelty.push(row);
+      stateInfo.unresolved.push(row);
+      return;
+    }
+    if(status==="PENDIENTE"){
+      stateInfo.pending.push(row);
+      stateInfo.unresolved.push(row);
+      return;
+    }
+    if(status==="ENCONTRADO"&&cutReady){
+      stateInfo.ready.push(row);
+      return;
+    }
+
+    /* Una línea encontrada cuyo corte aún no termina no está lista. */
+    stateInfo.unresolved.push(row);
+  });
+
+  stateInfo.canSendMissingPartial=
+    stateInfo.missing.length>0 &&
+    stateInfo.ready.length>0 &&
+    stateInfo.unresolved.length===0;
+
+  /* Se conserva el envío parcial normal que ya existía. */
+  stateInfo.canSendNormalPartial=
+    stateInfo.ready.length>0 &&
+    c &&
+    c.currentProcess==="alistamiento" &&
+    c.status==="en_proceso";
+
+  stateInfo.canSend=
+    stateInfo.canSendMissingPartial ||
+    stateInfo.canSendNormalPartial;
+
+  return stateInfo;
+}
+function v241CanOperatePartial(c){
+  if(!state.user||!c||c.closedAt)return false;
+  if(isAdminRoleValue(state.user.role)||currentUserIsSuperAdmin())return true;
+  return v240CanMarkAlistamiento(c);
+}
+function v241PartialBlockMessage(info){
+  if(!info)return "No hay líneas disponibles para enviar.";
+  var parts=[];
+  if(!info.ready.length)parts.push("no existen líneas encontradas y listas para enviar");
+  if(info.pending.length)parts.push(info.pending.length+" línea(s) siguen pendientes por marcar");
+  if(info.novelty.length)parts.push(info.novelty.length+" línea(s) están como novedad y deben definirse");
+  var cutPending=info.unresolved.filter(function(x){
+    return x.status==="ENCONTRADO"&&!x.cutReady;
+  }).length;
+  if(cutPending)parts.push(cutPending+" línea(s) encontradas tienen corte pendiente");
+  if(info.missing.length===0&&!info.canSendNormalPartial){
+    parts.push("los faltantes deben marcarse expresamente como No encontrado");
+  }
+  return parts.join(", ")||"el envío parcial todavía no está habilitado";
+}
+function v241MobileLineCard(c,it,index,canMark){
+  var status=String(it.alistamientoStatus||"PENDIENTE").toUpperCase();
+  var note=it.alistamientoNote||it.alistamientoNoveltyDetail||"";
+  var lineId=it.id||it.lineId||it.sourceLineId||"";
+  var pendingQty=v241PendingQty(it);
+  var cut=v241CutForItem(c,it);
+  var cutReady=v241CutReady(c,it);
+  var destination=it.requiereCorte?"Corte":"Alistamiento";
+  var cardClass=status==="NO_ENCONTRADO"
+    ?" missing"
+    :(status==="NOVEDAD"?" novelty":(status==="ENCONTRADO"?" found":""));
+
+  var actions=canMark
+    ? '<div class="v241-mobile-actions">'+
+        '<button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Encontrado</button>'+
+        '<button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">No encontrado</button>'+
+        '<button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Novedad</button>'+
+        '<button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Pendiente</button>'+
+      '</div>'
+    : '';
+
+  return '<article class="v241-mobile-line'+cardClass+'">'+
+    '<div class="v241-mobile-line-head">'+
+      '<div>'+alistamientoStatusChip(status)+'</div>'+
+      '<span class="v241-destination">'+esc(destination)+'</span>'+
+    '</div>'+
+    '<div class="v241-mobile-reference">'+
+      '<strong>'+esc(it.referencia||"Sin referencia")+'</strong>'+
+      '<p>'+esc(it.descripcion||"Sin descripción")+'</p>'+
+    '</div>'+
+    '<div class="v241-mobile-metrics">'+
+      '<div><span>Cantidad</span><b>'+esc(it.cantidad||"—")+' '+esc(it.unidad||"")+'</b></div>'+
+      '<div><span>Pendiente</span><b>'+esc(partialQtyFormat(pendingQty))+' '+esc(it.unidad||"")+'</b></div>'+
+      '<div><span>Ubicación</span><b>'+esc(it.ubicacion||"Sin definir")+'</b></div>'+
+    '</div>'+
+    (it.requiereCorte
+      ? '<div class="v241-cut-state '+(cutReady?'ready':'pending')+'">'+
+          '<span>Corte</span><strong>'+(cutReady?'Registrado':'Pendiente')+'</strong>'+
+          (cut?'<small>'+esc(cut.code||cut.id||"")+'</small>':'')+
+        '</div>'
+      : '')+
+    (note?'<div class="v241-mobile-note"><strong>Observación</strong><span>'+esc(note)+'</span></div>':'')+
+    actions+
+  '</article>';
+}
+
+/* Reemplazo visual del panel; la lógica de guardado permanece intacta. */
+var v241LegacyAlistamientoLineChecklistPanel=alistamientoLineChecklistPanel;
+alistamientoLineChecklistPanel=function(c,compact){
+  var items=c.orderItems||[];
+  if(!items.length){
+    return '<section class="card alistamiento-check-panel" style="margin-top:16px">'+
+      '<h3>Lista marcable de alistamiento</h3>'+
+      '<div class="empty">No hay líneas leídas del PDF. Recepción debe cargar, leer y validar el PDF antes de alistar.</div>'+
+    '</section>';
+  }
+
+  var canMark=v240CanMarkAlistamiento(c);
+  var found=items.filter(function(x){return x.alistamientoStatus==="ENCONTRADO";}).length;
+  var missing=items.filter(function(x){return x.alistamientoStatus==="NO_ENCONTRADO";}).length;
+  var novelty=items.filter(function(x){return x.alistamientoStatus==="NOVEDAD";}).length;
+  var pending=items.filter(function(x){
+    return !x.alistamientoStatus||x.alistamientoStatus==="PENDIENTE";
+  }).length;
+
+  var cd=cutDoneCount(c);
+  var cutsOk=cd.total===0||cd.done>=cd.total;
+  var readyBilling=
+    canMark &&
+    items.length>0 &&
+    found===items.length &&
+    pending===0 &&
+    missing===0 &&
+    novelty===0 &&
+    cutsOk;
+
+  var partialInfo=v241PartialState(c);
+  var partialEnabled=
+    canMark &&
+    v241CanOperatePartial(c) &&
+    partialInfo.canSend;
+
+  var desktopRows=items.map(function(it,index){
+    var status=it.alistamientoStatus||"PENDIENTE";
+    var note=it.alistamientoNote||it.alistamientoNoveltyDetail||"";
+    var lineId=it.id||it.lineId||it.sourceLineId||"";
+    var actions=canMark
+      ? '<div class="row-actions">'+
+          '<button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Encontrado</button>'+
+          '<button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">No encontrado</button>'+
+          '<button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Novedad</button>'+
+          '<button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Pendiente</button>'+
+        '</div>'
+      : '—';
+
+    return '<tr>'+
+      '<td>'+alistamientoStatusChip(status)+'</td>'+
+      '<td><strong>'+esc(it.referencia||"")+'</strong></td>'+
+      '<td>'+esc(it.descripcion||"")+'</td>'+
+      '<td>'+esc(it.cantidad||"")+'</td>'+
+      '<td>'+esc(it.unidad||"")+'</td>'+
+      '<td>'+esc(it.ubicacion||"")+'</td>'+
+      '<td>'+esc(it.requiereCorte?"Corte":"Alistamiento")+'</td>'+
+      '<td>'+esc(note)+'</td>'+
+      '<td>'+actions+'</td>'+
+    '</tr>';
+  }).join("");
+
+  var mobileCards=items.map(function(it,index){
+    return v241MobileLineCard(c,it,index,canMark);
+  }).join("");
+
+  var parallelNotice=c.currentProcess==="corte_cable"
+    ? '<div class="notice" style="margin-bottom:10px"><strong>Alistamiento paralelo:</strong> puede validar las demás referencias mientras Corte continúa.</div>'
+    : '';
+
+  var missingNotice=missing>0
+    ? '<div class="notice warning v241-partial-notice"><strong>Envío parcial habilitable:</strong> '+missing+' línea(s) están marcadas como No encontrado. Las referencias encontradas y listas pueden enviarse a Facturación, mientras los faltantes permanecen en este pedido.</div>'
+    : '';
+
+  var pendingCutNotice=!cutsOk
+    ? '<div class="notice warning" style="margin-top:10px"><strong>Cortes pendientes:</strong> '+esc(cd.done)+'/'+esc(cd.total)+' finalizados. Solo se enviarán parcialmente las líneas que ya estén listas.</div>'
+    : '';
+
+  var finishAction=readyBilling
+    ? '<button class="btn btn-success" data-action="alistToBilling" data-id="'+esc(c.id)+'">Enviar pedido completo a Facturación</button>'
+    : '';
+
+  var partialAction=partialEnabled
+    ? '<button class="btn btn-primary" data-action="alistPartial" data-id="'+esc(c.id)+'">Enviar disponibles a Facturación · Parcial</button>'
+    : '';
+
+  var blockedPartial=canMark&&missing>0&&!partialEnabled
+    ? '<div class="v241-partial-blocked"><strong>Parcial pendiente:</strong> '+esc(v241PartialBlockMessage(partialInfo))+'.</div>'
+    : '';
+
+  return '<section class="card alistamiento-check-panel v241-alistamiento-panel" style="margin-top:16px">'+
+    parallelNotice+
+    '<div class="v241-panel-heading">'+
+      '<div><h3>Lista marcable de alistamiento</h3><p>Valide cada referencia. Los faltantes deben quedar marcados como No encontrado antes de enviar lo disponible como parcial.</p></div>'+
+      '<div class="v241-summary-chips">'+
+        '<span class="chip success">'+found+' encontrados</span>'+
+        '<span class="chip warning">'+missing+' no encontrados</span>'+
+        '<span class="chip danger">'+novelty+' novedades</span>'+
+        '<span class="chip info">'+pending+' pendientes</span>'+
+      '</div>'+
+    '</div>'+
+    missingNotice+
+    '<div class="v241-desktop-list table-wrap"><table><thead><tr>'+
+      '<th>Estado</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>U.M.</th><th>Ubicación</th><th>Destino</th><th>Observación</th><th>Acción</th>'+
+    '</tr></thead><tbody>'+desktopRows+'</tbody></table></div>'+
+    '<div class="v241-mobile-list">'+mobileCards+'</div>'+
+    pendingCutNotice+
+    blockedPartial+
+    (canMark
+      ? '<div class="v241-final-actions">'+finishAction+partialAction+'</div>'
+      : '')+
+  '</section>';
+};
+
+function v241BuildPartialRows(c,info){
+  var readyMap={};
+  info.ready.forEach(function(x){readyMap[x.index]=x;});
+
+  return (c.orderItems||[]).map(function(it,index){
+    var pendingQty=v241PendingQty(it);
+    if(pendingQty<=0)return "";
+
+    var status=String(it.alistamientoStatus||"PENDIENTE").toUpperCase();
+    var ready=readyMap[index];
+    var canInclude=!!ready;
+    var stateText=canInclude
+      ?"Disponible para enviar"
+      :(status==="NO_ENCONTRADO"
+        ?"No encontrado · queda pendiente"
+        :(status==="NOVEDAD"
+          ?"Novedad pendiente"
+          :(it.requiereCorte&&!v241CutReady(c,it)
+            ?"Corte pendiente"
+            :"Pendiente por definir")));
+
+    return '<tr class="'+(canInclude?'v241-partial-ready':'v241-partial-pending')+'">'+
+      '<td>'+(canInclude
+        ? '<input type="checkbox" name="include_'+index+'" checked>'
+        : '<span class="v241-partial-lock">—</span>')+'</td>'+
+      '<td>'+alistamientoStatusChip(status)+'</td>'+
+      '<td><strong>'+esc(it.referencia||"")+'</strong><br><small>'+esc(it.descripcion||"")+'</small><div class="v241-partial-state">'+esc(stateText)+'</div></td>'+
+      '<td>'+esc(partialQtyFormat(pendingQty))+' '+esc(it.unidad||"")+'</td>'+
+      '<td>'+(canInclude
+        ? '<input class="input" type="number" step="0.0001" min="0" max="'+esc(pendingQty)+'" name="qty_'+index+'" value="'+esc(pendingQty)+'">'
+        : '<span>'+esc(partialQtyFormat(pendingQty))+' '+esc(it.unidad||"")+'</span>')+'</td>'+
+      '<td>'+(canInclude
+        ? '<input class="input" name="note_'+index+'" value="Disponible y validado para envío parcial">'
+        : '<span>Permanece en el pedido original</span>')+'</td>'+
+    '</tr>';
+  }).join("");
+}
+function v241DefaultPartialReason(c,info){
+  var missingRefs=info.missing.map(function(x){
+    return x.item.referencia||x.item.descripcion||"Línea sin referencia";
+  });
+  if(missingRefs.length){
+    return "Se envían las referencias encontradas y disponibles. Permanecen pendientes por no encontradas: "+missingRefs.join(", ")+".";
+  }
+  return "Se envía parcialmente la mercancía encontrada y disponible; el saldo permanece abierto en el pedido original.";
+}
+
+/* Permite parcial desde Alistamiento o Corte, incluso en espera,
+   siempre que los faltantes estén marcados NO_ENCONTRADO. */
+openPartialShipment=function(id){
+  var fallback=caseById(id);
+  if(!fallback)return;
+
+  loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)return;
+    if(!v241CanOperatePartial(c)){
+      alert("No tiene permiso para crear el envío parcial de este pedido.");
+      return;
+    }
+    if(
+      c.currentProcess!=="alistamiento" &&
+      c.currentProcess!=="corte_cable" &&
+      c.cutUnavailableOpen!==true
+    ){
+      alert("El envío parcial solo está disponible desde Alistamiento o durante un corte con faltantes registrados.");
+      return;
+    }
+
+    var info=v241PartialState(c);
+    if(!info.canSend){
+      alert("No se puede enviar el parcial: "+v241PartialBlockMessage(info)+".");
+      return;
+    }
+
+    var rows=v241BuildPartialRows(c,info);
+    var reason=v241DefaultPartialReason(c,info);
+
+    var html='<form class="form v241-partial-form" id="partialShipmentForm">'+
+      '<div class="notice success"><strong>Envío parcial a Facturación.</strong><br>Las líneas encontradas y listas se enviarán en un caso parcial. Las líneas marcadas como No encontrado permanecerán abiertas en el pedido original para retomarlas posteriormente.</div>'+
+      '<div class="v241-partial-summary">'+
+        '<article><span>Listas para enviar</span><strong>'+info.ready.length+'</strong></article>'+
+        '<article><span>No encontradas</span><strong>'+info.missing.length+'</strong></article>'+
+        '<article><span>Pendientes/novedades</span><strong>'+info.unresolved.length+'</strong></article>'+
+      '</div>'+
+      '<div class="table-wrap v241-partial-table"><table><thead><tr>'+
+        '<th>Enviar</th><th>Estado</th><th>Línea</th><th>Saldo</th><th>Cantidad parcial</th><th>Observación</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<label class="field"><span>Motivo del envío parcial *</span><textarea class="textarea" name="partialReason" required>'+esc(reason)+'</textarea></label>'+
+      '<div class="notice warning"><strong>El pedido original no se cerrará.</strong> Conservará las referencias no encontradas y sus anotaciones para un reenvío o corte posterior.</div>'+
+      '<button class="btn btn-success" type="submit">Crear parcial y enviar disponibles a Facturación</button>'+
+    '</form>';
+
+    drawer(modal("Enviar disponibles a Facturación",html));
+    var form=qs("#partialShipmentForm");
+    if(form){
+      form.onsubmit=function(e){
+        e.preventDefault();
+        createPartialShipment(id,new FormData(form));
+      };
+    }
+  }).catch(function(e){
+    showError((e&&e.message)||e||"No fue posible preparar el envío parcial.");
+  });
+};
+
+/* Revalidación fresca y bloqueo contra dobles envíos. */
+var v241LegacyCreatePartialShipment=createPartialShipment;
+createPartialShipment=function(id,fd){
+  state.v241PartialLocks=state.v241PartialLocks||{};
+  if(state.v241PartialLocks[id])return Promise.resolve(false);
+  state.v241PartialLocks[id]=true;
+
+  var fallback=caseById(id);
+  return loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)throw new Error("No se encontró el pedido actualizado.");
+
+    var info=v241PartialState(c);
+    if(!info.canSend){
+      throw new Error("El pedido cambió y ya no cumple las condiciones del parcial: "+v241PartialBlockMessage(info)+".");
+    }
+
+    replaceCaseInState(c);
+    return Promise.resolve(v241LegacyCreatePartialShipment(id,fd));
+  }).then(function(result){
+    return result;
+  }).catch(function(e){
+    showError((e&&e.message)||e||"No fue posible crear el envío parcial.");
+    return false;
+  }).then(function(result){
+    state.v241PartialLocks[id]=false;
+    return result;
+  });
+};
+
+/* Estilos de celular: tarjetas compactas, sin tabla horizontal extensa. */
+(function v241InjectStyles(){
+  if(document.getElementById("v241-alistamiento-mobile-css"))return;
+
+  var style=document.createElement("style");
+  style.id="v241-alistamiento-mobile-css";
+  style.textContent=
+    ".v241-panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px}.v241-panel-heading h3{margin:0}.v241-panel-heading p{margin:5px 0 0;color:#64748b}.v241-summary-chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.v241-mobile-list{display:none}.v241-final-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px}.v241-partial-blocked{margin-top:10px;padding:10px 12px;border:1px solid #fed7aa;border-radius:12px;background:#fff7ed;color:#9a3412;font-size:.76rem}.v241-partial-notice{margin-bottom:10px}.v241-partial-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}.v241-partial-summary article{padding:11px;border:1px solid #dbe7f3;border-radius:14px;background:#f8fbff}.v241-partial-summary span{display:block;color:#64748b;font-size:.68rem;font-weight:900;text-transform:uppercase}.v241-partial-summary strong{display:block;color:#061b46;font-size:1.25rem;margin-top:4px}.v241-partial-state{margin-top:5px;color:#64748b;font-size:.68rem}.v241-partial-ready{background:#f6fffb}.v241-partial-pending{background:#fffaf5}.v241-partial-lock{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:#e8eef5;color:#64748b}"+
+    "@media(max-width:790px){"+
+      ".v241-alistamiento-panel{padding:10px!important;border-radius:16px!important}.v241-panel-heading{display:block;margin-bottom:9px}.v241-panel-heading h3{font-size:1rem}.v241-panel-heading p{font-size:.72rem;line-height:1.35}.v241-summary-chips{justify-content:flex-start;margin-top:9px;gap:5px}.v241-summary-chips .chip{font-size:.62rem;padding:5px 7px}.v241-desktop-list{display:none!important}.v241-mobile-list{display:grid;gap:8px}.v241-mobile-line{padding:10px;border:1px solid #dce6f0;border-radius:14px;background:#fff;box-shadow:0 5px 14px rgba(6,27,70,.055)}.v241-mobile-line.found{border-left:5px solid #16a36b}.v241-mobile-line.missing{border-left:5px solid #d97706;background:#fffaf4}.v241-mobile-line.novelty{border-left:5px solid #dc2626;background:#fff7f7}.v241-mobile-line-head{display:flex;justify-content:space-between;align-items:center;gap:7px}.v241-mobile-line-head .chip{font-size:.62rem;padding:5px 7px}.v241-destination{padding:4px 7px;border-radius:999px;background:#eef4fa;color:#0b3e73;font-size:.61rem;font-weight:900}.v241-mobile-reference{margin-top:7px}.v241-mobile-reference strong{display:block;color:#061b46;font-size:.85rem}.v241-mobile-reference p{margin:3px 0 0;color:#475569;font-size:.7rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.v241-mobile-metrics{display:grid;grid-template-columns:1fr 1fr 1.25fr;gap:5px;margin-top:8px}.v241-mobile-metrics div{min-width:0;padding:7px;border-radius:10px;background:#f6f9fc}.v241-mobile-metrics span{display:block;color:#7b8794;font-size:.56rem;font-weight:900;text-transform:uppercase}.v241-mobile-metrics b{display:block;margin-top:3px;color:#102033;font-size:.68rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v241-cut-state{display:flex;align-items:center;gap:7px;margin-top:7px;padding:6px 8px;border-radius:10px;font-size:.64rem}.v241-cut-state.ready{background:#ecfdf3;color:#047857}.v241-cut-state.pending{background:#fff7ed;color:#9a3412}.v241-cut-state span{font-weight:900;text-transform:uppercase}.v241-cut-state small{margin-left:auto}.v241-mobile-note{margin-top:7px;padding:7px 8px;border-radius:10px;background:#f8fafc;color:#475569;font-size:.65rem;line-height:1.3}.v241-mobile-note strong,.v241-mobile-note span{display:block}.v241-mobile-note strong{color:#334155;font-size:.58rem;text-transform:uppercase;margin-bottom:2px}.v241-mobile-actions{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}.v241-mobile-actions .btn{width:100%;min-height:36px;margin:0;padding:7px 5px;font-size:.65rem;border-radius:10px}.v241-final-actions{display:grid;grid-template-columns:1fr;margin-top:10px}.v241-final-actions .btn{width:100%;min-height:44px;margin:0}.v241-partial-notice,.v241-partial-blocked{font-size:.69rem;line-height:1.35}.v241-partial-summary{grid-template-columns:repeat(3,1fr);gap:5px}.v241-partial-summary article{padding:8px}.v241-partial-summary span{font-size:.55rem}.v241-partial-summary strong{font-size:1rem}.v241-partial-form .table-wrap{overflow:auto}.v241-partial-form table{min-width:780px}"+
+    "}";
+
   document.head.appendChild(style);
 })();
 
