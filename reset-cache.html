@@ -21,7 +21,7 @@
 </head>
 <body>
   <section class="card">
-    <h1>Restableciendo EI Logística</h1>
+    <h1>Restableciendo EI Logística V245</h1>
     <p>Se eliminarán únicamente la PWA y los archivos almacenados en caché. Los pedidos y registros de Firebase no se eliminan.</p>
     <div class="bar"><span id="progress"></span></div>
     <div class="status" id="status">Preparando limpieza…</div>
@@ -29,7 +29,7 @@
   </section>
   <script>
     (function(){
-      var VERSION="v244-cache-reset-firestore-merge";
+      var VERSION="v245-firestore-autodetect-y-version-global";
       var status=document.getElementById("status");
       var progress=document.getElementById("progress");
       var retry=document.getElementById("retry");
@@ -62,7 +62,7 @@
             localStorage.setItem("EI_CANONICAL_APP_VERSION",VERSION);
           }catch(e){}
 
-          setStep("Limpieza terminada. Abriendo la aplicación V244…",100);
+          setStep("Limpieza terminada. Abriendo la aplicación V245…",100);
           setTimeout(function(){
             window.location.replace("./?clean="+encodeURIComponent(VERSION)+"&t="+Date.now());
           },700);

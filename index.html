@@ -16,44 +16,53 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v244-cache-reset-firestore-merge">
-  <link rel="stylesheet" href="./mobile-v221.css?v=v244-cache-reset-firestore-merge">
+  <link rel="stylesheet" href="./styles.css?v=v245-firestore-autodetect-y-version-global">
+  <link rel="stylesheet" href="./mobile-v221.css?v=v245-firestore-autodetect-y-version-global">
 
 
   <script>
     (function(){
-      var V="v244-cache-reset-firestore-merge";
+      var expectedVersion="v245-firestore-autodetect-y-version-global";
+      window.EI_REQUIRED_VERSION=expectedVersion;
+
       try{
-        window.EI_REQUIRED_VERSION=V;
-        localStorage.setItem("EI_REQUIRED_VERSION",V);
-        window.__EI_V221_CLEAN_PROMISE=(function(){
-          var tasks=[];
-          if("serviceWorker" in navigator){
-            tasks.push(
-              navigator.serviceWorker.getRegistrations().then(function(regs){
-                return Promise.all(regs.map(function(r){
-                  try{return r.unregister();}catch(e){return false;}
-                }));
-              })
-            );
-          }
-          if(window.caches){
-            tasks.push(
-              caches.keys().then(function(keys){
-                return Promise.all(keys.map(function(k){
-                  return caches.delete(k);
-                }));
-              })
-            );
-          }
-          try{
-            sessionStorage.removeItem("ei_v242_firestore_recovery");
-            localStorage.setItem("EI_REQUIRED_VERSION",V);
-          }catch(e){}
-          console.info("[EI] index.html cargado:",V);
-          return Promise.all(tasks).catch(function(){});
-        })();
-      }catch(e){window.__EI_V221_CLEAN_PROMISE=Promise.resolve();}
+        localStorage.setItem("EI_REQUIRED_VERSION",expectedVersion);
+      }catch(e){}
+
+      window.__EI_CLEAN_PROMISE=(function(){
+        var tasks=[];
+
+        if("serviceWorker" in navigator){
+          tasks.push(
+            navigator.serviceWorker.getRegistrations().then(function(registrations){
+              return Promise.all(registrations.map(function(registration){
+                try{return registration.unregister();}catch(e){return false;}
+              }));
+            })
+          );
+        }
+
+        if(window.caches){
+          tasks.push(
+            caches.keys().then(function(keys){
+              return Promise.all(keys.map(function(key){
+                return caches.delete(key);
+              }));
+            })
+          );
+        }
+
+        try{
+          sessionStorage.removeItem("ei_v242_firestore_recovery");
+          sessionStorage.removeItem("ei_v245_firestore_recovery");
+          localStorage.setItem("EI_REQUIRED_VERSION",expectedVersion);
+        }catch(e){}
+
+        console.info("[EI] index.html cargado:",expectedVersion);
+        return Promise.all(tasks).catch(function(cleanError){
+          console.warn("[EI] La limpieza preventiva de caché no pudo completarse.",cleanError);
+        });
+      })();
     })();
   </script>
 
@@ -79,32 +88,57 @@
 
 
   <script>
-    window.addEventListener("load", function(){
-      Promise.resolve(window.__EI_V221_CLEAN_PROMISE).finally(function(){
+    window.addEventListener("load",function(){
+      var expectedVersion=
+        window.EI_REQUIRED_VERSION||
+        "v245-firestore-autodetect-y-version-global";
+
+      Promise.resolve(window.__EI_CLEAN_PROMISE).finally(function(){
         var existing=document.querySelectorAll('script[data-ei-main-app="true"]');
-        existing.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
-        var s=document.createElement("script");
-        s.setAttribute("data-ei-main-app","true");
-        s.src="./app.js?v=v244-cache-reset-firestore-merge&t="+Date.now();
-        s.async=false;
-        s.onload=function(){
+        existing.forEach(function(node){
+          if(node&&node.parentNode)node.parentNode.removeChild(node);
+        });
+
+        var script=document.createElement("script");
+        script.setAttribute("data-ei-main-app","true");
+        script.src="./app.js?v="+encodeURIComponent(expectedVersion)+"&t="+Date.now();
+        script.async=false;
+
+        script.onload=function(){
           setTimeout(function(){
-            if(window.EI_BUILD_LOADED!==V){
-              console.error("[EI] Incompatibilidad de versión. Index:",V,"App:",window.EI_BUILD_LOADED);
+            var loadedVersion=window.EI_BUILD_LOADED||"";
+
+            if(loadedVersion!==expectedVersion){
+              console.error(
+                "[EI] Incompatibilidad de versión. Index:",
+                expectedVersion,
+                "App:",
+                loadedVersion||"sin identificar"
+              );
+
               var url=new URL(window.location.href);
-              url.searchParams.set("force_build",V);
+              url.searchParams.set("force_build",expectedVersion);
               url.searchParams.set("t",String(Date.now()));
               window.location.replace(url.toString());
-            }else{
-              console.info("[EI] versión confirmada:",V);
+              return;
             }
+
+            console.info("[EI] versión confirmada:",expectedVersion);
           },100);
         };
-        s.onerror=function(){
-          document.getElementById("app").innerHTML=
-            '<main class="boot-screen"><section class="boot-card"><strong>No fue posible cargar app.js</strong><span>Abra reset-cache.html y vuelva a intentar.</span></section></main>';
+
+        script.onerror=function(){
+          var target=document.getElementById("app");
+          if(target){
+            target.innerHTML=
+              '<main class="boot-screen"><section class="boot-card">'+
+              '<strong>No fue posible cargar app.js</strong>'+
+              '<span>Abra reset-cache.html y vuelva a intentar.</span>'+
+              '</section></main>';
+          }
         };
-        document.body.appendChild(s);
+
+        document.body.appendChild(script);
       });
     });
   </script>

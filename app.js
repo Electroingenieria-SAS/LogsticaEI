@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v244-cache-reset-firestore-merge";
+var EI_CANONICAL_APP_VERSION = "v245-firestore-autodetect-y-version-global";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
@@ -1852,12 +1852,12 @@ function initFirebase(){
     db=firebase.firestore();
     try{
       db.settings({
-        experimentalForceLongPolling:true,
+        experimentalAutoDetectLongPolling:true,
         ignoreUndefinedProperties:true,
         merge:true
       });
     }catch(settingsError){
-      console.warn("[V244] No fue posible combinar la configuración de transporte Firestore.",settingsError);
+      console.warn("[V245] No fue posible aplicar la configuración compatible de Firestore.",settingsError);
     }
     firebaseReady=true;
     firebaseInitError="";
@@ -2289,7 +2289,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V244] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V245] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -7726,7 +7726,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V244</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V245</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -13220,8 +13220,8 @@ readPdfFile = function(file){
 function eiV221OperationalHealthCheck(){
   var required=["autoCreateCutsFromItems","normalizeReceptionLinesForFlow","cutSourceKeyFromItem","renderAfterLiveChange","caseRelevantToCurrentUser","uploadFileToDrive","extractPedido","readPdfFile"];
   var missing=required.filter(function(name){try{return typeof eval(name)!=="function";}catch(e){return true;}});
-  if(missing.length){console.error("QA ERP V221 · funciones críticas faltantes:",missing);}
-  else{console.info("QA ERP V221 · funciones críticas disponibles.");}
+  if(missing.length){console.error("QA ERP "+EI_CANONICAL_APP_VERSION+" · funciones críticas faltantes:",missing);}
+  else{console.info("QA ERP "+EI_CANONICAL_APP_VERSION+" · funciones críticas disponibles.");}
   return missing;
 }
 var eiV221LegacyOpenCutsPlanner = openCutsPlanner;
@@ -13269,7 +13269,7 @@ openCutsPlanner = function(id){
     persistCase(c,{type:"CUT_REQUESTS_SYNCED_V221",detail:"Corte/Alistamiento sincronizado. Cortes nuevos: "+added+". Total antes: "+before+", total ahora: "+(c.cutRequests||[]).length}).then(function(){closeDrawer();renderDetail(id);}).catch(function(e){showError(e.message||e);});
   };
 };
-try{eiV221OperationalHealthCheck();}catch(e){console.warn("QA ERP V221 no pudo ejecutarse",e);}
+try{eiV221OperationalHealthCheck();}catch(e){console.warn("QA ERP "+EI_CANONICAL_APP_VERSION+" no pudo ejecutarse",e);}
 
 /* V221 - tamaño popup Recepción de pedidos PC */
 try{
@@ -15508,7 +15508,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V244] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V245] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -15575,7 +15575,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V244] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V245] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -15630,7 +15630,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V244] Actualización periódica no disponible:",reason,error);
+        console.warn("[V245] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);
