@@ -16,13 +16,13 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v221-cargues-movil-galeria-archivos-10">
-  <link rel="stylesheet" href="./mobile-v221.css?v=v221-cargues-movil-galeria-archivos-10">
+  <link rel="stylesheet" href="./styles.css?v=v242-firestore-estable-sin-webchannel">
+  <link rel="stylesheet" href="./mobile-v221.css?v=v242-firestore-estable-sin-webchannel">
 
 
   <script>
     (function(){
-      var V="v221-cargues-movil-galeria-archivos-10";
+      var V="v242-firestore-estable-sin-webchannel";
       try{
         window.EI_REQUIRED_VERSION=V;
         localStorage.setItem("EI_REQUIRED_VERSION",V);
@@ -56,9 +56,9 @@
     </main>
   </div>
 
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
-  <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script defer data-ei-pdf-lib="true" src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <script defer src="https://accounts.google.com/gsi/client"></script>
@@ -72,7 +72,7 @@
         existing.forEach(function(n){ if(n && n.parentNode) n.parentNode.removeChild(n); });
         var s=document.createElement("script");
         s.setAttribute("data-ei-main-app","true");
-        s.src="./app.js?v=v221-cargues-movil-galeria-archivos-10&t="+Date.now();
+        s.src="./app.js?v=v242-firestore-estable-sin-webchannel&t="+Date.now();
         s.async=false;
         document.body.appendChild(s);
       });

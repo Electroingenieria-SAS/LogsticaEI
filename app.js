@@ -32,7 +32,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v241-alistamiento-movil-parcial-no-encontrado";
+var EI_CANONICAL_APP_VERSION = "v242-firestore-estable-sin-webchannel";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
@@ -1818,7 +1818,7 @@ function ensureFirebaseConfigLoaded(){
 }
 function ensureFirebaseSdkLoaded(){
   if(window.firebase && window.firebase.initializeApp && window.firebase.auth && window.firebase.firestore)return Promise.resolve();
-  var v="10.12.5";
+  var v="12.15.0";
   var appUrls=[
     "https://www.gstatic.com/firebasejs/"+v+"/firebase-app-compat.js",
     "https://cdn.jsdelivr.net/npm/firebase@"+v+"/firebase-app-compat.js",
@@ -1848,7 +1848,14 @@ function initFirebase(){
     auth=firebase.auth();
     try{auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);}catch(persistenceError){}
     db=firebase.firestore();
-    try{db.enableNetwork();}catch(networkError){}
+    try{
+      db.settings({
+        experimentalForceLongPolling:true,
+        ignoreUndefinedProperties:true
+      });
+    }catch(settingsError){
+      console.warn("[V242] No fue posible aplicar la configuración de transporte Firestore.",settingsError);
+    }
     firebaseReady=true;
     firebaseInitError="";
   }catch(e){
@@ -1872,7 +1879,7 @@ function clearPwaCachesAndReload(){
 }
 function ensureMobileFreshVersion(){
   try{
-    var version="v221-cargues-movil-galeria-archivos-10";
+    var version=EI_CANONICAL_APP_VERSION;
     var key="ei_mobile_app_version";
     var old=localStorage.getItem(key)||"";
     localStorage.setItem(key,version);
@@ -2278,15 +2285,24 @@ function loadReportsForRole(){
 
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
-    console.warn("Carga omitida por permisos o reglas pendientes:", label, e);
-    state.loadWarnings = state.loadWarnings || [];
-    var msg = (e && e.message) ? e.message : String(e || "Error desconocido");
-    state.loadWarnings.push(label + ": " + msg);
+    if(v242IsFirestoreInternalError(e)){
+      console.error("[V242] Estado interno de Firestore detectado en "+label,e);
+      v242ScheduleFirestoreRecovery(e);
+      throw e;
+    }
+    console.warn("Consulta no disponible:",label,e);
+    state.loadWarnings=state.loadWarnings||[];
+    var msg=(e&&e.message)?e.message:String(e||"Error desconocido");
+    var code=String(e&&e.code||"").toLowerCase();
+    var prefix=code.indexOf("permission-denied")>=0
+      ?"Permiso denegado"
+      :(navigator.onLine===false?"Sin conexión":"Consulta fallida");
+    state.loadWarnings.push(label+": "+prefix+" · "+msg);
     return [];
   });
 }
 
-function loadData(){
+function v242LegacyLoadData(){
   if(!firebaseReady || !db || !state.user){return Promise.resolve();}
   state.loadWarnings=[];
   var cutOnly=isFabianCutRuntimeUser() || normalizeRole(state.user&&state.user.role)==="auxiliar_corte";
@@ -3178,7 +3194,7 @@ function stopRealtimeSync(){
   state.realtime={caseUnsubs:[],eventUnsub:null,eventUnsubs:[],userUnsub:null,pollTimer:null,buckets:{},eventBuckets:{},initialCasesLoaded:false,initialEventsLoaded:false,lastHash:"",lastEventHash:"",lastChangeAt:0,lastEventAt:0,startedAt:0,pendingRender:false};
 }
 
-function startRealtimeSync(){
+function v242LegacyStartRealtimeSync(){
   if(!firebaseReady || !db || !state.user)return;
   stopRealtimeSync();
   state.realtime.startedAt=Date.now();
@@ -3427,7 +3443,7 @@ function mobileFullMenuHtml(){
 
 function loadWarningsHtml(){
   if(!state.loadWarnings || !state.loadWarnings.length)return "";
-  return '<div class="alert warning"><strong>Algunos módulos no cargaron por reglas/permisos pendientes.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>La app no se detiene; publique las reglas V221 y recargue la PWA.</small></div>';
+  return '<div class="alert warning"><strong>Algunas consultas no respondieron correctamente.</strong><br>'+esc(state.loadWarnings.slice(0,3).join(" | "))+'<br><small>Puede tratarse de conexión, sesión o permisos. La aplicación conserva la información ya cargada.</small></div>';
 }
 
 
@@ -3743,7 +3759,7 @@ function temporaryProfileFromAuth(fbUser,reason){
   };
   state.route=defaultRoute(state.user.role);
   state.loadWarnings=state.loadWarnings||[];
-  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió para no parar el proceso. Publique reglas V221 y cree/verifique el perfil operativo.");
+  state.loadWarnings.push("Perfil temporal: Firebase no permitió leer users/"+((fbUser&&fbUser.uid)||"")+". La app abrió en modo seguro; revise conexión, sesión y perfil operativo.");
   sessionStorage.setItem(storageKey+"_session",JSON.stringify(state.user));
   console.warn("Perfil temporal activado",reason);
   return true;
@@ -7707,7 +7723,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V241</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V242</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -14963,29 +14979,7 @@ openAlistamientoChecklist=function(id){
 /* Reconexión no destructiva para errores WebChannel / ERR_CONNECTION_RESET. */
 var v240ReconnectTimer=null;
 function v240ReconnectFirestore(reason){
-  if(v240ReconnectTimer)clearTimeout(v240ReconnectTimer);
-  v240ReconnectTimer=setTimeout(function(){
-    v240ReconnectTimer=null;
-    if(!db||!firebaseReady||!state.user||navigator.onLine===false)return;
-    Promise.resolve()
-      .then(function(){
-        try{
-          var result=db.enableNetwork();
-          return result&&typeof result.then==="function"?result:Promise.resolve();
-        }catch(e){
-          return Promise.resolve();
-        }
-      })
-      .then(function(){return loadData();})
-      .then(function(){
-        if(state.detailId)renderDetail(state.detailId);
-        else renderAfterLiveChange();
-        cleanupProtectedToast();
-      })
-      .catch(function(e){
-        console.warn("[V240] Reconexión Firestore pendiente",reason,e);
-      });
-  },900);
+  v242RequestStableRefresh(reason||"reconexion");
 }
 window.addEventListener("online",function(){
   showLiveToast("Conexión recuperada","Sincronizando nuevamente con Firebase.",false);
@@ -15434,6 +15428,239 @@ createPartialShipment=function(id,fd){
 
   document.head.appendChild(style);
 })();
+
+
+
+/* ============================================================
+   V242 · FIRESTORE ESTABLE
+   - Transporte long-polling para redes que reinician WebChannel.
+   - Sin listeners permanentes onSnapshot.
+   - Consultas secuenciales y una sola carga activa.
+   - Recuperación controlada ante estado interno corrupto.
+============================================================ */
+var v242LoadInFlight=null;
+var v242StableRefreshTimer=null;
+var v242RecoveryScheduled=false;
+var v242LastSuccessfulLoadAt=0;
+
+function v242ErrorText(error){
+  if(!error)return "";
+  return [
+    error.message||"",
+    error.name||"",
+    error.code||"",
+    error.stack||"",
+    String(error)
+  ].join(" ");
+}
+function v242IsFirestoreInternalError(error){
+  var text=v242ErrorText(error).toLowerCase();
+  return (
+    text.indexOf("internal assertion failed")>=0 ||
+    text.indexOf("unexpected state")>=0 ||
+    text.indexOf("internal unhandled error")>=0 ||
+    text.indexOf("watch_change")>=0
+  );
+}
+function v242RecoveryHistory(){
+  try{
+    var list=JSON.parse(sessionStorage.getItem("ei_v242_firestore_recovery")||"[]");
+    if(!Array.isArray(list))list=[];
+    var cutoff=Date.now()-120000;
+    return list.filter(function(x){return Number(x)>=cutoff;});
+  }catch(e){
+    return [];
+  }
+}
+function v242ScheduleFirestoreRecovery(error){
+  if(v242RecoveryScheduled)return;
+  v242RecoveryScheduled=true;
+
+  try{stopRealtimeSync();}catch(e){}
+  if(v242StableRefreshTimer){
+    clearTimeout(v242StableRefreshTimer);
+    v242StableRefreshTimer=null;
+  }
+
+  var history=v242RecoveryHistory();
+  history.push(Date.now());
+  try{
+    sessionStorage.setItem("ei_v242_firestore_recovery",JSON.stringify(history));
+  }catch(e){}
+
+  if(history.length<=2){
+    try{
+      showLiveToast(
+        "Reconectando Firebase",
+        "La conexión interna se reiniciará una sola vez. No se están modificando las reglas.",
+        false
+      );
+    }catch(e){}
+
+    setTimeout(function(){
+      var url=new URL(window.location.href);
+      url.searchParams.set("fs_recovery",String(Date.now()));
+      window.location.replace(url.toString());
+    },1000);
+    return;
+  }
+
+  console.error("[V242] Firestore no logró estabilizarse después de dos reinicios.",error);
+  try{
+    state.loadWarnings=state.loadWarnings||[];
+    state.loadWarnings.push(
+      "Firestore perdió la conexión interna varias veces. Revise la red y pulse Actualizar vista."
+    );
+    render();
+  }catch(e){}
+}
+function v242ClearRecoveryHistory(){
+  try{sessionStorage.removeItem("ei_v242_firestore_recovery");}catch(e){}
+  v242RecoveryScheduled=false;
+}
+function v242SequentialLoad(){
+  if(!firebaseReady||!db||!state.user)return Promise.resolve();
+
+  state.loadWarnings=[];
+  var cutOnly=isFabianCutRuntimeUser()||
+    normalizeRole(state.user&&state.user.role)==="auxiliar_corte";
+
+  var blocks=[
+    ["Casos",loadCasesForRole],
+    ["Eventos",cutOnly?function(){return Promise.resolve([]);}:loadEventsForRole],
+    ["Usuarios",cutOnly?function(){return Promise.resolve([]);}:loadUsersForRole],
+    ["Recepción de mercancía",cutOnly?function(){return Promise.resolve([]);}:loadReceptionGoodsForRole],
+    ["Stickers de separación",cutOnly?function(){return Promise.resolve([]);}:loadReceptionStickersForRole],
+    ["Proyectos",cutOnly?function(){return Promise.resolve([]);}:loadProjectOrdersForRole],
+    ["Reportes/Novedades",cutOnly?function(){return Promise.resolve([]);}:loadReportsForRole],
+    ["Inventario de chipas",cutOnly?function(){return Promise.resolve([]);}:loadInventoryChipsForRole]
+  ];
+
+  var results=[];
+  var chain=Promise.resolve();
+
+  blocks.forEach(function(block,index){
+    chain=chain.then(function(){
+      if(navigator.onLine===false){
+        results[index]=[];
+        return;
+      }
+      return safeLoadBlock(block[0],block[1]).then(function(value){
+        results[index]=value||[];
+      });
+    });
+  });
+
+  return chain.then(function(){
+    state.cases=filterCasesForCurrentUserStrict(results[0]||[]);
+    state.events=results[1]||[];
+    state.users=results[2]||[];
+    state.receptions=results[3]||[];
+    state.receptionStickers=results[4]||[];
+    state.projectOrders=results[5]||[];
+    state.reports=filterReportsForCurrentUser(results[6]||[]);
+    state.inventoryChips=results[7]||[];
+    state.dataLoading=false;
+
+    var normalizePromise=autoNormalizeLoadedPvcPveFromCajaToCartera(
+      "Normalización al cargar datos: PVC/PVE debe ir a Cartera."
+    );
+
+    if(canSeeAll()||isAdminRoleValue(state.user&&state.user.role)){
+      autoMigrateLegacyProcesses();
+    }
+
+    return Promise.resolve(normalizePromise).then(function(moved){
+      if(moved>0){
+        console.info("[V242] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+      }
+      v242LastSuccessfulLoadAt=Date.now();
+      v242ClearRecoveryHistory();
+    });
+  }).catch(function(error){
+    state.dataLoading=false;
+    if(v242IsFirestoreInternalError(error)){
+      v242ScheduleFirestoreRecovery(error);
+    }
+    throw error;
+  });
+}
+function loadData(){
+  if(v242LoadInFlight)return v242LoadInFlight;
+
+  v242LoadInFlight=Promise.resolve()
+    .then(v242SequentialLoad)
+    .finally(function(){
+      v242LoadInFlight=null;
+    });
+
+  return v242LoadInFlight;
+}
+function v242RequestStableRefresh(reason){
+  if(v242StableRefreshTimer)clearTimeout(v242StableRefreshTimer);
+
+  v242StableRefreshTimer=setTimeout(function(){
+    v242StableRefreshTimer=null;
+    if(
+      !firebaseReady||
+      !db||
+      !state.user||
+      navigator.onLine===false||
+      v242RecoveryScheduled
+    )return;
+
+    var oldCaseHash=caseLiveHash(state.cases||[]);
+    var oldEventHash=(state.events||[]).map(function(e){
+      return [e.id,e.timestamp||e.createdAt||"",e.type||""].join("|");
+    }).sort().join("~");
+
+    loadData().then(function(){
+      var newCaseHash=caseLiveHash(state.cases||[]);
+      var newEventHash=(state.events||[]).map(function(e){
+        return [e.id,e.timestamp||e.createdAt||"",e.type||""].join("|");
+      }).sort().join("~");
+
+      if(oldCaseHash!==newCaseHash||oldEventHash!==newEventHash){
+        if(state.detailId)renderDetail(state.detailId);
+        else renderAfterLiveChange();
+      }
+      cleanupProtectedToast();
+    }).catch(function(error){
+      if(!v242IsFirestoreInternalError(error)){
+        console.warn("[V242] Actualización periódica no disponible:",reason,error);
+      }
+    });
+  },reason==="online"?1800:700);
+}
+function startRealtimeSync(){
+  stopRealtimeSync();
+  if(!firebaseReady||!db||!state.user)return;
+
+  state.realtime.startedAt=Date.now();
+  state.realtime.lastHash=caseLiveHash(state.cases||[]);
+  state.realtime.lastEventHash=(state.events||[]).map(function(e){
+    return [e.id,e.timestamp||e.createdAt||"",e.type||""].join("|");
+  }).sort().join("~");
+
+  /* Polling único: evita el canal Listen que estaba quedando corrupto. */
+  state.realtime.pollTimer=setInterval(function(){
+    v242RequestStableRefresh("intervalo");
+  },isMobileRuntime()?30000:20000);
+}
+window.addEventListener("unhandledrejection",function(event){
+  var reason=event&&event.reason;
+  if(v242IsFirestoreInternalError(reason)){
+    try{event.preventDefault();}catch(e){}
+    v242ScheduleFirestoreRecovery(reason);
+  }
+});
+window.addEventListener("error",function(event){
+  var error=(event&&event.error)||event;
+  if(v242IsFirestoreInternalError(error)){
+    try{event.preventDefault();}catch(e){}
+    v242ScheduleFirestoreRecovery(error);
+  }
+});
 
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
