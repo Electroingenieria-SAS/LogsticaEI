@@ -1,5 +1,5 @@
 "use strict";
-var CACHE_VERSION="v249-reportes-autocierre-asesor";
+var CACHE_VERSION="v250-carga-no-bloqueante-raiz";
 var STATIC_CACHE="ei-logistica-static-"+CACHE_VERSION;
 var RUNTIME_CACHE="ei-logistica-runtime-"+CACHE_VERSION;
 var APP_SHELL=["./","./index.html","./404.html","./app.js","./styles.css","./mobile-v221.css","./manifest.json","./firebase-config.js","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];

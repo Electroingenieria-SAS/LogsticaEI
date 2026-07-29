@@ -1,0 +1,41 @@
+{
+  "version": "v250-carga-no-bloqueante-raiz",
+  "causa_raiz": [
+    "v246StableLoad esperaba IndexedDB sin límite global.",
+    "Ocho módulos se cargaban secuencialmente con hasta 18 segundos cada uno.",
+    "loadData reutilizaba una promesa bloqueada para todas las actualizaciones.",
+    "state.dataLoading podía permanecer activo cuando la cadena no finalizaba."
+  ],
+  "correcciones": {
+    "indexeddb_con_timeout": true,
+    "casos_prioritarios": true,
+    "secundarios_paralelos": true,
+    "watchdog_interfaz": true,
+    "resultados_tardios_aplicables": true,
+    "sincronizacion_despues_de_abrir": true,
+    "respaldo_local_preservado": true
+  },
+  "qa": {
+    "version_app": true,
+    "version_index": true,
+    "version_404": true,
+    "version_reset": true,
+    "version_sw": true,
+    "idb_open_timeout": true,
+    "idb_blocked_handler": true,
+    "startup_watchdog": true,
+    "critical_cases_first": true,
+    "secondary_parallel": true,
+    "no_sequential_secondary_chain": true,
+    "cases_query_consolidated": true,
+    "loading_finally_release": true,
+    "flush_after_critical": true,
+    "background_notice": true,
+    "pve550_preserved": true,
+    "reports_autoclose_preserved": true,
+    "critical_modules_preserved": true,
+    "inline_scripts_valid": true,
+    "unit_nonblocking": true
+  },
+  "limitacion": "No se ejecutó contra la sesión real del proyecto Firebase ni dentro de la red de la bodega."
+}
