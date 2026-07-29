@@ -13,6 +13,11 @@ var driveTokenClient = null;
 var driveAccessToken = "";
 var driveTokenExpiresAt = 0;
 var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+var DRIVE_TOKEN_SESSION_KEY = "ei_drive_access_token_v247";
+var DRIVE_GRANT_STORAGE_KEY = "ei_drive_grant_v247";
+var driveTokenRequestPromise = null;
+var driveAuthRequired = false;
+var driveLastAuthError = "";
 var AUDIT_NC_URL = "https://contactoluiancol-art.github.io/auditoria/index.html";
 var notificationAssets = {
   general:"./assets/sounds/universfield-new-notification-051-494246.mp3",
@@ -32,7 +37,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v245-firestore-autodetect-y-version-global";
+var EI_CANONICAL_APP_VERSION = "v247-drive-estable-pedidos-protegidos";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
@@ -1843,6 +1848,7 @@ function ensureFirebaseSdkLoaded(){
       if(!window.firebase || !window.firebase.initializeApp || !window.firebase.auth || !window.firebase.firestore)throw new Error("El SDK de Firebase no quedó disponible. Revise conexión, bloqueo del navegador, DNS o red corporativa.");
     });
 }
+var firestorePersistenceReady=false;
 function initFirebase(){
   try{
     if(!window.firebase || !window.firebaseConfig){throw new Error("No cargó Firebase o firebase-config.js");}
@@ -1852,12 +1858,13 @@ function initFirebase(){
     db=firebase.firestore();
     try{
       db.settings({
-        experimentalAutoDetectLongPolling:true,
+        experimentalAutoDetectLongPolling:false,
+        experimentalForceLongPolling:true,
         ignoreUndefinedProperties:true,
         merge:true
       });
     }catch(settingsError){
-      console.warn("[V245] No fue posible aplicar la configuración compatible de Firestore.",settingsError);
+      console.warn("[V247] No fue posible aplicar el transporte estable de Firestore.",settingsError);
     }
     firebaseReady=true;
     firebaseInitError="";
@@ -1870,7 +1877,23 @@ function initFirebaseAsync(){
   return ensureFirebaseConfigLoaded().then(ensureFirebaseSdkLoaded).then(function(){
     initFirebase();
     if(!firebaseReady)throw new Error(firebaseInitError||"Firebase no inicializó.");
-    return true;
+    if(!db||typeof db.enablePersistence!=="function")return true;
+    return db.enablePersistence({synchronizeTabs:true}).then(function(){
+      firestorePersistenceReady=true;
+      console.info("[V247] Persistencia offline de Firestore activa.");
+      return true;
+    }).catch(function(error){
+      firestorePersistenceReady=false;
+      var code=String(error&&error.code||"");
+      if(code.indexOf("failed-precondition")>=0){
+        console.warn("[V247] Otra pestaña administra la persistencia. La app continúa.",error);
+      }else if(code.indexOf("unimplemented")>=0){
+        console.warn("[V247] El navegador no admite persistencia Firestore.",error);
+      }else{
+        console.warn("[V247] Persistencia Firestore no disponible; se usará respaldo local.",error);
+      }
+      return true;
+    });
   });
 }
 function clearPwaCachesAndReload(){
@@ -1883,13 +1906,8 @@ function clearPwaCachesAndReload(){
 function ensureMobileFreshVersion(){
   try{
     var version=EI_CANONICAL_APP_VERSION;
-    var key="ei_mobile_app_version";
-    var old=localStorage.getItem(key)||"";
-    localStorage.setItem(key,version);
-    if(old && old!==version && !sessionStorage.getItem("ei_mobile_version_reload_"+version)){
-      sessionStorage.setItem("ei_mobile_version_reload_"+version,"1");
-      if(window.caches)caches.keys().then(function(keys){return Promise.all(keys.map(function(k){return /ei-trazabilidad/i.test(k)?caches.delete(k):Promise.resolve();}));}).finally(function(){location.reload();});
-    }
+    localStorage.setItem("ei_mobile_app_version",version);
+    localStorage.setItem("EI_CANONICAL_APP_VERSION",version);
   }catch(e){}
 }
 
@@ -2186,58 +2204,127 @@ function loadingPedidosPanel(text){
 }
 function loadCasesForRole(){
   if(canSeeAll()||canAuditViewAll()){
-    return db.collection("cases").orderBy("updatedAt","desc").get().then(docsToList);
+    return db.collection("cases")
+      .orderBy("updatedAt","desc")
+      .get()
+      .then(docsToList);
   }
 
   var queries=[];
   var aliases=roleQueryAliases(state.user.role);
-  var nr=normalizeRole(state.user.role);
-  var myIds=currentUserIdentityAliases();
+  var role=normalizeRole(state.user.role);
+  var identityIds=currentUserIdentityAliases();
 
-  // V84: para asesores de ventas no se descarga toda la colección.
-  // Se consultan solo los pedidos asociados al UID, correo o nombre del asesor.
-  if(nr==="ventas"){
+  if(role==="ventas"){
     return loadSalesCasesFast();
   }
 
-  if(nr==="cartera"){
-    queries.push(safeQuerySnapshot(db.collection("cases").where("currentProcess","==","caja"),"cases.cartera.misroutedCaja"));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==","caja"),"cases.cartera.misroutedAssignedCaja"));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("salesHold.destination","==","cartera"),"cases.cartera.destination"));
+  if(role==="cartera"){
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("currentProcess","==","caja"),
+      "cases.cartera.misroutedCaja"
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("assignedRole","==","caja"),
+      "cases.cartera.misroutedAssignedCaja"
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("salesHold.destination","==","cartera"),
+      "cases.cartera.destination"
+    ));
   }
 
-  if(nr==="auxiliar_corte"){
-    queries.push(safeQuerySnapshot(db.collection("cases").where("hasCuts","==",true),"cases.hasCuts"));
+  if(role==="auxiliar_corte"){
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("hasCuts","==",true),
+      "cases.hasCuts"
+    ));
   }
 
-  myIds.forEach(function(id){
-    queries.push(safeQuerySnapshot(db.collection("cases").where("createdBy","==",id),"cases.createdBy:"+id));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedUid","==",id),"cases.assignedUid:"+id));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedTo","==",id),"cases.assignedTo:"+id));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedUserIds","array-contains",id),"cases.assignedUserIds:"+id));
+  activeProcessKeys().forEach(function(processKey){
+    if(canAccessProcess(role,processKey)){
+      queries.push(safeQuerySnapshot(
+        db.collection("cases").where("currentProcess","==",processKey),
+        "cases.currentProcess:"+processKey
+      ));
+    }
+  });
+
+  identityIds.forEach(function(identity){
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("createdBy","==",identity),
+      "cases.createdBy:"+identity
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("assignedUid","==",identity),
+      "cases.assignedUid:"+identity
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("assignedTo","==",identity),
+      "cases.assignedTo:"+identity
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("assignedUserIds","array-contains",identity),
+      "cases.assignedUserIds:"+identity
+    ));
   });
 
   var ownerRule=currentUserDeliveryOwnerRule();
+
   if(ownerRule){
-    queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryRouteOwner","==",ownerRule.key),"cases.deliveryRouteOwner:"+ownerRule.key));
-    (ownerRule.legacyKeys||[]).forEach(function(k){queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryRouteOwner","==",k),"cases.deliveryRouteOwnerLegacy:"+k));});
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("deliveryRouteOwner","==",ownerRule.key),
+      "cases.deliveryRouteOwner:"+ownerRule.key
+    ));
+
+    (ownerRule.legacyKeys||[]).forEach(function(key){
+      queries.push(safeQuerySnapshot(
+        db.collection("cases").where("deliveryRouteOwner","==",key),
+        "cases.deliveryRouteOwnerLegacy:"+key
+      ));
+    });
+
     ownerRule.routes.forEach(function(routeKey){
-      queries.push(safeQuerySnapshot(db.collection("cases").where("currentProcess","==",routeKey),"cases.deliveryRoute.currentProcess:"+routeKey));
-      queries.push(safeQuerySnapshot(db.collection("cases").where("deliveryType","==",routeKey),"cases.deliveryRoute.deliveryType:"+routeKey));
-      queries.push(safeQuerySnapshot(db.collection("cases").where("requestedDelivery","==",routeKey),"cases.deliveryRoute.requestedDelivery:"+routeKey));
+      queries.push(safeQuerySnapshot(
+        db.collection("cases").where("currentProcess","==",routeKey),
+        "cases.deliveryRoute.currentProcess:"+routeKey
+      ));
+      queries.push(safeQuerySnapshot(
+        db.collection("cases").where("deliveryType","==",routeKey),
+        "cases.deliveryRoute.deliveryType:"+routeKey
+      ));
+      queries.push(safeQuerySnapshot(
+        db.collection("cases").where("requestedDelivery","==",routeKey),
+        "cases.deliveryRoute.requestedDelivery:"+routeKey
+      ));
     });
   }
 
-  aliases.forEach(function(a){
-    queries.push(safeQuerySnapshot(db.collection("cases").where("assignedRole","==",a),"cases.assignedRole:"+a));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("openRequirement.targetRole","==",a),"cases.openRequirement.targetRole:"+a));
-    queries.push(safeQuerySnapshot(db.collection("cases").where("openRequirement.assignedRole","==",a),"cases.openRequirement.assignedRole:"+a));
+  aliases.forEach(function(alias){
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("assignedRole","==",alias),
+      "cases.assignedRole:"+alias
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("openRequirement.targetRole","==",alias),
+      "cases.openRequirement.targetRole:"+alias
+    ));
+    queries.push(safeQuerySnapshot(
+      db.collection("cases").where("openRequirement.assignedRole","==",alias),
+      "cases.openRequirement.assignedRole:"+alias
+    ));
   });
 
-  return Promise.all(queries).then(function(snaps){
-    var all=[];
-    snaps.forEach(function(snap){if(snap)all=all.concat(docsToList(snap));});
-    return filterCasesForCurrentUserStrict(all);
+  if(!queries.length)return Promise.resolve([]);
+
+  return Promise.all(queries).then(function(snapshots){
+    var rows=[];
+
+    snapshots.forEach(function(snapshot){
+      if(snapshot)rows=rows.concat(docsToList(snapshot));
+    });
+
+    return filterCasesForCurrentUserStrict(rows);
   });
 }
 
@@ -2289,7 +2376,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V245] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V247] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -2798,7 +2885,23 @@ function forceProtectedViewRefresh(){
     });
   }catch(e){
     console.warn("No se pudo actualizar vista protegida",e);
-    try{closeDrawer();state.detailId=null;render();}catch(err){location.reload();}
+    try{
+      closeDrawer();
+      state.detailId=null;
+      render();
+    }catch(renderError){
+      console.error(
+        "[V247] No fue posible reconstruir la vista.",
+        renderError
+      );
+
+      v246CacheSoon();
+
+      v246Banner(
+        "La vista encontró un error, pero los pedidos permanecen protegidos. Pulse Sincronizar.",
+        "pending"
+      );
+    }
     return Promise.resolve();
   }
 }
@@ -4145,29 +4248,136 @@ function waitForGoogleDriveClient(){
     },250);
   });
 }
-function ensureDriveToken(promptMode){
-  if(driveAccessToken && Date.now()<driveTokenExpiresAt)return Promise.resolve(driveAccessToken);
-  if(!driveConfigured())return Promise.reject(new Error("Drive no está configurado. Falta el Google OAuth Client ID en firebase-config.js > appSettings.googleDriveClientId."));
-  return waitForGoogleDriveClient().then(function(){
+function driveTokenCacheRead(){
+  try{
+    var raw=sessionStorage.getItem(DRIVE_TOKEN_SESSION_KEY)||"";
+    if(!raw)return null;
+    var data=JSON.parse(raw);
+    if(!data||!data.token||Number(data.expiresAt||0)<=Date.now()+90000){
+      sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY);
+      return null;
+    }
+    driveAccessToken=data.token;
+    driveTokenExpiresAt=Number(data.expiresAt||0);
+    return data;
+  }catch(e){
+    return null;
+  }
+}
+function driveTokenCacheWrite(token,expiresAt){
+  driveAccessToken=String(token||"");
+  driveTokenExpiresAt=Number(expiresAt||0);
+  driveAuthRequired=false;
+  driveLastAuthError="";
+  try{
+    sessionStorage.setItem(DRIVE_TOKEN_SESSION_KEY,JSON.stringify({
+      token:driveAccessToken,
+      expiresAt:driveTokenExpiresAt
+    }));
+    localStorage.setItem(DRIVE_GRANT_STORAGE_KEY,"1");
+  }catch(e){}
+}
+function driveTokenCacheClear(){
+  driveAccessToken="";
+  driveTokenExpiresAt=0;
+  try{sessionStorage.removeItem(DRIVE_TOKEN_SESSION_KEY);}catch(e){}
+}
+function driveGrantKnown(){
+  try{return localStorage.getItem(DRIVE_GRANT_STORAGE_KEY)==="1";}
+  catch(e){return false;}
+}
+function driveAuthError(message,code){
+  var error=new Error(message||"Google Drive requiere conexión.");
+  error.code=code||"DRIVE_AUTH_REQUIRED";
+  return error;
+}
+function driveAuthIsRequired(error){
+  var text=String((error&&error.code)||"")+" "+
+    String((error&&error.message)||error||"");
+  return /DRIVE_AUTH_REQUIRED|popup_failed_to_open|popup_closed|interaction_required|login_required|consent_required|access_denied/i.test(text);
+}
+function driveRequestAccessToken(interactive){
+  if(driveTokenRequestPromise)return driveTokenRequestPromise;
+
+  if(!interactive){
+    driveAuthRequired=true;
+    return Promise.reject(driveAuthError(
+      "Drive está pendiente de conexión. Pulse Conectar Drive para sincronizar las evidencias.",
+      "DRIVE_AUTH_REQUIRED"
+    ));
+  }
+
+  driveTokenRequestPromise=waitForGoogleDriveClient().then(function(){
     return new Promise(function(resolve,reject){
       try{
-        if(!driveTokenClient){
-          driveTokenClient=google.accounts.oauth2.initTokenClient({client_id:driveClientId(),scope:DRIVE_SCOPE,callback:function(){}});
-        }
-        driveTokenClient.callback=function(resp){
-          if(resp && resp.access_token){
-            driveAccessToken=resp.access_token;
-            var expires=Number(resp.expires_in||3600);
-            driveTokenExpiresAt=Date.now()+Math.max(60,expires-60)*1000;
-            resolve(driveAccessToken);
-          }else{
-            reject(new Error((resp&&resp.error_description)||"No se autorizó Google Drive."));
+        var promptMode=driveGrantKnown()?"":"consent";
+        driveTokenClient=google.accounts.oauth2.initTokenClient({
+          client_id:driveClientId(),
+          scope:DRIVE_SCOPE,
+          callback:function(response){
+            if(response&&response.access_token){
+              var expires=Number(response.expires_in||3600);
+              var expiresAt=Date.now()+Math.max(60,expires-90)*1000;
+              driveTokenCacheWrite(response.access_token,expiresAt);
+              resolve(driveAccessToken);
+              return;
+            }
+
+            driveAuthRequired=true;
+            driveLastAuthError=String(
+              response&&(response.error_description||response.error)||
+              "No se autorizó Google Drive."
+            );
+            reject(driveAuthError(driveLastAuthError,"DRIVE_AUTH_REQUIRED"));
+          },
+          error_callback:function(response){
+            driveAuthRequired=true;
+            driveLastAuthError=String(
+              response&&(response.message||response.type)||
+              "No se pudo abrir la autorización de Google Drive."
+            );
+            reject(driveAuthError(driveLastAuthError,"DRIVE_AUTH_REQUIRED"));
           }
-        };
-        driveTokenClient.requestAccessToken({prompt:promptMode || "consent"});
-      }catch(e){reject(e);}
+        });
+
+        driveTokenClient.requestAccessToken({prompt:promptMode});
+      }catch(error){
+        driveAuthRequired=true;
+        reject(driveAuthError(error.message||error,"DRIVE_AUTH_REQUIRED"));
+      }
     });
+  }).finally(function(){
+    driveTokenRequestPromise=null;
   });
+
+  return driveTokenRequestPromise;
+}
+function ensureDriveToken(options){
+  options=options||{};
+
+  if(typeof options==="string"){
+    options={
+      interactive:options==="consent"||options==="select_account"
+    };
+  }
+
+  if(!driveConfigured()){
+    return Promise.reject(new Error(
+      "Drive no está configurado. Falta el Google OAuth Client ID."
+    ));
+  }
+
+  if(
+    driveAccessToken&&
+    Date.now()<driveTokenExpiresAt-90000
+  ){
+    return Promise.resolve(driveAccessToken);
+  }
+
+  var cached=driveTokenCacheRead();
+  if(cached)return Promise.resolve(cached.token);
+
+  return driveRequestAccessToken(options.interactive===true);
 }
 function clearDriveFolderCache(){
   try{
@@ -4192,38 +4402,68 @@ function promiseWithTimeout(promise,ms,message){
   ]).then(function(v){if(timer)clearTimeout(timer);return v;}).catch(function(e){if(timer)clearTimeout(timer);throw e;});
 }
 function driveFetch(url,options){
-  return ensureDriveToken("").then(function(token){
-    options=options||{};
-    var timeoutMs=Number(options.timeoutMs||45000);
-    var clean=Object.assign({},options);
-    delete clean.timeoutMs;
+  options=options||{};
+  var interactive=options.driveInteractive===true;
+  var timeoutMs=Number(options.timeoutMs||45000);
+  var clean=Object.assign({},options);
+  delete clean.timeoutMs;
+  delete clean.driveInteractive;
+
+  return ensureDriveToken({interactive:interactive}).then(function(token){
     var headers=new Headers(clean.headers||{});
     headers.set("Authorization","Bearer "+token);
     clean.headers=headers;
-    var controller=null,timer=null;
-    if(window.AbortController && timeoutMs>0){
+
+    var controller=null;
+    var timer=null;
+
+    if(window.AbortController&&timeoutMs>0){
       controller=new AbortController();
       clean.signal=controller.signal;
-      timer=setTimeout(function(){try{controller.abort();}catch(e){}},timeoutMs);
+      timer=setTimeout(function(){
+        try{controller.abort();}catch(e){}
+      },timeoutMs);
     }
-    return fetch(url,clean).then(function(res){
+
+    return fetch(url,clean).then(function(response){
       if(timer)clearTimeout(timer);
-      if(res.status===401 || res.status===403){
-        driveAccessToken="";driveTokenExpiresAt=0;
-        throw new Error("Google Drive requiere autorización nuevamente. Presione la acción otra vez y autorice el acceso.");
+
+      if(response.status===401||response.status===403){
+        driveTokenCacheClear();
+        driveAuthRequired=true;
+        throw driveAuthError(
+          "La sesión de Drive venció. Pulse Conectar Drive una vez para continuar con todas las evidencias pendientes.",
+          "DRIVE_AUTH_REQUIRED"
+        );
       }
-      if(!res.ok){return res.text().catch(function(){return "";}).then(function(txt){
-        if(res.status===404){
-          clearDriveFolderCache();driveFolderSessionCache={};
-          throw new Error("Google Drive no encontró una carpeta o archivo usado como destino. Se limpió la referencia interna de carpetas; vuelva a intentar la carga con la misma cuenta de Drive. Detalle técnico: "+txt.slice(0,180));
-        }
-        throw new Error("Error Google Drive "+res.status+": "+txt.slice(0,220));
-      });}
-      return res;
-    }).catch(function(err){
+
+      if(!response.ok){
+        return response.text().catch(function(){return "";}).then(function(text){
+          if(response.status===404){
+            clearDriveFolderCache();
+            driveFolderSessionCache={};
+            throw new Error(
+              "Drive no encontró la carpeta de destino. Se limpió la referencia local; vuelva a sincronizar."
+            );
+          }
+
+          throw new Error(
+            "Error Google Drive "+response.status+": "+text.slice(0,220)
+          );
+        });
+      }
+
+      return response;
+    }).catch(function(error){
       if(timer)clearTimeout(timer);
-      if(err && err.name==="AbortError")throw new Error("La carga a Drive tardó demasiado. El flujo queda guardado y puede reintentarse sin salir de la app.");
-      throw err;
+
+      if(error&&error.name==="AbortError"){
+        throw new Error(
+          "La carga a Drive tardó demasiado. La evidencia permanece protegida y se reintentará."
+        );
+      }
+
+      throw error;
     });
   });
 }
@@ -4437,7 +4677,9 @@ function buildStampedDispatchSupportFile(file,c,def,statusEl){
 function uploadFileToDrive(file,c,processOrOptions,fileName){
   var opts=typeof processOrOptions==="object"?(processOrOptions||{}):{processName:processOrOptions,fileName:fileName};
   if(!opts.silentFeedback)showUploadFeedback("loading",opts.feedbackMessage||"Subiendo soporte a Drive. Espere la confirmación antes de continuar.");
-  return ensureDriveToken(opts.silentToken?"":"consent").then(function(){return prepareFileForDrive(file,opts);}).then(function(prep){
+  return ensureDriveToken({
+    interactive:!(opts.backgroundSync||opts.silentToken)
+  }).then(function(){return prepareFileForDrive(file,opts);}).then(function(prep){
     var uploadedAt=now();
     var date=new Date(uploadedAt);
     var year=String(date.getFullYear());
@@ -7726,7 +7968,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V245</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V247</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -15508,7 +15750,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V245] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V247] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -15575,7 +15817,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V245] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V247] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -15630,7 +15872,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V245] Actualización periódica no disponible:",reason,error);
+        console.warn("[V247] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);
@@ -15665,6 +15907,823 @@ window.addEventListener("error",function(event){
   }
 });
 
+
+
+/* ============================================================
+   V246 · ESTABILIDAD OPERATIVA, OFFLINE Y EVIDENCIAS
+============================================================ */
+state.v246=state.v246||{filePickerOpen:false,uploadActive:false,syncing:false,degraded:false,loadInFlight:null,refreshTimer:null,cacheTimer:null,pendingCaseIds:{}};
+var V246_DB="ei_logistica_offline_v246",V246_DB_VERSION=1,V246_OUTBOX="outbox",V246_FILES="files",V246_SNAPSHOTS="snapshots",v246DbPromise=null;
+function v246OpenDb(){if(v246DbPromise)return v246DbPromise;v246DbPromise=new Promise(function(resolve,reject){if(!window.indexedDB){reject(new Error("IndexedDB no disponible"));return;}var request=indexedDB.open(V246_DB,V246_DB_VERSION);request.onupgradeneeded=function(){var database=request.result;if(!database.objectStoreNames.contains(V246_OUTBOX))database.createObjectStore(V246_OUTBOX,{keyPath:"id"});if(!database.objectStoreNames.contains(V246_FILES))database.createObjectStore(V246_FILES,{keyPath:"id"});if(!database.objectStoreNames.contains(V246_SNAPSHOTS))database.createObjectStore(V246_SNAPSHOTS,{keyPath:"id"});};request.onsuccess=function(){resolve(request.result);};request.onerror=function(){reject(request.error||new Error("No fue posible abrir almacenamiento local"));};});return v246DbPromise;}
+function v246Put(store,value){return v246OpenDb().then(function(database){return new Promise(function(resolve,reject){var tx=database.transaction(store,"readwrite");tx.objectStore(store).put(value);tx.oncomplete=function(){resolve(value);};tx.onerror=function(){reject(tx.error||new Error("Guardado local falló"));};});});}
+function v246Get(store,id){return v246OpenDb().then(function(database){return new Promise(function(resolve,reject){var request=database.transaction(store,"readonly").objectStore(store).get(id);request.onsuccess=function(){resolve(request.result||null);};request.onerror=function(){reject(request.error);};});});}
+function v246Delete(store,id){return v246OpenDb().then(function(database){return new Promise(function(resolve,reject){var tx=database.transaction(store,"readwrite");tx.objectStore(store).delete(id);tx.oncomplete=function(){resolve(true);};tx.onerror=function(){reject(tx.error);};});});}
+function v246GetAll(store){return v246OpenDb().then(function(database){return new Promise(function(resolve,reject){var objectStore=database.transaction(store,"readonly").objectStore(store);if(objectStore.getAll){var request=objectStore.getAll();request.onsuccess=function(){resolve(request.result||[]);};request.onerror=function(){reject(request.error);};return;}var rows=[],cursor=objectStore.openCursor();cursor.onsuccess=function(){var item=cursor.result;if(!item){resolve(rows);return;}rows.push(item.value);item.continue();};cursor.onerror=function(){reject(cursor.error);};});});}
+function v246Plain(value){try{return JSON.parse(JSON.stringify(value));}catch(e){return value;}}
+function v246ErrorText(error){return [error&&error.code||"",error&&error.message||"",error&&error.name||"",String(error||"")].join(" ").toLowerCase();}
+function v246Retryable(error){var text=v246ErrorText(error);if(text.indexOf("permission-denied")>=0||text.indexOf("unauthenticated")>=0)return false;return navigator.onLine===false||/network|connection|unavailable|deadline|timeout|aborted|internal|unexpected state|failed to fetch|err_connection/.test(text);}
+function v246Locked(){if(document.hidden||state.v246.filePickerOpen||state.v246.uploadActive)return true;var drawerNode=qs("#drawer");if(drawerNode&&drawerNode.classList.contains("open"))return true;var active=document.activeElement;return !!(active&&/INPUT|TEXTAREA|SELECT/.test(active.tagName||""));}
+function v246Banner(message,kind){
+  var node=document.getElementById("v246-sync-banner");
+
+  if(!node){
+    node=document.createElement("div");
+    node.id="v246-sync-banner";
+    node.innerHTML=
+      '<span data-v246-text></span>'+
+      '<div class="v247-sync-actions">'+
+      '<button type="button" data-action="v247ConnectDrive">Conectar Drive</button>'+
+      '<button type="button" data-action="v246SyncNow">Sincronizar</button>'+
+      '</div>';
+
+    document.body.appendChild(node);
+  }
+
+  node.className="v246-sync-banner "+(kind||"");
+
+  var text=node.querySelector("[data-v246-text]");
+
+  if(text)text.textContent=message||"";
+
+  var driveButton=node.querySelector(
+    '[data-action="v247ConnectDrive"]'
+  );
+
+  if(driveButton){
+    driveButton.style.display=driveAuthRequired
+      ?"inline-flex"
+      :"none";
+  }
+
+  node.style.display=message?"flex":"none";
+}
+function v246RefreshBanner(){
+  return v246GetAll(V246_OUTBOX).then(function(rows){
+    var count=rows.length;
+
+    var evidencePending=rows.filter(function(row){
+      return row&&row.kind==="evidence";
+    }).length;
+
+    var authPending=rows.some(function(row){
+      return row&&
+        row.kind==="evidence"&&
+        row.authPending===true;
+    });
+
+    if(authPending)driveAuthRequired=true;
+
+    if(navigator.onLine===false){
+      v246Banner(
+        count
+          ?"Sin conexión · "+count+" operación(es) protegidas en este dispositivo."
+          :"Sin conexión · puede continuar; la información se guardará localmente.",
+        "offline"
+      );
+    }else if(driveAuthRequired&&evidencePending){
+      v246Banner(
+        evidencePending+
+          " evidencia(s) protegidas. Conecte Drive una vez para sincronizarlas.",
+        "pending"
+      );
+    }else if(state.v246.syncing){
+      v246Banner(
+        "Sincronizando información pendiente…",
+        "syncing"
+      );
+    }else if(count){
+      v246Banner(
+        count+" operación(es) pendientes de sincronizar.",
+        "pending"
+      );
+    }else{
+      v246Banner(
+        "Conectado · información sincronizada.",
+        "ok"
+      );
+
+      setTimeout(function(){
+        var node=document.getElementById("v246-sync-banner");
+
+        if(
+          node&&
+          !state.v246.syncing&&
+          navigator.onLine!==false&&
+          !driveAuthRequired
+        ){
+          node.style.display="none";
+        }
+      },1800);
+    }
+
+    return count;
+  }).catch(function(){
+    return 0;
+  });
+}
+function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V247] Respaldo local no disponible",e);});},300);}
+function v246Restore(){if(!state.user)return Promise.resolve(false);return v246Get(V246_SNAPSHOTS,"state:"+(state.user.uid||state.user.email||"default")).then(function(s){if(!s)return false;if(!(state.cases||[]).length)state.cases=s.cases||[];if(!(state.events||[]).length)state.events=s.events||[];if(!(state.users||[]).length)state.users=s.users||[];if(!(state.receptions||[]).length)state.receptions=s.receptions||[];if(!(state.receptionStickers||[]).length)state.receptionStickers=s.receptionStickers||[];if(!(state.projectOrders||[]).length)state.projectOrders=s.projectOrders||[];if(!(state.reports||[]).length)state.reports=s.reports||[];if(!(state.inventoryChips||[]).length)state.inventoryChips=s.inventoryChips||[];return true;}).catch(function(){return false;});}
+function v246QueueDoc(collection,docId,data,merge){var id="firestore:"+collection+":"+docId;return v246Put(V246_OUTBOX,{id:id,kind:"firestore",collection:collection,docId:docId,data:v246Plain(data),merge:merge!==false,createdAt:Date.now(),updatedAt:Date.now(),attempts:0,lastError:""}).then(function(){state.v246.pendingCaseIds[collection+":"+docId]=true;v246RefreshBanner();return{queued:true,id:id};});}
+function v246Write(collection,docId,data,merge){if(!db||navigator.onLine===false)return v246QueueDoc(collection,docId,data,merge);var ref=db.collection(collection).doc(docId),write=merge===false?ref.set(v246Plain(data)):ref.set(v246Plain(data),{merge:true});return promiseWithTimeout(write,10000,"La red no confirmó el guardado.").then(function(){delete state.v246.pendingCaseIds[collection+":"+docId];return{queued:false};}).catch(function(error){if(v246Retryable(error))return v246QueueDoc(collection,docId,data,merge);throw error;});}
+function v246Event(e){e=e||{};e.id=e.id||uid("ev");e.timestamp=e.timestamp||now();e.userId=e.userId||(state.user?state.user.uid:"");e.userName=e.userName||(state.user?state.user.name:"Usuario");e.createdBy=e.createdBy||e.userId;e.createdByRole=e.createdByRole||(state.user?state.user.role:"");e.sourceRole=e.sourceRole||(state.user?state.user.role:"");e.visibleRoles=uniqueArray(e.visibleRoles||notificationVisibleRolesForEvent(null,e));return e;}
+createEvent=function(e){e=v246Event(e);if(!(state.events||[]).some(function(x){return x&&x.id===e.id;}))state.events.unshift(e);v246CacheSoon();return v246Write("case_events",e.id,e,false).then(function(result){try{queueEventNotification(e);}catch(x){}return result;});};
+persistCase=function(c,event){if(!c||!c.id)return Promise.reject(new Error("Caso sin identificador"));if(event){event=Object.assign({caseId:c.id,process:c.currentProcess,timestamp:now()},event);appendFlowTraceFromEvent(c,event);}c.updatedAt=now();replaceCaseInState(c);v246CacheSoon();var enriched=event?enrichCaseEvent(c,event):null;return v246Write("cases",c.id,c,true).then(function(result){if(enriched)return createEvent(enriched).then(function(){return result;});return result;});};
+function v246FlushDocs(rows){var list=(rows||[]).filter(function(x){return x.kind==="firestore";}).sort(function(a,b){return Number(a.createdAt||0)-Number(b.createdAt||0);}),chain=Promise.resolve();list.forEach(function(op){chain=chain.then(function(){if(navigator.onLine===false)return;var ref=db.collection(op.collection).doc(op.docId),write=op.merge===false?ref.set(op.data):ref.set(op.data,{merge:true});return promiseWithTimeout(write,12000,"Sincronización agotada").then(function(){delete state.v246.pendingCaseIds[op.collection+":"+op.docId];return v246Delete(V246_OUTBOX,op.id);}).catch(function(error){op.attempts=Number(op.attempts||0)+1;op.lastError=String(error&&error.message||error||"").slice(0,300);op.updatedAt=Date.now();return v246Put(V246_OUTBOX,op).then(function(){if(!v246Retryable(error))throw error;});});});});return chain;}
+function v246StoreFiles(files){files=(files||[]).slice(0,10);var total=files.reduce(function(s,f){return s+Number(f&&f.size||0);},0);if(total>80*1024*1024)return Promise.reject(new Error("Los archivos superan 80 MB"));var records=[],chain=Promise.resolve();files.forEach(function(file,index){chain=chain.then(function(){var record={id:uid("OFFFILE"),blob:file,name:file.name||("archivo_"+(index+1)),type:file.type||"application/octet-stream",size:Number(file.size||0),lastModified:Number(file.lastModified||Date.now()),createdAt:Date.now()};records.push(record);return v246Put(V246_FILES,record);});});return chain.then(function(){return records;});}
+function v246File(record){if(!record)return null;try{return new File([record.blob],record.name||"archivo",{type:record.type||"application/octet-stream",lastModified:record.lastModified||Date.now()});}catch(e){var blob=record.blob;try{Object.defineProperty(blob,"name",{value:record.name||"archivo"});}catch(x){}return blob;}}
+function v246QueueEvidence(c,files,options){options=options||{};return v246StoreFiles(files).then(function(records){var job={id:"evidence:"+uid("OFFEVD"),kind:"evidence",mode:options.mode||"general",caseId:c.id,processKey:options.processKey||c.currentProcess,processName:options.processName||processTitle(options.processKey||c.currentProcess),evidenceType:options.evidenceType||"EVIDENCIA_PROCESO",deliveryKey:options.deliveryKey||"",detail:options.detail||"",fileIds:records.map(function(r){return r.id;}),fileNames:records.map(function(r){return r.name;}),createdAt:Date.now(),updatedAt:Date.now(),attempts:0,lastError:""};return v246Put(V246_OUTBOX,job).then(function(){v246RefreshBanner();return job;});});}
+function v246LoadFiles(job){var files=[],chain=Promise.resolve();(job.fileIds||[]).forEach(function(id){chain=chain.then(function(){return v246Get(V246_FILES,id).then(function(record){if(!record)throw new Error("Archivo local no encontrado");files.push(v246File(record));});});});return chain.then(function(){return files;});}
+function v246DeleteJob(job){var chain=Promise.resolve();(job.fileIds||[]).forEach(function(id){chain=chain.then(function(){return v246Delete(V246_FILES,id);});});return chain.then(function(){return v246Delete(V246_OUTBOX,job.id);});}
+function v246PendingEvidence(job,files){return{id:job.id,localJobId:job.id,process:job.processKey,processName:job.processName,evidenceType:job.evidenceType,detail:job.detail||"",fileName:files.length===1?files[0].name:(files.length+" archivos pendientes"),uploadedAt:now(),uploadedByName:state.user?state.user.name:"",pendingUpload:true,gallery:true,files:files.map(function(f,i){return{id:job.fileIds[i],fileName:f.name||("Archivo "+(i+1)),mimeType:f.type||"",pendingUpload:true,isImage:/^image\//i.test(String(f.type||""))};})};}
+function v246ProcessEvidence(job){
+  if(
+    !job||
+    job.kind!=="evidence"||
+    navigator.onLine===false||
+    state.v246.uploadActive
+  ){
+    return Promise.resolve();
+  }
+
+  var c=caseById(job.caseId);
+
+  if(!c)return Promise.resolve();
+
+  state.v246.uploadActive=true;
+  v246RefreshBanner();
+
+  return v246LoadFiles(job).then(function(files){
+    return uploadFilesToDriveGallery(files,c,{
+      processName:job.processName,
+      processKey:job.processKey,
+      evidenceType:job.evidenceType,
+      fileNamePrefix:job.evidenceType,
+      timeoutMs:45000,
+      backgroundSync:true,
+      silentToken:true
+    },null);
+  }).then(function(uploads){
+    if(job.mode==="delivery"){
+      var first=uploads[0];
+      var upload=first.upload||first;
+      var file=first.file||{};
+
+      c.deliveryEvidence=c.deliveryEvidence||{};
+
+      c.deliveryEvidence[job.deliveryKey]=Object.assign(
+        {},
+        c.deliveryEvidence[job.deliveryKey]||{},
+        {
+          driveUrl:upload.url||upload.driveUrl||"",
+          fileName:uploads.length===1
+            ?(upload.fileName||upload.name||file.name)
+            :(uploads.length+" archivos"),
+          fileId:upload.fileId||"",
+          galleryFiles:uploads.map(function(item){
+            return galleryFileFromUpload(
+              item.upload||item,
+              item.file
+            );
+          }),
+          uploadedAt:upload.uploadedAt||now(),
+          uploadedByName:state.user?state.user.name:"",
+          pendingUpload:false,
+          localJobId:""
+        }
+      );
+    }else if(job.mode==="cash"){
+      var cashFirst=uploads[0];
+      var cashUpload=cashFirst.upload||cashFirst;
+      var cashFile=cashFirst.file||{};
+
+      c.cashBilling=Object.assign({},c.cashBilling||{},{
+        status:"cargada",
+        invoiceUrl:cashUpload.url||cashUpload.driveUrl||"",
+        invoiceFileName:uploads.length===1
+          ?(cashUpload.fileName||cashUpload.name||cashFile.name)
+          :(uploads.length+" archivos"),
+        invoiceFileId:cashUpload.fileId||"",
+        invoiceGallery:uploads.map(function(item){
+          return galleryFileFromUpload(
+            item.upload||item,
+            item.file
+          );
+        }),
+        uploadedAt:cashUpload.uploadedAt||now(),
+        pendingUpload:false,
+        localJobId:""
+      });
+
+      c.evidence=(c.evidence||[]).filter(function(item){
+        return item.localJobId!==job.id;
+      });
+
+      appendEvidenceGallery(
+        c,
+        uploads,
+        job.detail||"Factura de Caja",
+        {
+          processKey:job.processKey,
+          processName:job.processName,
+          evidenceType:job.evidenceType
+        }
+      );
+    }else{
+      c.evidence=(c.evidence||[]).filter(function(item){
+        return item.localJobId!==job.id;
+      });
+
+      appendEvidenceGallery(c,uploads,job.detail||"",{
+        processKey:job.processKey,
+        processName:job.processName,
+        evidenceType:job.evidenceType
+      });
+    }
+
+    job.authPending=false;
+    driveAuthRequired=false;
+
+    return persistCase(c,{
+      type:"OFFLINE_EVIDENCE_SYNCHRONIZED",
+      process:job.processKey,
+      detail:(job.fileIds||[]).length+
+        " archivo(s) sincronizados con Drive"
+    }).then(function(){
+      return v246DeleteJob(job);
+    });
+  }).catch(function(error){
+    if(driveAuthIsRequired(error)){
+      driveAuthRequired=true;
+      job.authPending=true;
+      job.lastError="Drive pendiente de conexión";
+    }else{
+      job.attempts=Number(job.attempts||0)+1;
+      job.lastError=String(
+        error&&error.message||error||""
+      ).slice(0,300);
+    }
+
+    job.updatedAt=Date.now();
+
+    return v246Put(V246_OUTBOX,job).then(function(){
+      if(driveAuthIsRequired(error)){
+        console.info(
+          "[V247] Evidencia protegida; Drive espera conexión del usuario."
+        );
+      }else{
+        console.warn(
+          "[V247] Evidencia pendiente de sincronización.",
+          error
+        );
+      }
+    });
+  }).finally(function(){
+    state.v246.uploadActive=false;
+    v246RefreshBanner();
+  });
+}
+function v246Flush(){if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V247] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
+function v246LoadBlock(label,loader,previous){if(navigator.onLine===false)return Promise.resolve({ok:false,data:previous||[]});return promiseWithTimeout(Promise.resolve().then(loader),18000,label+" tardó demasiado").then(function(data){return{ok:true,data:data||[]};}).catch(function(error){state.loadWarnings=state.loadWarnings||[];state.loadWarnings.push(label+": se conserva la información anterior");return{ok:false,data:previous||[],error:error};});}
+function v246StableLoad(){
+  if(!firebaseReady||!db||!state.user){
+    return Promise.resolve();
+  }
+
+  return Promise.all([
+    v246Restore(),
+    v246GetAll(V246_OUTBOX).catch(function(){return [];})
+  ]).then(function(initial){
+    var outboxRows=initial[1]||[];
+    var cutOnly=isFabianCutRuntimeUser()||
+      normalizeRole(state.user&&state.user.role)==="auxiliar_corte";
+
+    var blocks=[
+      ["cases","Casos",loadCasesForRole,state.cases],
+      ["events","Eventos",cutOnly?function(){return Promise.resolve([]);}:loadEventsForRole,state.events],
+      ["users","Usuarios",cutOnly?function(){return Promise.resolve([]);}:loadUsersForRole,state.users],
+      ["receptions","Recepción",cutOnly?function(){return Promise.resolve([]);}:loadReceptionGoodsForRole,state.receptions],
+      ["receptionStickers","Stickers",cutOnly?function(){return Promise.resolve([]);}:loadReceptionStickersForRole,state.receptionStickers],
+      ["projectOrders","Proyectos",cutOnly?function(){return Promise.resolve([]);}:loadProjectOrdersForRole,state.projectOrders],
+      ["reports","Reportes",cutOnly?function(){return Promise.resolve([]);}:loadReportsForRole,state.reports],
+      ["inventoryChips","Inventario",cutOnly?function(){return Promise.resolve([]);}:loadInventoryChipsForRole,state.inventoryChips]
+    ];
+
+    var results={};
+    var chain=Promise.resolve();
+
+    state.loadWarnings=[];
+
+    blocks.forEach(function(block){
+      chain=chain.then(function(){
+        return v246LoadBlock(
+          block[1],
+          block[2],
+          block[3]
+        ).then(function(result){
+          results[block[0]]=result;
+        });
+      });
+    });
+
+    return chain.then(function(){
+      if(results.cases&&results.cases.ok){
+        var remoteCases=filterCasesForCurrentUserStrict(
+          results.cases.data||[]
+        );
+
+        state.cases=v247MergeCaseLists(
+          remoteCases,
+          state.cases||[],
+          outboxRows
+        );
+      }
+
+      if(results.events&&results.events.ok){
+        state.events=results.events.data||[];
+      }
+
+      if(results.users&&results.users.ok){
+        state.users=results.users.data||[];
+      }
+
+      if(results.receptions&&results.receptions.ok){
+        state.receptions=results.receptions.data||[];
+      }
+
+      if(results.receptionStickers&&results.receptionStickers.ok){
+        state.receptionStickers=results.receptionStickers.data||[];
+      }
+
+      if(results.projectOrders&&results.projectOrders.ok){
+        state.projectOrders=results.projectOrders.data||[];
+      }
+
+      if(results.reports&&results.reports.ok){
+        state.reports=filterReportsForCurrentUser(
+          results.reports.data||[]
+        );
+      }
+
+      if(results.inventoryChips&&results.inventoryChips.ok){
+        state.inventoryChips=results.inventoryChips.data||[];
+      }
+
+      state.dataLoading=false;
+      state.v246.degraded=Object.keys(results).some(function(key){
+        return results[key]&&!results[key].ok;
+      });
+
+      v246CacheSoon();
+      v246Audit();
+      v246Flush();
+
+      if(!state.v247.pve550Checked){
+        state.v247.pve550Checked=true;
+
+        v247RecoverOrder("PVE 550",{silent:true}).then(function(report){
+          console.info("[V247] Diagnóstico PVE 550:",report);
+        });
+      }
+    });
+  });
+}
+loadData=function(){if(state.v246.loadInFlight)return state.v246.loadInFlight;state.v246.loadInFlight=Promise.resolve().then(v246StableLoad).finally(function(){state.v246.loadInFlight=null;});return state.v246.loadInFlight;};
+loadFreshCaseForUpdate=function(id,fallback){fallback=fallback||caseById(id);if(!db||navigator.onLine===false)return Promise.resolve(fallback);return promiseWithTimeout(db.collection("cases").doc(id).get(),6500,"Consulta actualizada agotada").then(function(snap){if(!snap||!snap.exists)return fallback;var fresh=Object.assign({id:snap.id},snap.data()||{});replaceCaseInState(fresh);return fresh;}).catch(function(){return fallback;});};
+v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V247] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
+v242RequestStableRefresh=function(reason){if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(!firebaseReady||!db||!state.user||navigator.onLine===false||v246Locked())return;var oldHash=caseLiveHash(state.cases||[]);loadData().then(function(){if(oldHash!==caseLiveHash(state.cases||[]))renderAfterLiveChange();v246Flush();}).catch(function(error){console.warn("[V247] Actualización silenciosa pendiente",reason,error);});},reason==="online"?2200:900);};
+v240ReconnectFirestore=function(reason){if(!v246Locked())v242RequestStableRefresh(reason||"reconexion");};
+startRealtimeSync=function(){stopRealtimeSync();if(!firebaseReady||!db||!state.user)return;state.realtime.startedAt=Date.now();state.realtime.pollTimer=setInterval(function(){if(!v246Locked()){v242RequestStableRefresh("intervalo");v246Flush();}},isMobileRuntime()?45000:30000);};
+document.addEventListener("pointerdown",function(event){var input=event.target&&event.target.closest?event.target.closest('input[type="file"]'):null;if(input)state.v246.filePickerOpen=true;},true);
+document.addEventListener("change",function(event){if(event.target&&event.target.matches&&event.target.matches('input[type="file"]'))state.v246.filePickerOpen=false;},true);
+window.addEventListener("focus",function(){setTimeout(function(){state.v246.filePickerOpen=false;},1000);});
+window.addEventListener("online",function(){state.v246.degraded=false;v246RefreshBanner();setTimeout(function(){if(!v246Locked())loadData().then(v246Flush).catch(function(){});},1800);});
+window.addEventListener("offline",function(){state.v246.degraded=true;v246RefreshBanner();});
+function v246EvidenceReady(item){return !!(item&&(item.driveUrl||(item.galleryFiles&&item.galleryFiles.length)||item.pendingUpload===true));}
+deliveryEvidenceComplete=function(c){if(!isDeliveryProcess(c.currentProcess))return true;var ev=deliveryEvidenceForCase(c);return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return d.required!==false;}).every(function(d){return v246EvidenceReady(ev[d.key]);});};
+deliveryEvidenceMissingText=function(c){var ev=deliveryEvidenceForCase(c);return deliveryEvidenceDefinitions(c.currentProcess).filter(function(d){return d.required!==false&&!v246EvidenceReady(ev[d.key]);}).map(function(d){return d.title;}).join(", ");};
+evidencePanel=function(c){var list=c.evidence||[];if(!list.length)return"";function link(e){if(e.pendingUpload)return'<span class="chip warning">Pendiente de sincronización</span>';if(e.gallery&&Array.isArray(e.files)&&e.files.length)return galleryLinksHtml(e.files);var href=e.driveUrl||e.inlineUrl||e.dataUrl||"";return href?'<a href="'+esc(href)+'" target="_blank" rel="noopener">Abrir</a>':'Sin URL';}return'<section class="card" style="margin-top:16px"><h3>Evidencias del proceso</h3><div class="table-wrap"><table><thead><tr><th>Proceso</th><th>Archivo</th><th>Descripción</th><th>Responsable</th><th>Fecha</th><th>Soporte</th></tr></thead><tbody>'+list.slice().reverse().map(function(e){return'<tr><td>'+esc(e.processName||processTitle(e.process))+'</td><td>'+esc(e.fileName||'')+'</td><td>'+esc(e.detail||'')+'</td><td>'+esc(e.uploadedByName||'')+'</td><td>'+esc(fmtDate(e.uploadedAt))+'</td><td>'+link(e)+'</td></tr>';}).join('')+'</tbody></table></div></section>';};
+openEvidence=function(id){var c=caseById(id);if(!c)return;if(!canUploadEvidenceForCase(c)){alert("Sin permiso para anexar evidencias");return;}var current=c.currentProcess||"recepcion_pedidos";drawer(modal("Subir evidencia",'<form class="form" id="evidenceForm"><div class="notice success"><strong>Guardado protegido:</strong> la foto se conserva primero en este dispositivo.</div><section class="grid grid-2"><label class="field"><span>Proceso / módulo</span><select class="select" name="processKey" id="evidenceProcessSelect">'+evidenceProcessOptions(current)+'</select></label><label class="field"><span>Tipo de evidencia</span><select class="select" name="evidenceType" id="evidenceTypeSelect">'+evidenceTypeOptions()+'</select></label></section><label class="field"><span>Archivos o fotos</span><input class="input" type="file" name="evidence" id="evidenceInput" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.csv" data-mobile-upload="true" multiple required><small class="muted">Máximo 10 archivos.</small></label><label class="field"><span>Descripción</span><textarea class="textarea" name="detail"></textarea></label><div class="notice" id="evidenceStatus">Seleccione archivos y pulse Guardar.</div><button class="btn btn-primary" id="evidenceSubmit" type="submit">Guardar evidencia</button></form>'));var ps=qs("#evidenceProcessSelect"),ts=qs("#evidenceTypeSelect");if(ts)ts.value=defaultEvidenceTypeForProcess(current);if(ps&&ts)ps.onchange=function(){ts.value=defaultEvidenceTypeForProcess(ps.value);};var form=qs("#evidenceForm");if(!form)return;form.onsubmit=function(event){event.preventDefault();var data=new FormData(form),files=selectedUploadFiles(qs("#evidenceInput"),"archivos");if(!files)return;var processKey=data.get("processKey")||c.currentProcess,evidenceType=data.get("evidenceType")||defaultEvidenceTypeForProcess(processKey),detail=String(data.get("detail")||""),status=qs("#evidenceStatus"),button=qs("#evidenceSubmit");if(button){button.disabled=true;button.textContent="Protegiendo archivos…";}if(status)status.textContent="Guardando archivos en el dispositivo…";v246QueueEvidence(c,files,{mode:"general",processKey:processKey,processName:processTitle(processKey),evidenceType:evidenceType,detail:detail}).then(function(job){c.evidence=c.evidence||[];c.evidence.push(v246PendingEvidence(job,files));return persistCase(c,{type:"PROCESS_EVIDENCE_QUEUED",process:processKey,detail:files.length+" archivo(s) protegidos localmente"}).then(function(){closeDrawer();state.detailId=c.id;renderDetail(c.id);v246Banner(navigator.onLine===false?"Evidencia guardada localmente.":"Evidencia protegida; sincronizando con Drive…",navigator.onLine===false?"offline":"pending");if(navigator.onLine!==false)return v246ProcessEvidence(job);});}).catch(function(error){if(button){button.disabled=false;button.textContent="Guardar evidencia";}if(status)status.textContent="No fue posible proteger archivos: "+(error.message||error);showError(error.message||error);});};};
+var v246LegacyOpenDeliveryEvidence=openDeliveryEvidence;
+openDeliveryEvidence=function(id,key){var c=caseById(id);if(!c)return;if(!isDeliveryProcess(c.currentProcess)){alert("Solo aplica en entrega/despacho");return;}if(!(canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica())){alert("Sin permiso");return;}var defs=deliveryEvidenceDefinitions(c.currentProcess),def=defs.filter(function(d){return d.key===key;})[0]||defs[0];drawer(modal(def.title,'<form class="form" id="deliveryEvidenceForm"><div class="notice success"><strong>No se perderá el avance:</strong> la foto se guarda localmente antes de cambiar el estado.</div><label class="field"><span>'+esc(def.title)+'</span><input class="input" type="file" name="photo" accept="'+esc(def.accept||"image/*,application/pdf,.pdf")+'" data-mobile-upload="true" multiple required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail"></textarea></label><div class="notice" id="deliveryEvidenceStatus">Seleccione archivos y pulse Guardar.</div><button class="btn btn-primary" id="deliveryEvidenceSubmit" type="submit">Guardar evidencia</button></form>'));var form=qs("#deliveryEvidenceForm");if(!form)return;form.onsubmit=function(event){event.preventDefault();var data=new FormData(form),files=selectedUploadFiles(form.photo,"archivos");if(!files)return;c.deliveryEvidence=c.deliveryEvidence||{};if(def.key==="guiaTransportadora"&&!v246EvidenceReady(c.deliveryEvidence.mercanciaRotulada)){alert("Primero registre mercancía rotulada");return;}var detail=String(data.get("detail")||def.hint||""),button=qs("#deliveryEvidenceSubmit"),status=qs("#deliveryEvidenceStatus");if(button){button.disabled=true;button.textContent="Protegiendo archivos…";}if(status)status.textContent="Guardando en el dispositivo…";v246QueueEvidence(c,files,{mode:"delivery",processKey:c.currentProcess,processName:processTitle(c.currentProcess),evidenceType:def.type,deliveryKey:def.key,detail:detail}).then(function(job){c.deliveryEvidence[def.key]={pendingUpload:true,localJobId:job.id,fileName:files.length===1?files[0].name:(files.length+" archivos"),uploadedAt:now(),uploadedBy:state.user.uid,uploadedByName:state.user.name,evidenceType:def.type,process:c.currentProcess,detail:detail};c.checklist=c.checklist||{};c.checklist[def.checklist]="ok";var type="DELIVERY_EVIDENCE_QUEUED",message=def.title+" protegida localmente";if(def.key==="mercanciaRotulada"){stopActive(c);if(!c.waitStartedAt)c.waitStartedAt=now();c.status="espera_transportadora";c.deliveryFlow=c.deliveryFlow||{};c.deliveryFlow.logisticsCompletedAt=c.deliveryFlow.logisticsCompletedAt||now();c.deliveryFlow.waitingCarrierSince=c.deliveryFlow.waitingCarrierSince||now();type="LOGISTICS_READY_WITH_LOCAL_EVIDENCE";}if(def.key==="guiaTransportadora"){stopActive(c);stopWait(c);procStats(c,c.currentProcess).completedAt=now();c.status="cerrado_conforme";c.closedAt=now();c.deliveryFlow=c.deliveryFlow||{};c.deliveryFlow.guidePendingDrive=true;addStateHistory(c,"cierre","Cierre con guía protegida localmente",{tipo_estado:"cierre",fecha_hora_fin_estado:c.closedAt});type="CASE_CLOSED_WITH_LOCAL_EVIDENCE";}return persistCase(c,{type:type,process:c.currentProcess,detail:message}).then(function(){closeDrawer();state.detailId=c.id;renderDetail(c.id);if(navigator.onLine!==false)return v246ProcessEvidence(job);});}).catch(function(error){if(button){button.disabled=false;button.textContent="Guardar evidencia";}if(status)status.textContent="Error: "+(error.message||error);showError(error.message||error);});};};
+var v246LegacyOpenCashInvoiceBox=openCashInvoiceBox;
+openCashInvoiceBox=function(id){var c=caseById(id);if(!c)return;if(c.currentProcess!=="caja"){alert("Solo desde Caja");return;}if(!(canOperateCurrentProcess(c)||canSeeAll()||isAdminRoleValue(state.user.role))){alert("Sin permiso");return;}drawer(modal("Factura de pedido contado",'<form class="form" id="cashInvoiceForm"><div class="notice success"><strong>Continuidad:</strong> la factura se protege localmente y el pedido puede continuar.</div><label class="field"><span>Factura / soporte *</span><input class="input" type="file" name="invoice" accept="image/*,application/pdf,.pdf" data-mobile-upload="true" multiple required></label><label class="field"><span>Observación</span><textarea class="textarea" name="detail"></textarea></label><div class="notice" id="cashInvoiceStatus">Seleccione y guarde.</div><button class="btn btn-primary" id="cashInvoiceSubmitBtn" type="submit">Guardar factura y continuar</button></form>'));var form=qs("#cashInvoiceForm");if(!form)return;form.onsubmit=function(event){event.preventDefault();var data=new FormData(form),files=selectedUploadFiles(form.invoice,"facturas o soportes");if(!files)return;var detail=String(data.get("detail")||"Factura de Caja"),button=qs("#cashInvoiceSubmitBtn"),status=qs("#cashInvoiceStatus");if(button){button.disabled=true;button.textContent="Protegiendo factura…";}v246QueueEvidence(c,files,{mode:"cash",processKey:"caja",processName:"Caja - pedido contado",evidenceType:"FACTURA_CAJA_CONTADO",detail:detail}).then(function(job){c.cashBilling=Object.assign({},c.cashBilling||{},{required:true,status:"pendiente_sincronizacion",pendingUpload:true,localJobId:job.id,invoiceFileName:files.length===1?files[0].name:(files.length+" archivos"),capturedAt:now(),capturedByName:state.user.name});c.evidence=c.evidence||[];c.evidence.push(v246PendingEvidence(job,files));var next=normalizedDeliveryRoute(c.pendingDeliveryType||c.deliveryType||c.requestedDelivery)||"despacho_nacional";c.cashBilling.nextProcess=next;c.deliveryType=next;c.pendingDeliveryType="";return assignToProcess(c,next,detail+" · factura protegida localmente").then(function(){closeDrawer();state.detailId=c.id;renderDetail(c.id);if(navigator.onLine!==false)return v246ProcessEvidence(job);});}).catch(function(error){if(button){button.disabled=false;button.textContent="Guardar factura y continuar";}if(status)status.textContent="Error: "+(error.message||error);showError(error.message||error);});};};
+function v246Audit(){var errors=[],warnings=[],valid=["PENDIENTE","ENCONTRADO","NO_ENCONTRADO","NOVEDAD"];FLOW.forEach(function(key){if(!processes[key])errors.push("Proceso no definido: "+key);else(processes[key].next||[]).forEach(function(next){if(next!=="cierre_caso"&&!processes[next])errors.push("Transición inexistente: "+key+" -> "+next);});});(state.cases||[]).forEach(function(c){if(c.currentProcess&&!processes[c.currentProcess])errors.push((c.reference||c.id)+": proceso inválido");(c.orderItems||[]).forEach(function(line){var s=String(line.alistamientoStatus||"PENDIENTE").toUpperCase();if(valid.indexOf(s)<0)warnings.push((c.reference||c.id)+": estado de línea "+s);});if(c.isPartialShipment&&c.currentProcess!=="facturacion"&&!c.closedAt)warnings.push((c.reference||c.id)+": parcial activo fuera de Facturación");if(c.status==="asignado"&&c.currentProcess&&!c.assignedRole&&!(c.assignedUserIds&&c.assignedUserIds.length))warnings.push((c.reference||c.id)+": asignado sin responsable");});window.EI_FLOW_AUDIT={version:EI_CANONICAL_APP_VERSION,checkedAt:new Date().toISOString(),processes:FLOW.length,cases:(state.cases||[]).length,errors:errors,warnings:warnings.slice(0,50)};if(errors.length)console.error("[V246 QA] Errores",window.EI_FLOW_AUDIT);else console.info("[V246 QA] Flujos, etiquetas y asignaciones auditados",window.EI_FLOW_AUDIT);return window.EI_FLOW_AUDIT;}
+document.addEventListener("click",function(event){var button=event.target&&event.target.closest?event.target.closest('[data-action="v246SyncNow"]'):null;if(!button)return;event.preventDefault();v246Flush().then(function(){if(!v246Locked())return loadData().then(function(){renderAfterLiveChange();});}).catch(function(error){showError(error.message||error);});},true);
+(function(){if(document.getElementById("v246-css"))return;var style=document.createElement("style");style.id="v246-css";style.textContent=".v246-sync-banner{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:12000;display:none;align-items:center;gap:10px;max-width:min(92vw,720px);padding:10px 12px;border-radius:16px;background:#061b46;color:#fff;box-shadow:0 15px 38px rgba(6,27,70,.28);font-size:.76rem;font-weight:800}.v247-sync-actions{display:flex;gap:7px;align-items:center}.v246-sync-banner button{border:0;border-radius:10px;padding:7px 10px;background:#f4c300;color:#061b46;font-weight:900}.v246-sync-banner.offline{background:#8a2d18}.v246-sync-banner.pending{background:#78460a}.v246-sync-banner.syncing{background:#0b4f7a}.v246-sync-banner.ok{background:#067647}@media(max-width:790px){.v246-sync-banner{left:10px;right:10px;bottom:84px;transform:none;max-width:none;justify-content:space-between}}";document.head.appendChild(style);})();
+v246Restore().then(v246RefreshBanner).catch(function(){});
+
+
+
+/* V246 · coherencia visual de evidencias locales y parcial offline. */
+deliveryEvidencePanel=function(c){
+  if(!isDeliveryProcess(c.currentProcess))return "";
+  var evidence=deliveryEvidenceForCase(c);
+  var canUpload=canAccessProcess(state.user.role,c.currentProcess)||isAdminRoleValue(state.user.role)||isJefeLogistica();
+  var cards=deliveryEvidenceDefinitions(c.currentProcess).map(function(definition){
+    var item=evidence[definition.key]||{};
+    var ready=v246EvidenceReady(item);
+    var pending=item.pendingUpload===true;
+    var view=!pending&&item.galleryFiles&&item.galleryFiles.length
+      ?galleryLinksHtml(item.galleryFiles)
+      :(!pending&&item.driveUrl?'<a class="btn btn-small" href="'+esc(item.driveUrl)+'" target="_blank" rel="noopener">Ver archivo</a>':'');
+    var note=pending
+      ?'<small class="v246-pending-note">Protegida en el dispositivo · pendiente sincronizar con Drive.</small>'
+      :(ready?'<small>Guardada: '+esc(fmtDate(item.uploadedAt))+' · '+esc(item.uploadedByName||'')+'</small>'
+        :(definition.required===false?'<small>Opcional para trazabilidad.</small>':'<small>Pendiente obligatorio.</small>'));
+    return '<article class="evidence-required-card '+(ready?'done':'pending')+'">'+
+      '<div><strong>'+esc(definition.title)+'</strong><p>'+esc(definition.hint)+'</p>'+note+'</div>'+
+      '<div class="evidence-required-actions">'+view+
+      (canUpload?'<button class="btn btn-small btn-primary" data-action="deliveryEvidence" data-id="'+esc(c.id)+'" data-delivery-evidence="'+esc(definition.key)+'">'+(ready?'Reemplazar':'Subir')+'</button>':'')+
+      '</div></article>';
+  }).join('');
+  var status=deliveryEvidenceComplete(c)
+    ?'<span class="chip success">Evidencias protegidas</span>'
+    :'<span class="chip warning">Faltan evidencias</span>';
+  return '<section class="card delivery-evidence-panel" style="margin-top:16px">'+
+    '<div class="section-title"><div><h3>Evidencias obligatorias de entrega</h3><p>La evidencia se protege localmente antes de enviarse a Drive.</p></div>'+status+'</div>'+
+    '<div class="notice"><strong>Operación offline:</strong> una evidencia pendiente de Drive no obliga a repetir el proceso. La aplicación la sincroniza cuando vuelve la conexión.</div>'+
+    '<div class="delivery-evidence-grid">'+cards+'</div></section>';
+};
+
+createPartialShipment=function(id,fd){
+  state.v246PartialLocks=state.v246PartialLocks||{};
+  if(state.v246PartialLocks[id])return Promise.resolve(false);
+  state.v246PartialLocks[id]=true;
+  var fallback=caseById(id);
+  return loadFreshCaseForUpdate(id,fallback).then(function(c){
+    if(!c)throw new Error("No se encontró el pedido.");
+    if(typeof v241PartialState==="function"){
+      var validation=v241PartialState(c);
+      if(!validation.canSend)throw new Error("El pedido ya no cumple las condiciones para envío parcial: "+v241PartialBlockMessage(validation)+".");
+    }
+    var candidates=eligiblePartialItems(c),selected=[];
+    candidates.forEach(function(candidate){
+      if(!fd.get("include_"+candidate.index))return;
+      var quantity=partialQtyParse(fd.get("qty_"+candidate.index));
+      if(quantity<=0)return;
+      if(quantity>candidate.pending)quantity=candidate.pending;
+      var line=candidate.item;
+      selected.push({
+        index:candidate.index,
+        lineId:line.id||String(candidate.index),
+        referencia:line.referencia||"",
+        descripcion:line.descripcion||"",
+        cantidad:partialQtyFormat(quantity),
+        unidad:line.unidad||"",
+        ubicacion:line.ubicacion||"",
+        cantidadSolicitada:partialQtyFormat(candidate.requested),
+        cantidadPendienteAntes:partialQtyFormat(candidate.pending),
+        observacion:String(fd.get("note_"+candidate.index)||""),
+        requiereCorte:!!line.requiereCorte
+      });
+    });
+    if(!selected.length)throw new Error("Seleccione al menos una línea disponible.");
+    var reason=String(fd.get("partialReason")||"").trim();
+    if(!reason)throw new Error("Debe indicar el motivo del parcial.");
+    var sequence=(c.partialShipments||[]).length+1,stamp=now(),partialId=uid("PAR");
+    c.partialShipments=c.partialShipments||[];
+    c.partialShipments.push({id:partialId,sequence:sequence,status:"en_facturacion",createdAt:stamp,createdBy:state.user.uid,createdByName:state.user.name,reason:reason,items:selected});
+    c.hasPartialShipment=true;c.partialShipmentOpen=true;c.partialPendingReason=reason;
+    c.orderItems=(c.orderItems||[]).map(function(line,index){
+      var selectedLine=selected.filter(function(item){return Number(item.index)===index;})[0];
+      if(!selectedLine)return line;
+      var dispatched=partialQtyParse(line.partialDispatchedQty||0)+partialQtyParse(selectedLine.cantidad);
+      var requested=partialQtyParse(line.cantidad||line.qty||line.quantity);
+      line.partialDispatchedQty=partialQtyFormat(dispatched);
+      line.partialPendingQty=partialQtyFormat(Math.max(0,requested-dispatched));
+      line.partialLastShipmentId=partialId;line.partialLastShipmentAt=stamp;
+      if(partialQtyParse(line.partialPendingQty)>0){
+        line.estado="ENTREGA_PARCIAL_SALDO_PENDIENTE";
+        line.alistamientoStatus=line.alistamientoStatus||"PENDIENTE";
+        line.alistamientoNote="Entrega parcial creada. Saldo pendiente: "+line.partialPendingQty+" "+(line.unidad||"");
+      }else{
+        line.estado=line.requiereCorte?"CORTE_ALISTADO_PARCIAL":"ALISTADO_PARCIAL";
+        line.alistamientoStatus="ENCONTRADO";
+        line.alistamientoNote="Cantidad enviada en parcial "+sequence+".";
+      }
+      return line;
+    });
+    addStateHistory(c,"partial_shipment","Envío parcial creado: "+selected.length+" líneas. Pedido original abierto.",{partialShipmentId:partialId,partialSequence:sequence,tipo_estado:"valor",motivo_novedad:reason});
+    var child=JSON.parse(JSON.stringify(c));
+    child.id=partialId;child.parentCaseId=c.id;child.isPartialShipment=true;child.partialSequence=sequence;child.partialReason=reason;
+    child.reference=(c.reference||c.id)+"-PARCIAL-"+String(sequence).padStart(2,"0");
+    child.description="Envío parcial generado desde alistamiento. "+reason;
+    child.currentProcess="facturacion";child.status="asignado";child.assignedRole=primaryOwnerRole("facturacion");child.assignedName=processOwnerTitle("facturacion");
+    child.assignedTo="";child.assignedUid="";child.assignedUsers=[];child.assignedUserIds=[];
+    child.createdAt=stamp;child.createdBy=state.user.uid;child.createdByName=state.user.name;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;
+    child.checklist={};processes.facturacion.checklist.forEach(function(item){child.checklist[item]="pending";});
+    child.orderItems=selected.map(function(item){return{id:item.lineId,referencia:item.referencia,descripcion:item.descripcion,cantidad:item.cantidad,unidad:item.unidad,sourceRequestedQty:item.cantidadSolicitada,sourcePendingBefore:item.cantidadPendienteAntes,observacion:item.observacion,requiereCorte:item.requiereCorte,alistamientoStatus:"ENCONTRADO",estado:"PARCIAL_A_FACTURAR"};});
+    child.cutRequests=[];child.hasCuts=false;child.processStats={};procStats(child,"facturacion").startedAt=stamp;
+    child.partialSource={caseId:c.id,shipmentId:partialId,sequence:sequence,reason:reason,createdAt:stamp,createdByName:state.user.name};
+    replaceCaseInState(child);replaceCaseInState(c);v246CacheSoon();
+    return v246Write("cases",child.id,child,false).then(function(){
+      return persistCase(c,{type:"PARTIAL_SHIPMENT_CREATED",detail:"Envío parcial "+sequence+" creado con "+selected.length+" líneas. El pedido original queda abierto.",targetRole:"coordinador_logistico",visibleRoles:["coordinador_logistico","lider_logistico","jefe_logistica","facturacion","admin","super_admin","super_administrador"]});
+    }).then(function(){
+      return createEvent(enrichCaseEvent(child,{caseId:child.id,type:"PARTIAL_SHIPMENT_SENT_TO_BILLING",process:"facturacion",detail:"Envío parcial "+sequence+" enviado desde "+(c.reference||c.id),targetRole:"facturacion",visibleRoles:["coordinador_logistico","lider_logistico","jefe_logistica","facturacion","admin","super_admin","super_administrador"]}));
+    }).then(function(){closeDrawer();state.detailId=c.id;renderDetail(c.id);return true;});
+  }).catch(function(error){showError(error.message||error);return false;}).finally(function(){state.v246PartialLocks[id]=false;});
+};
+
+state.v247=state.v247||{
+  pve550Checked:false,
+  lastRecovery:null
+};
+
+function v247Time(value){
+  var date=new Date(value||0);
+  return isNaN(date.getTime())?0:date.getTime();
+}
+function v247PendingCasesFromOutbox(rows){
+  var map={};
+
+  (rows||[]).forEach(function(row){
+    if(
+      row&&
+      row.kind==="firestore"&&
+      row.collection==="cases"&&
+      row.docId
+    ){
+      map[row.docId]=row.data||{};
+    }
+  });
+
+  return map;
+}
+function v247MergeCaseLists(remoteRows,localRows,outboxRows){
+  var remoteMap={};
+  var localMap={};
+  var pendingMap=v247PendingCasesFromOutbox(outboxRows);
+  var result=[];
+
+  (remoteRows||[]).forEach(function(item){
+    if(item&&item.id)remoteMap[item.id]=item;
+  });
+
+  (localRows||[]).forEach(function(item){
+    if(item&&item.id)localMap[item.id]=item;
+  });
+
+  var ids={};
+
+  Object.keys(remoteMap).forEach(function(id){ids[id]=true;});
+  Object.keys(localMap).forEach(function(id){ids[id]=true;});
+  Object.keys(pendingMap).forEach(function(id){ids[id]=true;});
+
+  Object.keys(ids).forEach(function(id){
+    var remote=remoteMap[id]||null;
+    var local=localMap[id]||null;
+    var pending=pendingMap[id]||null;
+    var selected=null;
+
+    if(pending){
+      selected=Object.assign({},remote||{},local||{},pending,{id:id});
+    }else if(remote&&local){
+      selected=v247Time(local.updatedAt)>=v247Time(remote.updatedAt)
+        ?Object.assign({},remote,local,{id:id})
+        :Object.assign({},local,remote,{id:id});
+    }else{
+      selected=remote||local;
+    }
+
+    if(!selected)return;
+
+    var preserve=!!(
+      pending||
+      remote||
+      state.detailId===id||
+      caseRelevantToCurrentUser(selected)||
+      Date.now()-v247Time(selected.updatedAt||selected.createdAt)<20*60*1000
+    );
+
+    if(preserve)result.push(selected);
+  });
+
+  return sortByUpdated(uniqueById(result));
+}
+function v247OrderVariants(reference){
+  var text=String(reference||"").trim().toUpperCase();
+  var number=(text.match(/\d+/)||[])[0]||"";
+  var prefix=(text.match(/[A-Z]+/)||[])[0]||"";
+
+  return uniqueArray([
+    text,
+    text.replace(/\s+/g,"-"),
+    text.replace(/[\s-]+/g,""),
+    prefix&&number?(prefix+" "+number):"",
+    prefix&&number?(prefix+"-"+number):"",
+    prefix&&number?(prefix+number):"",
+    number
+  ].filter(Boolean));
+}
+function v247CaseMatchesReference(c,reference){
+  var variants=v247OrderVariants(reference).map(normalizeRefText);
+  var values=[
+    c&&c.reference,
+    c&&c.pedido,
+    c&&c.caseNumber,
+    c&&c.orderNumber,
+    c&&c.numeroPedido,
+    c&&c.purchaseOrder
+  ].map(normalizeRefText);
+
+  return values.some(function(value){
+    return variants.indexOf(value)>=0;
+  });
+}
+function v247RecoverOrder(reference,options){
+  options=options||{};
+
+  var variants=v247OrderVariants(reference);
+  var local=(state.cases||[]).filter(function(c){
+    return v247CaseMatchesReference(c,reference);
+  });
+
+  function finalize(rows,source){
+    rows=sortByUpdated(uniqueById((rows||[]).concat(local)));
+
+    var visible=rows.filter(function(c){
+      return canSeeAll()||
+        canAuditViewAll()||
+        caseRelevantToCurrentUser(c)||
+        state.detailId===c.id;
+    });
+
+    if((canSeeAll()||canAuditViewAll())&&rows.length){
+      visible=rows;
+    }
+
+    if(visible.length){
+      state.cases=sortByUpdated(uniqueById(
+        visible.concat(state.cases||[])
+      ));
+    }
+
+    var report={
+      reference:reference,
+      variants:variants,
+      found:rows.length,
+      visible:visible.length,
+      source:source,
+      cases:rows.map(function(c){
+        return {
+          id:c.id,
+          reference:c.reference||c.pedido||"",
+          process:c.currentProcess||"",
+          processTitle:processTitle(c.currentProcess),
+          status:c.status||"",
+          assignedRole:c.assignedRole||"",
+          assignedName:c.assignedName||"",
+          updatedAt:c.updatedAt||c.createdAt||""
+        };
+      })
+    };
+
+    state.v247.lastRecovery=report;
+    window.EI_LAST_ORDER_RECOVERY=report;
+
+    if(!options.silent){
+      if(visible.length){
+        var first=visible[0];
+
+        showLiveToast(
+          "Pedido recuperado",
+          (first.reference||first.pedido||reference)+
+          " · "+processTitle(first.currentProcess)+
+          " · "+(first.assignedName||roleTitle(first.assignedRole)||"sin responsable"),
+          false
+        );
+      }else{
+        showLiveToast(
+          "Pedido no localizado",
+          reference+" no apareció con los campos de referencia conocidos.",
+          false
+        );
+      }
+    }
+
+    return report;
+  }
+
+  if(local.length){
+    return Promise.resolve(finalize(local,"memoria_local"));
+  }
+
+  if(!db||navigator.onLine===false){
+    return Promise.resolve(finalize(
+      [],
+      navigator.onLine===false?"sin_conexion":"sin_firebase"
+    ));
+  }
+
+  var fields=[
+    "reference",
+    "pedido",
+    "caseNumber",
+    "orderNumber",
+    "numeroPedido",
+    "purchaseOrder"
+  ];
+
+  return Promise.all(fields.map(function(field){
+    return safeQuerySnapshot(
+      db.collection("cases").where(field,"in",variants.slice(0,10)),
+      "recovery."+field
+    );
+  })).then(function(snapshots){
+    var rows=[];
+
+    snapshots.forEach(function(snapshot){
+      if(snapshot)rows=rows.concat(docsToList(snapshot));
+    });
+
+    if(rows.length)return finalize(rows,"cases");
+
+    var eventFields=["caseReference","pedido","reference"];
+
+    return Promise.all(eventFields.map(function(field){
+      return safeQuerySnapshot(
+        db.collection("case_events")
+          .where(field,"in",variants.slice(0,10))
+          .limit(40),
+        "recovery.events."+field
+      );
+    })).then(function(eventSnapshots){
+      var caseIds=[];
+
+      eventSnapshots.forEach(function(snapshot){
+        if(!snapshot)return;
+
+        docsToList(snapshot).forEach(function(event){
+          if(event.caseId)caseIds.push(event.caseId);
+        });
+      });
+
+      caseIds=uniqueArray(caseIds).slice(0,10);
+
+      if(!caseIds.length){
+        return finalize([],"sin_resultados");
+      }
+
+      return Promise.all(caseIds.map(function(id){
+        return db.collection("cases").doc(id).get().then(function(snapshot){
+          return snapshot&&snapshot.exists
+            ?Object.assign({id:snapshot.id},snapshot.data()||{})
+            :null;
+        }).catch(function(){
+          return null;
+        });
+      })).then(function(recovered){
+        return finalize(
+          recovered.filter(Boolean),
+          "case_events"
+        );
+      });
+    });
+  }).catch(function(error){
+    console.warn("[V247] Recuperación de pedido no disponible.",error);
+    return finalize([],"error");
+  });
+}
+window.EI_RECOVER_ORDER=function(reference){
+  return v247RecoverOrder(reference,{silent:false});
+};
+
+document.addEventListener("click",function(event){
+  var button=event.target&&event.target.closest
+    ?event.target.closest('[data-action="v247ConnectDrive"]')
+    :null;
+
+  if(!button)return;
+
+  event.preventDefault();
+  button.disabled=true;
+  button.textContent="Conectando…";
+
+  ensureDriveToken({interactive:true}).then(function(){
+    driveAuthRequired=false;
+    driveLastAuthError="";
+
+    showLiveToast(
+      "Drive conectado",
+      "La autorización se utilizará para todas las evidencias pendientes de esta sesión.",
+      false
+    );
+
+    return v246Flush();
+  }).then(function(){
+    return v246RefreshBanner();
+  }).catch(function(error){
+    driveAuthRequired=true;
+
+    showError(
+      (error&&error.message)||
+      "No fue posible conectar Google Drive."
+    );
+  }).finally(function(){
+    button.disabled=false;
+    button.textContent="Conectar Drive";
+  });
+},true);
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 

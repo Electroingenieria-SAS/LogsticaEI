@@ -1,12 +1,13 @@
-// V221 service worker: limpieza total y red sin caché
-self.addEventListener('install', function() { self.skipWaiting(); });
-self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    caches.keys().then(function(keys) {
-      return Promise.all(keys.map(function(key) { return caches.delete(key); }));
-    }).then(function() { return self.clients.claim(); })
-  );
-});
-self.addEventListener('fetch', function(event) {
-  event.respondWith(fetch(event.request, {cache: 'no-store'}));
-});
+"use strict";
+var CACHE_VERSION="v247-drive-estable-pedidos-protegidos";
+var STATIC_CACHE="ei-logistica-static-"+CACHE_VERSION;
+var RUNTIME_CACHE="ei-logistica-runtime-"+CACHE_VERSION;
+var APP_SHELL=["./","./index.html","./404.html","./app.js","./styles.css","./mobile-v221.css","./manifest.json","./firebase-config.js","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];
+function apiHost(url){return ["firestore.googleapis.com","securetoken.googleapis.com","identitytoolkit.googleapis.com","oauth2.googleapis.com","www.googleapis.com","accounts.google.com"].indexOf(url.hostname)>=0;}
+function cacheResponse(cache,request,response){if(response&&(response.status===200||response.type==="opaque"))return cache.put(request,response.clone()).catch(function(){}).then(function(){return response;});return Promise.resolve(response);}
+function networkFirst(request,cacheName,timeoutMs){return caches.open(cacheName).then(function(cache){var timer;var timeout=new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error("timeout"));},timeoutMs||5000);});return Promise.race([fetch(request),timeout]).then(function(response){clearTimeout(timer);return cacheResponse(cache,request,response);}).catch(function(){clearTimeout(timer);return cache.match(request).then(function(cached){if(cached)return cached;if(request.mode==="navigate")return caches.match("./index.html");throw new Error("offline");});});});}
+function staleWhileRevalidate(request,cacheName){return caches.open(cacheName).then(function(cache){return cache.match(request).then(function(cached){var fresh=fetch(request).then(function(response){return cacheResponse(cache,request,response);}).catch(function(){return null;});return cached||fresh;});});}
+self.addEventListener("install",function(event){event.waitUntil(caches.open(STATIC_CACHE).then(function(cache){return Promise.all(APP_SHELL.map(function(path){return fetch(path,{cache:"reload"}).then(function(response){return cacheResponse(cache,path,response);}).catch(function(){return null;});}));}).then(function(){return self.skipWaiting();}));});
+self.addEventListener("activate",function(event){event.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(key){if((key.indexOf("ei-logistica-static-")===0||key.indexOf("ei-logistica-runtime-")===0)&&key!==STATIC_CACHE&&key!==RUNTIME_CACHE)return caches.delete(key);return false;}));}).then(function(){return self.clients.claim();}));});
+self.addEventListener("fetch",function(event){var request=event.request;if(request.method!=="GET")return;var url=new URL(request.url);if(apiHost(url)){event.respondWith(fetch(request));return;}if(request.mode==="navigate"){event.respondWith(networkFirst(request,STATIC_CACHE,4500));return;}if(url.origin===self.location.origin){if(/\/(?:app\.js|firebase-config\.js|index\.html|404\.html)$/.test(url.pathname))event.respondWith(networkFirst(request,STATIC_CACHE,4500));else event.respondWith(staleWhileRevalidate(request,STATIC_CACHE));return;}event.respondWith(staleWhileRevalidate(request,RUNTIME_CACHE));});
+self.addEventListener("message",function(event){var data=event.data||{};if(data.type==="SKIP_WAITING")self.skipWaiting();if(data.type==="CLEAR_CACHE")event.waitUntil(caches.keys().then(function(keys){return Promise.all(keys.map(function(key){return caches.delete(key);}));}));});

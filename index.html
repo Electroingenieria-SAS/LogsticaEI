@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#061B46">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Cache-Control" content="no-cache">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="mobile-web-app-capable" content="yes">
@@ -16,53 +16,16 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" href="./assets/app-icon.svg">
   <link rel="preload" href="./assets/logo-electroingenieria.jpeg" as="image">
-  <link rel="stylesheet" href="./styles.css?v=v245-firestore-autodetect-y-version-global">
-  <link rel="stylesheet" href="./mobile-v221.css?v=v245-firestore-autodetect-y-version-global">
+  <link rel="stylesheet" href="./styles.css?v=v247-drive-estable-pedidos-protegidos">
+  <link rel="stylesheet" href="./mobile-v221.css?v=v247-drive-estable-pedidos-protegidos">
 
 
   <script>
     (function(){
-      var expectedVersion="v245-firestore-autodetect-y-version-global";
+      var expectedVersion="v247-drive-estable-pedidos-protegidos";
       window.EI_REQUIRED_VERSION=expectedVersion;
-
-      try{
-        localStorage.setItem("EI_REQUIRED_VERSION",expectedVersion);
-      }catch(e){}
-
-      window.__EI_CLEAN_PROMISE=(function(){
-        var tasks=[];
-
-        if("serviceWorker" in navigator){
-          tasks.push(
-            navigator.serviceWorker.getRegistrations().then(function(registrations){
-              return Promise.all(registrations.map(function(registration){
-                try{return registration.unregister();}catch(e){return false;}
-              }));
-            })
-          );
-        }
-
-        if(window.caches){
-          tasks.push(
-            caches.keys().then(function(keys){
-              return Promise.all(keys.map(function(key){
-                return caches.delete(key);
-              }));
-            })
-          );
-        }
-
-        try{
-          sessionStorage.removeItem("ei_v242_firestore_recovery");
-          sessionStorage.removeItem("ei_v245_firestore_recovery");
-          localStorage.setItem("EI_REQUIRED_VERSION",expectedVersion);
-        }catch(e){}
-
-        console.info("[EI] index.html cargado:",expectedVersion);
-        return Promise.all(tasks).catch(function(cleanError){
-          console.warn("[EI] La limpieza preventiva de caché no pudo completarse.",cleanError);
-        });
-      })();
+      try{localStorage.setItem("EI_REQUIRED_VERSION",expectedVersion);}catch(e){}
+      console.info("[EI] index.html cargado:",expectedVersion);
     })();
   </script>
 
@@ -89,57 +52,31 @@
 
   <script>
     window.addEventListener("load",function(){
-      var expectedVersion=
-        window.EI_REQUIRED_VERSION||
-        "v245-firestore-autodetect-y-version-global";
-
-      Promise.resolve(window.__EI_CLEAN_PROMISE).finally(function(){
-        var existing=document.querySelectorAll('script[data-ei-main-app="true"]');
-        existing.forEach(function(node){
-          if(node&&node.parentNode)node.parentNode.removeChild(node);
-        });
-
-        var script=document.createElement("script");
-        script.setAttribute("data-ei-main-app","true");
-        script.src="./app.js?v="+encodeURIComponent(expectedVersion)+"&t="+Date.now();
-        script.async=false;
-
-        script.onload=function(){
-          setTimeout(function(){
-            var loadedVersion=window.EI_BUILD_LOADED||"";
-
-            if(loadedVersion!==expectedVersion){
-              console.error(
-                "[EI] Incompatibilidad de versión. Index:",
-                expectedVersion,
-                "App:",
-                loadedVersion||"sin identificar"
-              );
-
-              var url=new URL(window.location.href);
-              url.searchParams.set("force_build",expectedVersion);
-              url.searchParams.set("t",String(Date.now()));
-              window.location.replace(url.toString());
-              return;
-            }
-
-            console.info("[EI] versión confirmada:",expectedVersion);
-          },100);
-        };
-
-        script.onerror=function(){
-          var target=document.getElementById("app");
-          if(target){
-            target.innerHTML=
-              '<main class="boot-screen"><section class="boot-card">'+
-              '<strong>No fue posible cargar app.js</strong>'+
-              '<span>Abra reset-cache.html y vuelva a intentar.</span>'+
-              '</section></main>';
+      var expectedVersion=window.EI_REQUIRED_VERSION||"v247-drive-estable-pedidos-protegidos";
+      var script=document.createElement("script");
+      script.setAttribute("data-ei-main-app","true");
+      script.src="./app.js?v="+encodeURIComponent(expectedVersion);
+      script.async=false;
+      script.onload=function(){
+        setTimeout(function(){
+          var loadedVersion=window.EI_BUILD_LOADED||"";
+          if(loadedVersion!==expectedVersion){
+            console.error("[EI] Incompatibilidad de versión. Index:",expectedVersion,"App:",loadedVersion||"sin identificar");
+            return;
           }
-        };
-
-        document.body.appendChild(script);
-      });
+          console.info("[EI] versión confirmada:",expectedVersion);
+          if("serviceWorker" in navigator){
+            navigator.serviceWorker.register("./service-worker.js?v="+encodeURIComponent(expectedVersion),{updateViaCache:"none"})
+              .then(function(registration){try{registration.update();}catch(e){} console.info("[EI] PWA offline registrada:",expectedVersion);})
+              .catch(function(error){console.warn("[EI] La PWA offline no pudo registrarse.",error);});
+          }
+        },100);
+      };
+      script.onerror=function(){
+        var target=document.getElementById("app");
+        if(target)target.innerHTML='<main class="boot-screen"><section class="boot-card"><strong>No fue posible cargar app.js</strong><span>Revise la conexión y vuelva a abrir la aplicación.</span></section></main>';
+      };
+      document.body.appendChild(script);
     });
   </script>
 
