@@ -21,7 +21,7 @@
 </head>
 <body>
   <section class="card">
-    <h1>Restableciendo EI Logística V246</h1>
+    <h1>Restableciendo EI Logística V248</h1>
     <p>Se eliminarán únicamente la PWA y los archivos almacenados en caché. Los pedidos y registros de Firebase no se eliminan.</p>
     <div class="bar"><span id="progress"></span></div>
     <div class="status" id="status">Preparando limpieza…</div>
@@ -29,7 +29,7 @@
   </section>
   <script>
     (function(){
-      var VERSION="v247-drive-estable-pedidos-protegidos";
+      var VERSION="v248-sin-multitab-cuota-protegida";
       var status=document.getElementById("status");
       var progress=document.getElementById("progress");
       var retry=document.getElementById("retry");
@@ -55,14 +55,40 @@
             await Promise.all(keys.map(function(key){return caches.delete(key);}));
           }
 
-          setStep("Actualizando la versión requerida…",80);
+          setStep("Liberando almacenamiento técnico de Firestore…",72);
           try{
-            sessionStorage.clear();
+            var remove=[];
+            for(var i=0;i<localStorage.length;i++){
+              var key=localStorage.key(i)||"";
+              var firestoreKey=
+                key.indexOf("firestore_")===0&&
+                key.indexOf("trazabilidadlog")>=0;
+              var salesCache=
+                key.indexOf("ei_trazabilidad_v132_cancelados_solicitud_cancelacion_registro_ventas_cache_")===0||
+                key.indexOf("ei_trazabilidad_v132_cancelados_solicitud_cancelacion_registro_ventas_todos_cache_")===0;
+              var recoveryKey=
+                key==="ei_v242_firestore_recovery"||
+                key==="ei_v245_firestore_recovery";
+
+              if(firestoreKey||salesCache||recoveryKey){
+                remove.push(key);
+              }
+            }
+
+            remove.forEach(function(key){
+              localStorage.removeItem(key);
+            });
+
+            sessionStorage.removeItem("ei_v242_firestore_recovery");
+          }catch(e){}
+
+          setStep("Actualizando la versión requerida…",86);
+          try{
             localStorage.setItem("EI_REQUIRED_VERSION",VERSION);
             localStorage.setItem("EI_CANONICAL_APP_VERSION",VERSION);
           }catch(e){}
 
-          setStep("Limpieza terminada. Abriendo la aplicación V246…",100);
+          setStep("Limpieza terminada. Abriendo la aplicación V248…",100);
           setTimeout(function(){
             window.location.replace("./?clean="+encodeURIComponent(VERSION)+"&t="+Date.now());
           },700);

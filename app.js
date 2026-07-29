@@ -37,13 +37,192 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v247-drive-estable-pedidos-protegidos";
+var EI_CANONICAL_APP_VERSION = "v248-sin-multitab-cuota-protegida";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
-  localStorage.setItem("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
+  v248SafeLocalStorageSet("EI_CANONICAL_APP_VERSION",EI_CANONICAL_APP_VERSION);
   console.info("[EI] app.js cargado:",EI_CANONICAL_APP_VERSION);
 }catch(e){}
+var V248_FIRESTORE_PROJECT_ID="trazabilidadlog";
+var V248_STORAGE_PREPARED=false;
+var V248_STORAGE_REPORT=null;
+var authPersistencePromise=Promise.resolve();
+
+function v248IsQuotaError(error){
+  var text=[
+    error&&error.name||"",
+    error&&error.code||"",
+    error&&error.message||"",
+    String(error||"")
+  ].join(" ").toLowerCase();
+
+  return (
+    text.indexOf("quotaexceeded")>=0||
+    text.indexOf("quota exceeded")>=0||
+    text.indexOf("exceeded the quota")>=0||
+    text.indexOf("ns_error_dom_quota_reached")>=0
+  );
+}
+function v248LocalStorageBytes(){
+  var total=0;
+
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var key=localStorage.key(i)||"";
+      var value=localStorage.getItem(key)||"";
+      total+=(key.length+value.length)*2;
+    }
+  }catch(e){}
+
+  return total;
+}
+function v248IsFirestoreCoordinationKey(key){
+  key=String(key||"");
+
+  return (
+    key.indexOf("firestore_")===0&&
+    (
+      key.indexOf(V248_FIRESTORE_PROJECT_ID)>=0||
+      key.indexOf("/[DEFAULT]/"+V248_FIRESTORE_PROJECT_ID+"/")>=0
+    )
+  );
+}
+function v248IsDerivedLargeCacheKey(key){
+  key=String(key||"");
+
+  return (
+    key.indexOf(storageKey+"_registro_ventas_cache_")===0||
+    key.indexOf(storageKey+"_registro_ventas_todos_cache_")===0||
+    key==="ei_v242_firestore_recovery"||
+    key==="ei_v245_firestore_recovery"
+  );
+}
+function v248CompactCutBridge(){
+  var key="ei_trazabilidad_corte_bridge_events";
+
+  try{
+    var raw=localStorage.getItem(key)||"";
+    if(!raw)return;
+
+    var rows=JSON.parse(raw);
+    if(!Array.isArray(rows))return;
+
+    var pending=rows.filter(function(item){
+      return item&&item.synced!==true;
+    });
+
+    var completed=rows.filter(function(item){
+      return item&&item.synced===true;
+    }).slice(-10);
+
+    var compact=pending.concat(completed).slice(-40);
+    localStorage.setItem(key,JSON.stringify(compact));
+  }catch(e){}
+}
+function v248ReleaseLocalStorageSpace(){
+  var before=v248LocalStorageBytes();
+  var removed=[];
+  var keys=[];
+
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      keys.push(localStorage.key(i));
+    }
+  }catch(e){}
+
+  keys.forEach(function(key){
+    if(
+      v248IsFirestoreCoordinationKey(key)||
+      v248IsDerivedLargeCacheKey(key)
+    ){
+      try{
+        localStorage.removeItem(key);
+        removed.push(key);
+      }catch(e){}
+    }
+  });
+
+  v248CompactCutBridge();
+
+  var after=v248LocalStorageBytes();
+
+  V248_STORAGE_REPORT={
+    checkedAt:new Date().toISOString(),
+    beforeBytes:before,
+    afterBytes:after,
+    releasedBytes:Math.max(0,before-after),
+    removedKeys:removed
+  };
+
+  window.EI_STORAGE_REPORT=V248_STORAGE_REPORT;
+
+  if(removed.length){
+    console.info(
+      "[V248] Almacenamiento técnico liberado.",
+      V248_STORAGE_REPORT
+    );
+  }
+
+  return V248_STORAGE_REPORT;
+}
+function v248SafeLocalStorageSet(key,value){
+  try{
+    localStorage.setItem(key,String(value));
+    return true;
+  }catch(error){
+    if(!v248IsQuotaError(error)){
+      console.warn(
+        "[V248] localStorage no disponible para "+key+".",
+        error
+      );
+      return false;
+    }
+
+    v248ReleaseLocalStorageSpace();
+
+    try{
+      localStorage.setItem(key,String(value));
+      return true;
+    }catch(secondError){
+      console.warn(
+        "[V248] La cuota continúa llena. Se omite la caché derivada "+key+".",
+        secondError
+      );
+      return false;
+    }
+  }
+}
+function v248RequestPersistentOriginStorage(){
+  if(
+    !navigator.storage||
+    typeof navigator.storage.persist!=="function"
+  ){
+    return Promise.resolve(false);
+  }
+
+  return navigator.storage.persist().then(function(granted){
+    console.info(
+      "[V248] Protección del almacenamiento IndexedDB/PWA:",
+      granted?"concedida":"administrada por el navegador"
+    );
+    return granted;
+  }).catch(function(){
+    return false;
+  });
+}
+function v248PrepareBrowserStorage(){
+  if(V248_STORAGE_PREPARED){
+    return Promise.resolve(V248_STORAGE_REPORT);
+  }
+
+  V248_STORAGE_PREPARED=true;
+  var report=v248ReleaseLocalStorageSpace();
+
+  return v248RequestPersistentOriginStorage().then(function(){
+    return report;
+  });
+}
 
 var state = {
   user: null,
@@ -1851,11 +2030,46 @@ function ensureFirebaseSdkLoaded(){
 var firestorePersistenceReady=false;
 function initFirebase(){
   try{
-    if(!window.firebase || !window.firebaseConfig){throw new Error("No cargó Firebase o firebase-config.js");}
-    if(!firebase.apps.length){firebase.initializeApp(window.firebaseConfig);}
+    if(!window.firebase||!window.firebaseConfig){
+      throw new Error(
+        "No cargó Firebase o firebase-config.js"
+      );
+    }
+
+    if(!firebase.apps.length){
+      firebase.initializeApp(window.firebaseConfig);
+    }
+
     auth=firebase.auth();
-    try{auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);}catch(persistenceError){}
+
+    authPersistencePromise=auth
+      .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+      .catch(function(error){
+        if(v248IsQuotaError(error)){
+          v248ReleaseLocalStorageSpace();
+
+          return auth
+            .setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+            .catch(function(){
+              return auth.setPersistence(
+                firebase.auth.Auth.Persistence.SESSION
+              );
+            });
+        }
+
+        return auth.setPersistence(
+          firebase.auth.Auth.Persistence.SESSION
+        );
+      })
+      .catch(function(error){
+        console.warn(
+          "[V248] La sesión de autenticación será temporal.",
+          error
+        );
+      });
+
     db=firebase.firestore();
+
     try{
       db.settings({
         experimentalAutoDetectLongPolling:false,
@@ -1864,37 +2078,44 @@ function initFirebase(){
         merge:true
       });
     }catch(settingsError){
-      console.warn("[V247] No fue posible aplicar el transporte estable de Firestore.",settingsError);
+      console.warn(
+        "[V248] No fue posible aplicar el transporte estable de Firestore.",
+        settingsError
+      );
     }
+
     firebaseReady=true;
     firebaseInitError="";
-  }catch(e){
+  }catch(error){
     firebaseReady=false;
-    firebaseInitError=e.message||String(e);
+    firebaseInitError=error.message||String(error);
   }
 }
 function initFirebaseAsync(){
-  return ensureFirebaseConfigLoaded().then(ensureFirebaseSdkLoaded).then(function(){
-    initFirebase();
-    if(!firebaseReady)throw new Error(firebaseInitError||"Firebase no inicializó.");
-    if(!db||typeof db.enablePersistence!=="function")return true;
-    return db.enablePersistence({synchronizeTabs:true}).then(function(){
-      firestorePersistenceReady=true;
-      console.info("[V247] Persistencia offline de Firestore activa.");
-      return true;
-    }).catch(function(error){
-      firestorePersistenceReady=false;
-      var code=String(error&&error.code||"");
-      if(code.indexOf("failed-precondition")>=0){
-        console.warn("[V247] Otra pestaña administra la persistencia. La app continúa.",error);
-      }else if(code.indexOf("unimplemented")>=0){
-        console.warn("[V247] El navegador no admite persistencia Firestore.",error);
-      }else{
-        console.warn("[V247] Persistencia Firestore no disponible; se usará respaldo local.",error);
+  return v248PrepareBrowserStorage()
+    .then(ensureFirebaseConfigLoaded)
+    .then(ensureFirebaseSdkLoaded)
+    .then(function(){
+      initFirebase();
+
+      if(!firebaseReady){
+        throw new Error(
+          firebaseInitError||
+          "Firebase no inicializó."
+        );
       }
-      return true;
+
+      return Promise.resolve(authPersistencePromise).then(function(){
+        firestorePersistenceReady=false;
+
+        console.info(
+          "[V248] Firestore usa caché en memoria. "+
+          "La continuidad offline permanece en IndexedDB de la aplicación."
+        );
+
+        return true;
+      });
     });
-  });
 }
 function clearPwaCachesAndReload(){
   var tasks=[];
@@ -1906,8 +2127,8 @@ function clearPwaCachesAndReload(){
 function ensureMobileFreshVersion(){
   try{
     var version=EI_CANONICAL_APP_VERSION;
-    localStorage.setItem("ei_mobile_app_version",version);
-    localStorage.setItem("EI_CANONICAL_APP_VERSION",version);
+    v248SafeLocalStorageSet("ei_mobile_app_version",version);
+    v248SafeLocalStorageSet("EI_CANONICAL_APP_VERSION",version);
   }catch(e){}
 }
 
@@ -1997,21 +2218,20 @@ function compactSalesCaseForCache(c){
   return out;
 }
 function readSalesCasesCache(){
-  try{
-    var raw=localStorage.getItem(salesCacheKey());
-    if(!raw)return [];
-    var pack=JSON.parse(raw);
-    if(!pack||!Array.isArray(pack.items))return [];
-    state.salesLastRefreshAt=pack.at||0;
-    return pack.items.filter(Boolean);
-  }catch(e){return [];}
+  var rows=(state.cases||[]).filter(function(c){
+    return caseBelongsToCurrentSalesUser(c);
+  });
+
+  return sortByUpdated(uniqueById(rows));
 }
 function writeSalesCasesCache(list){
-  try{
-    var items=sortByUpdated(uniqueById(list||[])).slice(0,260).map(compactSalesCaseForCache).filter(Boolean);
-    localStorage.setItem(salesCacheKey(),JSON.stringify({at:Date.now(),items:items}));
-    state.salesLastRefreshAt=Date.now();
-  }catch(e){}
+  state.salesLastRefreshAt=Date.now();
+
+  if(typeof v246CacheSoon==="function"){
+    v246CacheSoon();
+  }
+
+  return list||[];
 }
 function mergeSalesCasesIntoState(list){
   var mine=sortByUpdated(uniqueById(list||[]).filter(caseBelongsToCurrentSalesUser));
@@ -2103,23 +2323,16 @@ function normalizeRegistroVentasList(list){
   return sortByUpdated(uniqueById((list||[]).filter(isRegistroVentasCase)));
 }
 function readRegistroVentasCache(){
-  try{
-    var raw=localStorage.getItem(registroVentasCacheKey());
-    if(!raw)return [];
-    var pack=JSON.parse(raw);
-    if(!pack||!Array.isArray(pack.items))return [];
-    state.salesLastRefreshAt=pack.at||0;
-    return salesRegistryRowsForCurrentUser(pack.items);
-  }catch(e){return [];}
+  return salesRegistryRowsForCurrentUser(state.cases||[]);
 }
 function writeRegistroVentasCache(list){
-  try{
-    var items=salesRegistryRowsForCurrentUser(list).map(compactSalesCaseForCache).filter(Boolean);
-    localStorage.setItem(registroVentasCacheKey(),JSON.stringify({at:Date.now(),items:items}));
-    state.salesLastRefreshAt=Date.now();
-  }catch(e){
-    console.warn("Registro de ventas: caché omitida por tamaño o navegador.",e);
+  state.salesLastRefreshAt=Date.now();
+
+  if(typeof v246CacheSoon==="function"){
+    v246CacheSoon();
   }
+
+  return list||[];
 }
 function loadRegistroVentasAllOnline(){
   if(!db)return Promise.resolve([]);
@@ -2376,7 +2589,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V247] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V248] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -2891,7 +3104,7 @@ function forceProtectedViewRefresh(){
       render();
     }catch(renderError){
       console.error(
-        "[V247] No fue posible reconstruir la vista.",
+        "[V248] No fue posible reconstruir la vista.",
         renderError
       );
 
@@ -4274,7 +4487,7 @@ function driveTokenCacheWrite(token,expiresAt){
       token:driveAccessToken,
       expiresAt:driveTokenExpiresAt
     }));
-    localStorage.setItem(DRIVE_GRANT_STORAGE_KEY,"1");
+    v248SafeLocalStorageSet(DRIVE_GRANT_STORAGE_KEY,"1");
   }catch(e){}
 }
 function driveTokenCacheClear(){
@@ -7924,7 +8137,7 @@ function syncCutBridge(id){
       return fn(ev).then(function(){ev.synced=true;});
     });
   });
-  chain.then(function(){localStorage.setItem("ei_trazabilidad_corte_bridge_events",JSON.stringify(list.slice(-100)));renderDetail(id);}).catch(function(e){showError(e.message||e);});
+  chain.then(function(){v248SafeLocalStorageSet("ei_trazabilidad_corte_bridge_events",JSON.stringify(list.filter(function(item){return item&&item.synced!==true;}).concat(list.filter(function(item){return item&&item.synced===true;}).slice(-10)).slice(-40)));renderDetail(id);}).catch(function(e){showError(e.message||e);});
 }
 function cutGroupKey(cut){return normalizeRefText(cut.referencia||cut.descripcion||"SIN_REFERENCIA")||"SIN_REFERENCIA";}
 function cutGroupTitle(cut){return (cut.referencia||"Sin referencia")+(cut.descripcion?" · "+cut.descripcion:"");}
@@ -7968,7 +8181,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V247</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V248</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -15750,7 +15963,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V247] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V248] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -15817,7 +16030,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V247] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V248] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -15872,7 +16085,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V247] Actualización periódica no disponible:",reason,error);
+        console.warn("[V248] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);
@@ -16021,7 +16234,7 @@ function v246RefreshBanner(){
     return 0;
   });
 }
-function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V247] Respaldo local no disponible",e);});},300);}
+function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V248] Respaldo local no disponible",e);});},300);}
 function v246Restore(){if(!state.user)return Promise.resolve(false);return v246Get(V246_SNAPSHOTS,"state:"+(state.user.uid||state.user.email||"default")).then(function(s){if(!s)return false;if(!(state.cases||[]).length)state.cases=s.cases||[];if(!(state.events||[]).length)state.events=s.events||[];if(!(state.users||[]).length)state.users=s.users||[];if(!(state.receptions||[]).length)state.receptions=s.receptions||[];if(!(state.receptionStickers||[]).length)state.receptionStickers=s.receptionStickers||[];if(!(state.projectOrders||[]).length)state.projectOrders=s.projectOrders||[];if(!(state.reports||[]).length)state.reports=s.reports||[];if(!(state.inventoryChips||[]).length)state.inventoryChips=s.inventoryChips||[];return true;}).catch(function(){return false;});}
 function v246QueueDoc(collection,docId,data,merge){var id="firestore:"+collection+":"+docId;return v246Put(V246_OUTBOX,{id:id,kind:"firestore",collection:collection,docId:docId,data:v246Plain(data),merge:merge!==false,createdAt:Date.now(),updatedAt:Date.now(),attempts:0,lastError:""}).then(function(){state.v246.pendingCaseIds[collection+":"+docId]=true;v246RefreshBanner();return{queued:true,id:id};});}
 function v246Write(collection,docId,data,merge){if(!db||navigator.onLine===false)return v246QueueDoc(collection,docId,data,merge);var ref=db.collection(collection).doc(docId),write=merge===false?ref.set(v246Plain(data)):ref.set(v246Plain(data),{merge:true});return promiseWithTimeout(write,10000,"La red no confirmó el guardado.").then(function(){delete state.v246.pendingCaseIds[collection+":"+docId];return{queued:false};}).catch(function(error){if(v246Retryable(error))return v246QueueDoc(collection,docId,data,merge);throw error;});}
@@ -16168,11 +16381,11 @@ function v246ProcessEvidence(job){
     return v246Put(V246_OUTBOX,job).then(function(){
       if(driveAuthIsRequired(error)){
         console.info(
-          "[V247] Evidencia protegida; Drive espera conexión del usuario."
+          "[V248] Evidencia protegida; Drive espera conexión del usuario."
         );
       }else{
         console.warn(
-          "[V247] Evidencia pendiente de sincronización.",
+          "[V248] Evidencia pendiente de sincronización.",
           error
         );
       }
@@ -16182,7 +16395,7 @@ function v246ProcessEvidence(job){
     v246RefreshBanner();
   });
 }
-function v246Flush(){if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V247] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
+function v246Flush(){if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V248] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
 function v246LoadBlock(label,loader,previous){if(navigator.onLine===false)return Promise.resolve({ok:false,data:previous||[]});return promiseWithTimeout(Promise.resolve().then(loader),18000,label+" tardó demasiado").then(function(data){return{ok:true,data:data||[]};}).catch(function(error){state.loadWarnings=state.loadWarnings||[];state.loadWarnings.push(label+": se conserva la información anterior");return{ok:false,data:previous||[],error:error};});}
 function v246StableLoad(){
   if(!firebaseReady||!db||!state.user){
@@ -16281,7 +16494,7 @@ function v246StableLoad(){
         state.v247.pve550Checked=true;
 
         v247RecoverOrder("PVE 550",{silent:true}).then(function(report){
-          console.info("[V247] Diagnóstico PVE 550:",report);
+          console.info("[V248] Diagnóstico PVE 550:",report);
         });
       }
     });
@@ -16289,8 +16502,8 @@ function v246StableLoad(){
 }
 loadData=function(){if(state.v246.loadInFlight)return state.v246.loadInFlight;state.v246.loadInFlight=Promise.resolve().then(v246StableLoad).finally(function(){state.v246.loadInFlight=null;});return state.v246.loadInFlight;};
 loadFreshCaseForUpdate=function(id,fallback){fallback=fallback||caseById(id);if(!db||navigator.onLine===false)return Promise.resolve(fallback);return promiseWithTimeout(db.collection("cases").doc(id).get(),6500,"Consulta actualizada agotada").then(function(snap){if(!snap||!snap.exists)return fallback;var fresh=Object.assign({id:snap.id},snap.data()||{});replaceCaseInState(fresh);return fresh;}).catch(function(){return fallback;});};
-v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V247] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
-v242RequestStableRefresh=function(reason){if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(!firebaseReady||!db||!state.user||navigator.onLine===false||v246Locked())return;var oldHash=caseLiveHash(state.cases||[]);loadData().then(function(){if(oldHash!==caseLiveHash(state.cases||[]))renderAfterLiveChange();v246Flush();}).catch(function(error){console.warn("[V247] Actualización silenciosa pendiente",reason,error);});},reason==="online"?2200:900);};
+v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V248] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
+v242RequestStableRefresh=function(reason){if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(!firebaseReady||!db||!state.user||navigator.onLine===false||v246Locked())return;var oldHash=caseLiveHash(state.cases||[]);loadData().then(function(){if(oldHash!==caseLiveHash(state.cases||[]))renderAfterLiveChange();v246Flush();}).catch(function(error){console.warn("[V248] Actualización silenciosa pendiente",reason,error);});},reason==="online"?2200:900);};
 v240ReconnectFirestore=function(reason){if(!v246Locked())v242RequestStableRefresh(reason||"reconexion");};
 startRealtimeSync=function(){stopRealtimeSync();if(!firebaseReady||!db||!state.user)return;state.realtime.startedAt=Date.now();state.realtime.pollTimer=setInterval(function(){if(!v246Locked()){v242RequestStableRefresh("intervalo");v246Flush();}},isMobileRuntime()?45000:30000);};
 document.addEventListener("pointerdown",function(event){var input=event.target&&event.target.closest?event.target.closest('input[type="file"]'):null;if(input)state.v246.filePickerOpen=true;},true);
@@ -16680,7 +16893,7 @@ function v247RecoverOrder(reference,options){
       });
     });
   }).catch(function(error){
-    console.warn("[V247] Recuperación de pedido no disponible.",error);
+    console.warn("[V248] Recuperación de pedido no disponible.",error);
     return finalize([],"error");
   });
 }
@@ -16723,6 +16936,74 @@ document.addEventListener("click",function(event){
     button.disabled=false;
     button.textContent="Conectar Drive";
   });
+},true);
+
+var v248LegacyFirestoreRecovery=v242ScheduleFirestoreRecovery;
+
+v242ScheduleFirestoreRecovery=function(error){
+  if(v248IsQuotaError(error)){
+    state.v246.degraded=true;
+
+    try{
+      stopRealtimeSync();
+    }catch(e){}
+
+    v248ReleaseLocalStorageSpace();
+
+    v246Banner(
+      "Se liberó almacenamiento técnico del navegador. "+
+      "Los pedidos y evidencias locales permanecen protegidos.",
+      "pending"
+    );
+
+    if(state.v246.refreshTimer){
+      clearTimeout(state.v246.refreshTimer);
+    }
+
+    state.v246.refreshTimer=setTimeout(function(){
+      state.v246.refreshTimer=null;
+
+      if(
+        navigator.onLine!==false&&
+        !v246Locked()
+      ){
+        loadData()
+          .then(function(){
+            startRealtimeSync();
+            return v246Flush();
+          })
+          .catch(function(){});
+      }
+    },2500);
+
+    return;
+  }
+
+  return v248LegacyFirestoreRecovery(error);
+};
+
+window.addEventListener("unhandledrejection",function(event){
+  var reason=event&&event.reason;
+
+  if(v248IsQuotaError(reason)){
+    try{
+      event.preventDefault();
+    }catch(e){}
+
+    v242ScheduleFirestoreRecovery(reason);
+  }
+},true);
+
+window.addEventListener("error",function(event){
+  var error=(event&&event.error)||event;
+
+  if(v248IsQuotaError(error)){
+    try{
+      event.preventDefault();
+    }catch(e){}
+
+    v242ScheduleFirestoreRecovery(error);
+  }
 },true);
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
