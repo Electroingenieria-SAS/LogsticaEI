@@ -1,0 +1,44 @@
+{
+  "version": "v252-sin-refresco-intrusivo-corte-4582",
+  "causas_corregidas": [
+    "El banner mostraba Conectado después de cada ciclo de la cola.",
+    "Las capas antiguas podían volver a ejecutar recuperaciones con carga completa.",
+    "Los datos de fondo podían solicitar un nuevo render.",
+    "Los cortes pendientes podían desaparecer si hasCuts quedaba falso.",
+    "Drive intentaba procesar varias evidencias seguidas durante el trabajo activo."
+  ],
+  "correcciones": {
+    "sin_mensaje_conectado_repetitivo": true,
+    "sin_render_automatico": true,
+    "scroll_preservado": true,
+    "polling_silencioso_cada_5_minutos": true,
+    "drive_maximo_una_evidencia_en_automatico": true,
+    "recuperacion_corte_4582": true,
+    "pedidos_con_cortes_pendientes_fijados": true
+  },
+  "qa": {
+    "version_app": true,
+    "version_index": true,
+    "version_404": true,
+    "version_reset": true,
+    "version_sw": true,
+    "no_connected_message": true,
+    "banner_hidden_when_zero": true,
+    "background_no_render": true,
+    "polling_five_minutes": true,
+    "recovery_no_loadData": true,
+    "manual_scroll_preserved": true,
+    "cut_4582_auto_recovery": true,
+    "cut_button": true,
+    "cut_pending_preserved": true,
+    "merge_pins_cut_cases": true,
+    "drive_evidence_limited": true,
+    "explicit_user_render_only": true,
+    "reference_4582_match": true,
+    "reports_preserved": true,
+    "critical_features_preserved": true,
+    "inline_scripts_valid": true,
+    "unit_test": true
+  },
+  "limitacion": "La recuperación del pedido 4582 se ejecutará en el Firebase real después de publicar la V252. Solo podrá fijarlo en Corte si el documento existe y contiene al menos un corte pendiente."
+}

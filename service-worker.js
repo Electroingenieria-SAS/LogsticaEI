@@ -1,5 +1,5 @@
 "use strict";
-var CACHE_VERSION="v251-flujo-estable-sin-reinicios";
+var CACHE_VERSION="v252-sin-refresco-intrusivo-corte-4582";
 var STATIC_CACHE="ei-logistica-static-"+CACHE_VERSION;
 var RUNTIME_CACHE="ei-logistica-runtime-"+CACHE_VERSION;
 var APP_SHELL=["./","./index.html","./404.html","./app.js","./styles.css","./mobile-v221.css","./manifest.json","./firebase-config.js","./assets/logo-electroingenieria.jpeg","./assets/app-icon.svg"];

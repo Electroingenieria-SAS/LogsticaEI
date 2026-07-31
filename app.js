@@ -37,7 +37,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v251-flujo-estable-sin-reinicios";
+var EI_CANONICAL_APP_VERSION = "v252-sin-refresco-intrusivo-corte-4582";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
@@ -159,7 +159,7 @@ function v248ReleaseLocalStorageSpace(){
 
   if(removed.length){
     console.info(
-      "[V251] Almacenamiento técnico liberado.",
+      "[V252] Almacenamiento técnico liberado.",
       V248_STORAGE_REPORT
     );
   }
@@ -173,7 +173,7 @@ function v248SafeLocalStorageSet(key,value){
   }catch(error){
     if(!v248IsQuotaError(error)){
       console.warn(
-        "[V251] localStorage no disponible para "+key+".",
+        "[V252] localStorage no disponible para "+key+".",
         error
       );
       return false;
@@ -186,7 +186,7 @@ function v248SafeLocalStorageSet(key,value){
       return true;
     }catch(secondError){
       console.warn(
-        "[V251] La cuota continúa llena. Se omite la caché derivada "+key+".",
+        "[V252] La cuota continúa llena. Se omite la caché derivada "+key+".",
         secondError
       );
       return false;
@@ -203,7 +203,7 @@ function v248RequestPersistentOriginStorage(){
 
   return navigator.storage.persist().then(function(granted){
     console.info(
-      "[V251] Protección del almacenamiento IndexedDB/PWA:",
+      "[V252] Protección del almacenamiento IndexedDB/PWA:",
       granted?"concedida":"administrada por el navegador"
     );
     return granted;
@@ -2063,7 +2063,7 @@ function initFirebase(){
       })
       .catch(function(error){
         console.warn(
-          "[V251] La sesión de autenticación será temporal.",
+          "[V252] La sesión de autenticación será temporal.",
           error
         );
       });
@@ -2079,7 +2079,7 @@ function initFirebase(){
       });
     }catch(settingsError){
       console.warn(
-        "[V251] No fue posible aplicar el transporte estable de Firestore.",
+        "[V252] No fue posible aplicar el transporte estable de Firestore.",
         settingsError
       );
     }
@@ -2109,7 +2109,7 @@ function initFirebaseAsync(){
         firestorePersistenceReady=false;
 
         console.info(
-          "[V251] Firestore usa caché en memoria. "+
+          "[V252] Firestore usa caché en memoria. "+
           "La continuidad offline permanece en IndexedDB de la aplicación."
         );
 
@@ -2640,7 +2640,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V251] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V252] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -3141,7 +3141,7 @@ function forceProtectedViewRefresh(){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V251] Actualización manual pendiente.",
+      "[V252] Actualización manual pendiente.",
       error
     );
     return false;
@@ -4220,7 +4220,7 @@ function loadProfileAndRender(fbUser){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V251] Inicio en modo protegido.",
+      "[V252] Inicio en modo protegido.",
       error
     );
 
@@ -8294,8 +8294,8 @@ function renderCutsQueue(){
       '</details>';
     }).join("");
     layout(
-      header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V251</strong></article></section>'+
+      header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button><button class="btn btn-gold" data-action="v252RecoverCutOrder" data-ref="4582">Recuperar pedido 4582</button>')+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V252</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -8306,7 +8306,7 @@ function renderCutsQueue(){
     var body=g.items.map(function(r){return '<tr><td>'+esc(r.c.reference||r.cut.pedido||'')+'</td><td>'+esc(r.c.client||'')+'</td><td>'+pdfMiniButton(r.c)+'</td><td>'+esc(r.cut.code||r.cut.id)+'</td><td>'+esc(r.cut.metrosSolicitados||'')+'</td><td>'+v239CutStatusChip(r.cut)+'</td><td><div class="v239-cut-actions"><button class="btn btn-small btn-primary" data-action="'+(v239IsCutUnavailable(r.cut)?'resumeUnavailableCut':'launchCut')+'" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?'Retomar corte':'Abrir corte')+'</button><button class="btn btn-small btn-danger" data-action="cutUnavailable" data-id="'+esc(r.c.id)+'" data-cut="'+esc(r.cut.id)+'">'+(v239IsCutUnavailable(r.cut)?'Actualizar novedad':'Corte no disponible')+'</button></div>'+v239UnavailableNoteHtml(r.cut)+'</td></tr>';}).join('');
     return '<details class="card cut-group" open><summary><div><strong>'+esc(g.title)+'</strong><small>'+g.items.length+' corte(s) pendiente(s) · Prealistamiento sugerido: '+esc(cutNormalizeDecimal(g.meters))+' m</small></div><span class="chip primary">'+esc(g.key)+'</span></summary><div class="notice"><strong>Prealistamiento:</strong> reúna el cable por esta referencia y opere los cortes en secuencia desde un mismo rollo.<div class="top-actions" style="margin-top:10px"><button class="btn btn-success" data-action="startReferenceCuts" data-ref="'+esc(g.key)+'">Iniciar cortes por referencia</button></div></div><div class="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>PDF</th><th>Corte</th><th>Metros</th><th>Estado</th><th>Acción</th></tr></thead><tbody>'+body+'</tbody></table></div></details>';
   }).join('');
-  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Completa</strong><small>Misma lógica de PC</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
+  layout(header("Cortes de cable","Bandeja agrupada por tipo de cable para prealistamiento eficiente. Las solicitudes llegan durante el día, se consolidan por referencia y luego se operan pedido por pedido.",'<button class="btn btn-gold" data-action="exportSiesaCuts">Exportar plano SIESA pendiente</button><button class="btn btn-primary" data-action="exportCutsExcel">Excel dashboard cortes</button><button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar vista</button><button class="btn btn-gold" data-action="v252RecoverCutOrder" data-ref="4582">Recuperar pedido 4582</button>')+'<section class="grid grid-3"><article class="card kpi"><span>Cortes pendientes</span><strong>'+rows.length+'</strong><small>Pedidos por cortar</small></article><article class="card kpi"><span>Tipos de cable</span><strong>'+Object.keys(groups).length+'</strong><small>Agrupados</small></article><article class="card kpi"><span>Funcionalidad</span><strong>Completa</strong><small>Misma lógica de PC</small></article></section><section style="margin-top:16px">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>');
 }
 
 function requirementIsPending(req){
@@ -16414,7 +16414,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V251] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V252] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -16481,7 +16481,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V251] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V252] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -16536,7 +16536,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V251] Actualización periódica no disponible:",reason,error);
+        console.warn("[V252] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);
@@ -16949,7 +16949,7 @@ function v246RefreshBanner(){
     return 0;
   });
 }
-function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V251] Respaldo local no disponible",e);});},300);}
+function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V252] Respaldo local no disponible",e);});},300);}
 function v246Restore(){
   if(!state.user)return Promise.resolve(false);
 
@@ -17003,7 +17003,7 @@ function v246Restore(){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V251] Respaldo local omitido sin bloquear la aplicación.",
+      "[V252] Respaldo local omitido sin bloquear la aplicación.",
       error
     );
     return false;
@@ -17154,11 +17154,11 @@ function v246ProcessEvidence(job){
     return v246Put(V246_OUTBOX,job).then(function(){
       if(driveAuthIsRequired(error)){
         console.info(
-          "[V251] Evidencia protegida; Drive espera conexión del usuario."
+          "[V252] Evidencia protegida; Drive espera conexión del usuario."
         );
       }else{
         console.warn(
-          "[V251] Evidencia pendiente de sincronización.",
+          "[V252] Evidencia pendiente de sincronización.",
           error
         );
       }
@@ -17168,7 +17168,7 @@ function v246ProcessEvidence(job){
     v246RefreshBanner();
   });
 }
-function v246Flush(){if(state.v250&&state.v250.criticalLoading)return Promise.resolve(false);if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V251] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
+function v246Flush(){if(state.v250&&state.v250.criticalLoading)return Promise.resolve(false);if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V252] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
 function v246LoadBlock(
   label,
   loader,
@@ -17187,7 +17187,7 @@ function v246LoadBlock(
         lateHandler(data||[]);
       }catch(error){
         console.warn(
-          "[V251] Resultado tardío no pudo aplicarse:",
+          "[V252] Resultado tardío no pudo aplicarse:",
           label,
           error
         );
@@ -17342,7 +17342,7 @@ function v250LoadSecondaryModules(generation){
     state.v250.secondaryLoading=false;
 
     console.warn(
-      "[V251] Módulos secundarios incompletos.",
+      "[V252] Módulos secundarios incompletos.",
       error
     );
   });
@@ -17449,7 +17449,7 @@ function v246StableLoad(){
             {silent:true}
           ).then(function(report){
             console.info(
-              "[V251] Diagnóstico PVE 550:",
+              "[V252] Diagnóstico PVE 550:",
               report
             );
           });
@@ -17561,7 +17561,7 @@ loadFreshCaseForUpdate=function(id,fallback){
     return fallback;
   });
 };
-v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V251] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
+v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V252] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
 v242RequestStableRefresh=function(reason){
   if(state.v246.refreshTimer){
     clearTimeout(state.v246.refreshTimer);
@@ -17587,7 +17587,7 @@ v242RequestStableRefresh=function(reason){
     );
 
     v246Flush().catch(function(error){
-      console.warn("[V251] Sincronización pendiente.",error);
+      console.warn("[V252] Sincronización pendiente.",error);
     });
   },reason==="online"?4000:1800);
 };
@@ -17674,7 +17674,7 @@ document.addEventListener("click",function(event){
   });
 },true);
 (function(){if(document.getElementById("v246-css"))return;var style=document.createElement("style");style.id="v246-css";style.textContent=".v246-sync-banner{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:12000;display:none;align-items:center;gap:10px;max-width:min(92vw,720px);padding:10px 12px;border-radius:16px;background:#061b46;color:#fff;box-shadow:0 15px 38px rgba(6,27,70,.28);font-size:.76rem;font-weight:800}.v247-sync-actions{display:flex;gap:7px;align-items:center}.v246-sync-banner button{border:0;border-radius:10px;padding:7px 10px;background:#f4c300;color:#061b46;font-weight:900}.v246-sync-banner.offline{background:#8a2d18}.v246-sync-banner.pending{background:#78460a}.v246-sync-banner.syncing{background:#0b4f7a}.v246-sync-banner.ok{background:#067647}@media(max-width:790px){.v246-sync-banner{left:10px;right:10px;bottom:84px;transform:none;max-width:none;justify-content:space-between}}";document.head.appendChild(style);})();
-v246Restore().then(v246RefreshBanner).catch(function(){});
+v246Restore().then(function(){return v246RefreshBanner();}).catch(function(){});
 
 
 
@@ -18107,7 +18107,7 @@ function v247RecoverOrder(reference,options){
       });
     });
   }).catch(function(error){
-    console.warn("[V251] Recuperación de pedido no disponible.",error);
+    console.warn("[V252] Recuperación de pedido no disponible.",error);
     return finalize([],"error");
   });
 }
@@ -18160,7 +18160,7 @@ v242ScheduleFirestoreRecovery=function(error){
   try{stopRealtimeSync();}catch(e){}
 
   console.error(
-    "[V251] Interrupción Firestore; operación local preservada",
+    "[V252] Interrupción Firestore; operación local preservada",
     error
   );
 
@@ -18306,7 +18306,7 @@ function v250ReleaseLoading(reason){
   }
 
   console.info(
-    "[V251] Interfaz liberada:",
+    "[V252] Interfaz liberada:",
     reason||"carga finalizada"
   );
 
@@ -18349,7 +18349,7 @@ function v250ApplyCases(rows,outboxRows,source){
   v246CacheSoon();
 
   console.info(
-    "[V251] Casos aplicados:",
+    "[V252] Casos aplicados:",
     state.cases.length,
     "fuente:",
     source||"remota"
@@ -18393,7 +18393,7 @@ function v250GetQueryList(query,label,timeoutMs){
   ).then(function(result){
     if(!result.ok){
       console.warn(
-        "[V251] Consulta no disponible:",
+        "[V252] Consulta no disponible:",
         label,
         result.error||"tiempo agotado"
       );
@@ -18633,7 +18633,7 @@ function v251BackgroundRefreshCases(reason){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V251] Actualización de datos aplazada.",
+      "[V252] Actualización de datos aplazada.",
       reason,
       error
     );
@@ -18792,6 +18792,803 @@ window.addEventListener("focus",function(){
 
   document.head.appendChild(style);
 })();
+
+/* ============================================================
+   V252 · SIN REFRESCO VISUAL INTRUSIVO
+============================================================ */
+state.v252=state.v252||{
+  userActionUntil:0,
+  manualFlushUntil:0,
+  pendingData:false,
+  lastSilentRefreshAt:0,
+  lastSilentFlushAt:0,
+  cut4582Checked:false,
+  cutRecoveryInFlight:null
+};
+
+function v252ProtectedContext(){
+  if(
+    document.hidden||
+    state.detailId||
+    state.v246.filePickerOpen||
+    state.v246.uploadActive||
+    (state.v251&&state.v251.activeOperations>0)
+  )return true;
+
+  var drawerNode=qs("#drawer");
+  if(
+    drawerNode&&
+    drawerNode.classList.contains("open")
+  )return true;
+
+  var active=document.activeElement;
+  return !!(
+    active&&
+    /INPUT|TEXTAREA|SELECT/.test(active.tagName||"")
+  );
+}
+function v252UserActionRecent(){
+  return Date.now()<Number(state.v252.userActionUntil||0);
+}
+function v252ManualFlushRequested(){
+  return Date.now()<Number(state.v252.manualFlushUntil||0);
+}
+function v252HideLegacyStatusOverlays(){
+  var syncBanner=document.getElementById("v246-sync-banner");
+  if(syncBanner)syncBanner.style.display="none";
+
+  var updateBadge=document.getElementById("v251-update-badge");
+  if(updateBadge)updateBadge.style.display="none";
+}
+function v252PreserveScrollRender(renderer){
+  var x=window.pageXOffset||
+    document.documentElement.scrollLeft||
+    0;
+  var y=window.pageYOffset||
+    document.documentElement.scrollTop||
+    0;
+
+  renderer();
+
+  requestAnimationFrame(function(){
+    try{window.scrollTo(x,y);}catch(e){}
+  });
+}
+function v252CutPending(cut){
+  try{
+    return cutPendingStatus(cut);
+  }catch(e){
+    return !cutIsOperationallyDone(cut);
+  }
+}
+function v252CaseHasPendingCuts(c){
+  return !!(
+    c&&
+    (c.cutRequests||[]).some(v252CutPending)
+  );
+}
+function v252OrderVariants(reference){
+  var text=String(reference||"").trim();
+  var variants=v247OrderVariants(text);
+  var numeric=Number((text.match(/\d+/)||[])[0]);
+
+  if(Number.isFinite(numeric)){
+    variants.push(numeric);
+  }
+
+  return uniqueArray(variants).slice(0,10);
+}
+function v252CaseMatchesReference(c,reference){
+  if(!c)return false;
+
+  var normalized=v247OrderVariants(reference)
+    .map(normalizeRefText);
+
+  var requestedNumber=(
+    String(reference||"").match(/\d+/g)||
+    []
+  ).pop()||"";
+
+  return [
+    c.reference,
+    c.pedido,
+    c.caseNumber,
+    c.orderNumber,
+    c.numeroPedido,
+    c.purchaseOrder
+  ].some(function(rawValue){
+    var value=normalizeRefText(rawValue);
+
+    if(normalized.indexOf(value)>=0){
+      return true;
+    }
+
+    var valueNumber=(
+      String(rawValue||"").match(/\d+/g)||
+      []
+    ).pop()||"";
+
+    return !!(
+      requestedNumber&&
+      valueNumber===requestedNumber
+    );
+  });
+}
+function v252PinCutCases(rows){
+  var pinned=(rows||[]).filter(function(c){
+    return (
+      c&&
+      (
+        c.cutRecoveryPinned===true||
+        v252CaseHasPendingCuts(c)||
+        state.detailId===c.id
+      )
+    );
+  });
+
+  return pinned;
+}
+
+/* La combinación remota nunca elimina un pedido con cortes pendientes. */
+var v252LegacyMergeCaseLists=v247MergeCaseLists;
+v247MergeCaseLists=function(remoteRows,localRows,outboxRows){
+  var merged=v252LegacyMergeCaseLists(
+    remoteRows,
+    localRows,
+    outboxRows
+  );
+
+  var pinned=v252PinCutCases(localRows||[]);
+
+  return sortByUpdated(
+    uniqueById(
+      merged.concat(pinned)
+    )
+  );
+};
+
+/* Ningún resultado de fondo modifica el DOM. */
+v251ShowUpdateBadge=function(reason){
+  state.v251.pendingViewUpdate=true;
+  state.v251.pendingReason=
+    reason||
+    "Hay información nueva disponible.";
+  state.v252.pendingData=true;
+  v252HideLegacyStatusOverlays();
+};
+
+v251HideUpdateBadge=function(){
+  state.v251.pendingViewUpdate=false;
+  state.v251.pendingReason="";
+  state.v252.pendingData=false;
+  v252HideLegacyStatusOverlays();
+};
+
+v250SafeRender=function(reason){
+  if(!state.user)return false;
+
+  if(
+    !state.v251.initialViewRendered||
+    !document.getElementById("app")
+  ){
+    state.__forceRenderOnce=true;
+    render();
+    state.v251.initialViewRendered=true;
+    state.v252.pendingData=false;
+    v252HideLegacyStatusOverlays();
+    return true;
+  }
+
+  state.v252.pendingData=true;
+  state.v251.pendingReason=
+    reason||
+    "Datos actualizados en segundo plano.";
+
+  return false;
+};
+
+v251ApplyPendingView=function(){
+  if(v252ProtectedContext()){
+    state.v251.deferredRefresh=true;
+
+    showLiveToast(
+      "Pedido protegido",
+      "La aplicación no cerrará el pedido, formulario o evidencia activa.",
+      false
+    );
+
+    return false;
+  }
+
+  state.__forceRenderOnce=true;
+
+  v252PreserveScrollRender(function(){
+    render();
+  });
+
+  state.v252.pendingData=false;
+  state.v251.pendingViewUpdate=false;
+  v252HideLegacyStatusOverlays();
+
+  return true;
+};
+
+/* Los repintados automáticos quedan prohibidos.
+   Solo una acción directa del usuario puede actualizar la vista. */
+var v252LegacyRenderAfterLiveChange=renderAfterLiveChange;
+renderAfterLiveChange=function(){
+  if(!state.user)return false;
+
+  if(state.detailId){
+    var detailCase=caseById(state.detailId);
+    if(detailCase)cacheDetailCase(detailCase);
+
+    state.v252.pendingData=true;
+    return false;
+  }
+
+  if(
+    v252ProtectedContext()||
+    !v252UserActionRecent()
+  ){
+    state.v252.pendingData=true;
+    return false;
+  }
+
+  v252PreserveScrollRender(function(){
+    v252LegacyRenderAfterLiveChange();
+  });
+
+  return true;
+};
+
+/* El banner solo aparece cuando el usuario debe actuar.
+   Nunca vuelve a mostrar "Conectado". */
+v246RefreshBanner=function(){
+  return v246GetAll(V246_OUTBOX).then(function(rows){
+    rows=rows||[];
+
+    var count=rows.length;
+    var evidencePending=rows.filter(function(row){
+      return row&&row.kind==="evidence";
+    }).length;
+
+    var authPending=rows.some(function(row){
+      return row&&
+        row.kind==="evidence"&&
+        row.authPending===true;
+    });
+
+    if(authPending)driveAuthRequired=true;
+
+    if(v252ProtectedContext()){
+      v246Banner("","");
+      return count;
+    }
+
+    if(navigator.onLine===false){
+      v246Banner(
+        count
+          ?"Sin conexión · "+count+" operación(es) protegidas."
+          :"Sin conexión · los cambios se guardarán localmente.",
+        "offline"
+      );
+
+      return count;
+    }
+
+    if(driveAuthRequired&&evidencePending){
+      v246Banner(
+        evidencePending+
+        " evidencia(s) pendientes. Conecte Drive una vez.",
+        "pending"
+      );
+
+      return count;
+    }
+
+    if(count>0&&!state.v246.syncing){
+      v246Banner(
+        count+
+        " operación(es) pendientes. Se sincronizarán sin cerrar su trabajo.",
+        "pending"
+      );
+
+      return count;
+    }
+
+    if(count>0&&state.v246.syncing){
+      v246Banner(
+        "Sincronizando "+
+        count+
+        " operación(es) sin modificar la pantalla…",
+        "syncing"
+      );
+
+      return count;
+    }
+
+    v246Banner("","");
+    return 0;
+  }).catch(function(){
+    v246Banner("","");
+    return 0;
+  });
+};
+
+/* La cola de Drive no procesa todas las evidencias mientras el usuario trabaja.
+   La sincronización manual puede procesar todas; la automática procesa máximo una. */
+v246Flush=function(options){
+  options=options||{};
+
+  if(
+    state.v250&&
+    state.v250.criticalLoading
+  )return Promise.resolve(false);
+
+  if(
+    state.v246.syncing||
+    navigator.onLine===false||
+    !db
+  )return Promise.resolve(false);
+
+  var manual=
+    options.manual===true||
+    v252ManualFlushRequested();
+
+  var protectedContext=v252ProtectedContext();
+
+  state.v246.syncing=true;
+  state.v252.lastSilentFlushAt=Date.now();
+
+  return v246GetAll(V246_OUTBOX)
+    .then(v246FlushDocs)
+    .then(function(){
+      return v246GetAll(V246_OUTBOX);
+    })
+    .then(function(rows){
+      var jobs=(rows||[]).filter(function(row){
+        return row&&row.kind==="evidence";
+      });
+
+      if(
+        protectedContext&&
+        !manual
+      ){
+        return false;
+      }
+
+      var limit=manual?jobs.length:Math.min(1,jobs.length);
+      var selected=jobs.slice(0,limit);
+      var chain=Promise.resolve();
+
+      selected.forEach(function(job){
+        chain=chain.then(function(){
+          return v246ProcessEvidence(job);
+        });
+      });
+
+      return chain;
+    })
+    .catch(function(error){
+      console.warn(
+        "[V252] Cola local pendiente.",
+        error
+      );
+
+      return false;
+    })
+    .finally(function(){
+      state.v246.syncing=false;
+      v246RefreshBanner();
+    });
+};
+
+/* Sin polling visual. Se consulta en silencio cada cinco minutos.
+   La pantalla no se repinta ni cambia el scroll. */
+v242RequestStableRefresh=function(reason){
+  if(state.v246.refreshTimer){
+    clearTimeout(state.v246.refreshTimer);
+  }
+
+  state.v246.refreshTimer=setTimeout(function(){
+    state.v246.refreshTimer=null;
+
+    if(
+      !firebaseReady||
+      !db||
+      !state.user||
+      navigator.onLine===false||
+      v252ProtectedContext()
+    ){
+      return;
+    }
+
+    v251BackgroundRefreshCases(
+      reason||
+      "actualización silenciosa"
+    ).then(function(){
+      state.v252.lastSilentRefreshAt=Date.now();
+    }).catch(function(){});
+  },5000);
+};
+
+startRealtimeSync=function(){
+  stopRealtimeSync();
+
+  if(!firebaseReady||!db||!state.user)return;
+
+  state.realtime.startedAt=Date.now();
+
+  state.realtime.pollTimer=setInterval(function(){
+    if(v252ProtectedContext())return;
+
+    v242RequestStableRefresh(
+      "actualización silenciosa"
+    );
+
+    v246Flush({
+      manual:false
+    }).catch(function(){});
+  },300000);
+};
+
+/* La recuperación de Firestore jamás vuelve a ejecutar loadData ni render. */
+v242ScheduleFirestoreRecovery=function(error){
+  state.v246.degraded=true;
+
+  try{stopRealtimeSync();}catch(e){}
+
+  console.error(
+    "[V252] Firestore inestable; el trabajo activo permanece intacto.",
+    error
+  );
+
+  if(!v252ProtectedContext()){
+    v246Banner(
+      "Conexión inestable · los cambios permanecen protegidos.",
+      "offline"
+    );
+  }
+
+  if(state.v246.refreshTimer){
+    clearTimeout(state.v246.refreshTimer);
+  }
+
+  state.v246.refreshTimer=setTimeout(function(){
+    state.v246.refreshTimer=null;
+
+    if(navigator.onLine===false)return;
+
+    startRealtimeSync();
+
+    if(!v252ProtectedContext()){
+      v251BackgroundRefreshCases(
+        "reconexión silenciosa"
+      ).catch(function(){});
+
+      v246Flush({
+        manual:false
+      }).catch(function(){});
+    }
+  },20000);
+};
+
+forceProtectedViewRefresh=function(){
+  if(v252ProtectedContext()){
+    showLiveToast(
+      "Pedido protegido",
+      "Cierre primero el pedido o formulario activo. No se modificó la pantalla.",
+      false
+    );
+
+    return Promise.resolve(false);
+  }
+
+  return v251BackgroundRefreshCases(
+    "actualización solicitada"
+  ).then(function(){
+    state.v252.userActionUntil=Date.now()+4000;
+    v251ApplyPendingView();
+    return true;
+  }).catch(function(error){
+    showError(
+      error&&error.message||
+      error||
+      "No fue posible actualizar."
+    );
+
+    return false;
+  });
+};
+
+/* Recuperación exacta de pedidos para Corte. */
+function v252FindCutOrderRemote(reference){
+  if(!db||navigator.onLine===false){
+    return Promise.resolve([]);
+  }
+
+  var variants=v252OrderVariants(reference);
+  var fields=[
+    "reference",
+    "pedido",
+    "caseNumber",
+    "orderNumber",
+    "numeroPedido",
+    "purchaseOrder"
+  ];
+
+  var queries=fields.map(function(field){
+    return v250GetQueryList(
+      db.collection("cases")
+        .where(field,"in",variants),
+      "cutRecovery."+field,
+      9000
+    );
+  });
+
+  variants.forEach(function(value){
+    var id=String(value||"").trim();
+
+    if(!id)return;
+
+    queries.push(
+      v250Bounded(
+        db.collection("cases").doc(id).get(),
+        7000,
+        null
+      ).then(function(result){
+        var snapshot=result.value;
+
+        return snapshot&&snapshot.exists
+          ?[
+            Object.assign(
+              {id:snapshot.id},
+              snapshot.data()||{}
+            )
+          ]
+          :[];
+      })
+    );
+  });
+
+  return Promise.all(queries).then(function(groups){
+    var rows=[];
+
+    groups.forEach(function(group){
+      rows=rows.concat(group||[]);
+    });
+
+    return uniqueById(rows);
+  });
+}
+function v252RecoverCutOrder(reference,options){
+  options=options||{};
+
+  if(state.v252.cutRecoveryInFlight){
+    return state.v252.cutRecoveryInFlight;
+  }
+
+  var local=(state.cases||[]).filter(function(c){
+    return v252CaseMatchesReference(c,reference);
+  });
+
+  state.v252.cutRecoveryInFlight=Promise.resolve(
+    local.length
+      ?local
+      :v252FindCutOrderRemote(reference)
+  ).then(function(rows){
+    rows=uniqueById(rows||[]);
+
+    var pending=rows.filter(function(c){
+      return v252CaseHasPendingCuts(c);
+    });
+
+    var writes=[];
+
+    pending.forEach(function(c){
+      c.hasCuts=true;
+      c.cutRecoveryPinned=true;
+      c.cutRecoveredAt=now();
+      c.cutRecoveredBy=
+        state.user&&state.user.uid||"";
+      c.cutRecoveredByName=
+        state.user&&state.user.name||"";
+      c.cutRecoveryReference=String(reference||"");
+
+      replaceCaseInState(c);
+
+      writes.push(
+        v246Write(
+          "cases",
+          c.id,
+          {
+            hasCuts:true,
+            cutRecoveryPinned:true,
+            cutRecoveredAt:c.cutRecoveredAt,
+            cutRecoveredBy:c.cutRecoveredBy,
+            cutRecoveredByName:c.cutRecoveredByName,
+            cutRecoveryReference:c.cutRecoveryReference,
+            updatedAt:now()
+          },
+          true
+        ).catch(function(error){
+          console.warn(
+            "[V252] La recuperación quedó local y pendiente de sincronización.",
+            error
+          );
+
+          return null;
+        })
+      );
+    });
+
+    return Promise.all(writes).then(function(){
+      var report={
+        reference:String(reference||""),
+        found:rows.length,
+        recovered:pending.length,
+        cases:rows.map(function(c){
+          return {
+            id:c.id,
+            reference:c.reference||c.pedido||"",
+            currentProcess:c.currentProcess||"",
+            hasCuts:c.hasCuts===true,
+            pendingCuts:(c.cutRequests||[])
+              .filter(v252CutPending)
+              .length
+          };
+        })
+      };
+
+      window.EI_CUT_RECOVERY=report;
+
+      if(pending.length){
+        v246CacheSoon();
+
+        if(
+          state.route==="corte_cable"&&
+          !v252ProtectedContext()
+        ){
+          var scrollTop=
+            window.pageYOffset||
+            document.documentElement.scrollTop||
+            0;
+
+          renderCutsQueue();
+
+          requestAnimationFrame(function(){
+            try{window.scrollTo(0,scrollTop);}catch(e){}
+          });
+        }
+
+        if(!options.silent){
+          showLiveToast(
+            "Pedido recuperado en Corte",
+            pending.map(function(c){
+              return c.reference||c.pedido||c.id;
+            }).join(", ")+
+            " quedó visible con sus cortes pendientes.",
+            false
+          );
+        }
+      }else if(!options.silent){
+        showLiveToast(
+          rows.length
+            ?"Pedido localizado"
+            :"Pedido no localizado",
+          rows.length
+            ?"El pedido existe, pero no tiene cortes pendientes que puedan recuperarse."
+            :"No se encontró el pedido "+reference+" en los campos disponibles.",
+          false
+        );
+      }
+
+      return report;
+    });
+  }).finally(function(){
+    state.v252.cutRecoveryInFlight=null;
+  });
+
+  return state.v252.cutRecoveryInFlight;
+}
+
+window.EI_RECOVER_CUT_ORDER=function(reference){
+  return v252RecoverCutOrder(
+    reference||"4582",
+    {silent:false}
+  );
+};
+
+/* Al aplicar Casos, Corte verifica una sola vez el pedido 4582. */
+var v252LegacyApplyCases=v250ApplyCases;
+v250ApplyCases=function(rows,outboxRows,source){
+  var result=v252LegacyApplyCases(
+    rows,
+    outboxRows,
+    source
+  );
+
+  if(
+    (isCutRuntimeUser()||
+     normalizeRole(state.user&&state.user.role)==="auxiliar_corte")&&
+    !state.v252.cut4582Checked
+  ){
+    state.v252.cut4582Checked=true;
+
+    setTimeout(function(){
+      v252RecoverCutOrder(
+        "4582",
+        {silent:true}
+      ).then(function(report){
+        console.info(
+          "[V252] Recuperación Corte 4582:",
+          report
+        );
+      });
+    },500);
+  }
+
+  return result;
+};
+
+/* Las acciones explícitas permiten un único repintado controlado. */
+document.addEventListener("pointerdown",function(event){
+  var action=event.target&&event.target.closest
+    ?event.target.closest(
+      '[data-action],[data-route],button[type="submit"]'
+    )
+    :null;
+
+  if(!action)return;
+
+  state.v252.userActionUntil=Date.now()+8000;
+
+  var actionName=action.getAttribute("data-action");
+
+  if(
+    actionName==="v246SyncNow"||
+    actionName==="v247ConnectDrive"
+  ){
+    state.v252.manualFlushUntil=Date.now()+120000;
+  }
+},true);
+
+document.addEventListener("submit",function(){
+  state.v252.userActionUntil=Date.now()+8000;
+},true);
+
+document.addEventListener("click",function(event){
+  var button=event.target&&event.target.closest
+    ?event.target.closest(
+      '[data-action="v252RecoverCutOrder"]'
+    )
+    :null;
+
+  if(!button)return;
+
+  event.preventDefault();
+
+  var reference=
+    button.getAttribute("data-ref")||
+    "4582";
+
+  v252RecoverCutOrder(
+    reference,
+    {silent:false}
+  ).catch(function(error){
+    showError(
+      error&&error.message||
+      error||
+      "No fue posible recuperar el pedido."
+    );
+  });
+},true);
+
+/* El mensaje de conexión no debe reaparecer al iniciar. */
+setTimeout(function(){
+  v252HideLegacyStatusOverlays();
+},0);
 
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
 
