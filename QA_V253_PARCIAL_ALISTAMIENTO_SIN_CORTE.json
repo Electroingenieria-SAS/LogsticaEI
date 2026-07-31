@@ -1,0 +1,40 @@
+{
+  "version": "v253-parcial-alistamiento-sin-corte",
+  "regla": {
+    "origen": "Alistamiento",
+    "linea_encontrada": true,
+    "sin_solicitud_corte_vinculada": true,
+    "envio_parcial_habilitado": true,
+    "pedido_original_permanece_abierto": true,
+    "lineas_no_encontradas_permanecen_pendientes": true
+  },
+  "protecciones": {
+    "no_aplica_dentro_de_corte": true,
+    "corte_configurado_pendiente_sigue_bloqueando": true,
+    "parcial_vacio_bloqueado": true,
+    "parcial_duplicado_bloqueado": true,
+    "trazabilidad_sin_corte": true
+  },
+  "qa": {
+    "version_app": true,
+    "version_index": true,
+    "version_404": true,
+    "version_reset": true,
+    "version_sw": true,
+    "partial_without_cut_rule": true,
+    "only_from_alistamiento": true,
+    "pending_configured_cut_preserved": true,
+    "partial_candidates_use_new_rule": true,
+    "found_status_required": true,
+    "child_no_cut_flag": true,
+    "parent_trace": true,
+    "partial_source_trace": true,
+    "duplicate_protection_preserved": true,
+    "v252_stability_preserved": true,
+    "reports_preserved": true,
+    "critical_modules_preserved": true,
+    "inline_scripts_valid": true,
+    "unit_test": true
+  },
+  "limitacion": "La prueba fue sintáctica y unitaria. No se ejecutó con una sesión autenticada del Firebase real."
+}

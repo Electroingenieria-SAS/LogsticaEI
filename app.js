@@ -37,7 +37,7 @@ var feedbackAssets = {
   success:"./assets/feedback/hands-up-ok-gauss.gif"
 };
 
-var EI_CANONICAL_APP_VERSION = "v252-sin-refresco-intrusivo-corte-4582";
+var EI_CANONICAL_APP_VERSION = "v253-parcial-alistamiento-sin-corte";
 try{
   window.EI_CANONICAL_APP_VERSION=EI_CANONICAL_APP_VERSION;
   window.EI_BUILD_LOADED=EI_CANONICAL_APP_VERSION;
@@ -159,7 +159,7 @@ function v248ReleaseLocalStorageSpace(){
 
   if(removed.length){
     console.info(
-      "[V252] Almacenamiento técnico liberado.",
+      "[V253] Almacenamiento técnico liberado.",
       V248_STORAGE_REPORT
     );
   }
@@ -173,7 +173,7 @@ function v248SafeLocalStorageSet(key,value){
   }catch(error){
     if(!v248IsQuotaError(error)){
       console.warn(
-        "[V252] localStorage no disponible para "+key+".",
+        "[V253] localStorage no disponible para "+key+".",
         error
       );
       return false;
@@ -186,7 +186,7 @@ function v248SafeLocalStorageSet(key,value){
       return true;
     }catch(secondError){
       console.warn(
-        "[V252] La cuota continúa llena. Se omite la caché derivada "+key+".",
+        "[V253] La cuota continúa llena. Se omite la caché derivada "+key+".",
         secondError
       );
       return false;
@@ -203,7 +203,7 @@ function v248RequestPersistentOriginStorage(){
 
   return navigator.storage.persist().then(function(granted){
     console.info(
-      "[V252] Protección del almacenamiento IndexedDB/PWA:",
+      "[V253] Protección del almacenamiento IndexedDB/PWA:",
       granted?"concedida":"administrada por el navegador"
     );
     return granted;
@@ -2063,7 +2063,7 @@ function initFirebase(){
       })
       .catch(function(error){
         console.warn(
-          "[V252] La sesión de autenticación será temporal.",
+          "[V253] La sesión de autenticación será temporal.",
           error
         );
       });
@@ -2079,7 +2079,7 @@ function initFirebase(){
       });
     }catch(settingsError){
       console.warn(
-        "[V252] No fue posible aplicar el transporte estable de Firestore.",
+        "[V253] No fue posible aplicar el transporte estable de Firestore.",
         settingsError
       );
     }
@@ -2109,7 +2109,7 @@ function initFirebaseAsync(){
         firestorePersistenceReady=false;
 
         console.info(
-          "[V252] Firestore usa caché en memoria. "+
+          "[V253] Firestore usa caché en memoria. "+
           "La continuidad offline permanece en IndexedDB de la aplicación."
         );
 
@@ -2640,7 +2640,7 @@ function loadReportsForRole(){
 function safeLoadBlock(label, loader){
   return Promise.resolve().then(loader).catch(function(e){
     if(v242IsFirestoreInternalError(e)){
-      console.error("[V252] Estado interno de Firestore detectado en "+label,e);
+      console.error("[V253] Estado interno de Firestore detectado en "+label,e);
       v242ScheduleFirestoreRecovery(e);
       throw e;
     }
@@ -3141,7 +3141,7 @@ function forceProtectedViewRefresh(){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V252] Actualización manual pendiente.",
+      "[V253] Actualización manual pendiente.",
       error
     );
     return false;
@@ -4220,7 +4220,7 @@ function loadProfileAndRender(fbUser){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V252] Inicio en modo protegido.",
+      "[V253] Inicio en modo protegido.",
       error
     );
 
@@ -6453,19 +6453,49 @@ function partialQtyFormat(n){
   return String(Number(n.toFixed(4))).replace('.', ',');
 }
 function eligiblePartialItems(c){
-  var cuts=c.cutRequests||[];
-  return (c.orderItems||[]).map(function(it,i){
-    var requested=partialQtyParse(it.cantidad||it.qty||it.quantity);
-    var already=partialQtyParse(it.partialDispatchedQty||0);
-    var pending=Math.max(0,requested-already);
-    var cutFinished=true;
-    if(it.requiereCorte){
-      var refNorm=normalizeRefText(it.referencia||it.descripcion||'');
-      var cut=cuts.find(function(x){return normalizeRefText(x.referencia||x.descripcion||'')===refNorm || String(x.sourceLineId||'')===String(it.id||'');});
-      cutFinished=!!cut && ["CONFORME","AUTORIZADO","FINALIZADO"].indexOf(cut.status)>=0;
-    }
-    return {item:it,index:i,requested:requested,already:already,pending:pending,cutFinished:cutFinished};
-  }).filter(function(x){return x.pending>0;});
+  return (c.orderItems||[]).map(function(it,index){
+    var requested=partialQtyParse(
+      it.cantidad||
+      it.qty||
+      it.quantity
+    );
+
+    var already=partialQtyParse(
+      it.partialDispatchedQty||0
+    );
+
+    var pending=Math.max(
+      0,
+      requested-already
+    );
+
+    var status=String(
+      it.alistamientoStatus||
+      "PENDIENTE"
+    ).toUpperCase();
+
+    var cutDecision=v253PartialCutDecision(c,it);
+
+    return {
+      item:it,
+      index:index,
+      requested:requested,
+      already:already,
+      pending:pending,
+      cutFinished:cutDecision.ready,
+      withoutConfiguredCut:cutDecision.withoutConfiguredCut,
+      cutDecisionReason:cutDecision.reason,
+      ready:
+        pending>0&&
+        status==="ENCONTRADO"&&
+        cutDecision.ready
+    };
+  }).filter(function(candidate){
+    return (
+      candidate.pending>0&&
+      candidate.ready
+    );
+  });
 }
 function openPartialShipment(id){
   var c=caseById(id);if(!c)return;
@@ -8295,7 +8325,7 @@ function renderCutsQueue(){
     }).join("");
     layout(
       header("Cortes agrupados","Bandeja organizada por referencia/tipo de cable para prealistamiento y operación por pedido.",'<button class="btn btn-success" data-action="forceProtectedRefresh">Actualizar bandeja</button><button class="btn btn-gold" data-action="v252RecoverCutOrder" data-ref="4582">Recuperar pedido 4582</button>')+
-      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V252</strong></article></section>'+
+      '<section class="ei191-cut-kpis"><article><span>Pendientes</span><strong>'+rows.length+'</strong></article><article><span>Grupos</span><strong>'+groupKeys.length+'</strong></article><article><span>Versión</span><strong>V253</strong></article></section>'+
       '<section class="ei191-cut-groups">'+(groupHtml||'<section class="card"><div class="empty">No hay cortes pendientes.</div></section>')+'</section>'
     );
     return;
@@ -15933,10 +15963,59 @@ function v241PendingQty(it){
 function v241CutForItem(c,it){
   return v239CutForOrderItem(c,it);
 }
+function v253PartialWithoutConfiguredCut(c,it){
+  if(
+    !c||
+    !it||
+    !it.requiereCorte||
+    c.currentProcess!=="alistamiento"
+  ){
+    return false;
+  }
+
+  /*
+   * La línea está en Alistamiento y no tiene una solicitud de corte
+   * vinculada. Cuando el operario la marca ENCONTRADO, se permite
+   * incluirla en el parcial sin inventar ni crear un corte.
+   */
+  return !v241CutForItem(c,it);
+}
+function v253PartialCutDecision(c,it){
+  if(!it||!it.requiereCorte){
+    return {
+      ready:true,
+      relatedCut:null,
+      withoutConfiguredCut:false,
+      reason:"NO_REQUIERE_CORTE"
+    };
+  }
+
+  var relatedCut=v241CutForItem(c,it);
+
+  if(relatedCut){
+    return {
+      ready:cutIsOperationallyDone(relatedCut),
+      relatedCut:relatedCut,
+      withoutConfiguredCut:false,
+      reason:cutIsOperationallyDone(relatedCut)
+        ?"CORTE_FINALIZADO"
+        :"CORTE_PENDIENTE"
+    };
+  }
+
+  var bypass=v253PartialWithoutConfiguredCut(c,it);
+
+  return {
+    ready:bypass,
+    relatedCut:null,
+    withoutConfiguredCut:bypass,
+    reason:bypass
+      ?"ALISTAMIENTO_SIN_CORTE_CONFIGURADO"
+      :"CORTE_NO_CONFIGURADO"
+  };
+}
 function v241CutReady(c,it){
-  if(!it||!it.requiereCorte)return true;
-  var cut=v241CutForItem(c,it);
-  return !!cut&&cutIsOperationallyDone(cut);
+  return v253PartialCutDecision(c,it).ready;
 }
 function v241PartialState(c){
   var stateInfo={
@@ -16030,25 +16109,70 @@ function v241PartialBlockMessage(info){
   return parts.join(", ")||"el envío parcial todavía no está habilitado";
 }
 function v241MobileLineCard(c,it,index,canMark){
-  var status=String(it.alistamientoStatus||"PENDIENTE").toUpperCase();
-  var note=it.alistamientoNote||it.alistamientoNoveltyDetail||"";
-  var lineId=it.id||it.lineId||it.sourceLineId||"";
+  var status=String(
+    it.alistamientoStatus||
+    "PENDIENTE"
+  ).toUpperCase();
+
+  var note=
+    it.alistamientoNote||
+    it.alistamientoNoveltyDetail||
+    "";
+
+  var lineId=
+    it.id||
+    it.lineId||
+    it.sourceLineId||
+    "";
+
   var pendingQty=v241PendingQty(it);
   var cut=v241CutForItem(c,it);
-  var cutReady=v241CutReady(c,it);
-  var destination=it.requiereCorte?"Corte":"Alistamiento";
+  var cutDecision=v253PartialCutDecision(c,it);
+
+  var destination=
+    it.requiereCorte&&
+    !cutDecision.withoutConfiguredCut
+      ?"Corte"
+      :"Alistamiento";
+
   var cardClass=status==="NO_ENCONTRADO"
     ?" missing"
-    :(status==="NOVEDAD"?" novelty":(status==="ENCONTRADO"?" found":""));
+    :(status==="NOVEDAD"
+      ?" novelty"
+      :(status==="ENCONTRADO"
+        ?" found"
+        :""));
 
   var actions=canMark
-    ? '<div class="v241-mobile-actions">'+
-        '<button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Encontrado</button>'+
-        '<button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">No encontrado</button>'+
-        '<button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Novedad</button>'+
-        '<button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Pendiente</button>'+
-      '</div>'
-    : '';
+    ?'<div class="v241-mobile-actions">'+
+      '<button class="btn btn-small btn-success" data-action="alistFound" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Encontrado</button>'+
+      '<button class="btn btn-small btn-gold" data-action="alistMissing" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">No encontrado</button>'+
+      '<button class="btn btn-small btn-danger" data-action="alistNovelty" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Novedad</button>'+
+      '<button class="btn btn-small" data-action="alistPending" data-id="'+esc(c.id)+'" data-line="'+index+'" data-line-id="'+esc(lineId)+'">Pendiente</button>'+
+    '</div>'
+    :"";
+
+  var cutState="";
+
+  if(it.requiereCorte){
+    if(cutDecision.withoutConfiguredCut){
+      cutState=
+        '<div class="v241-cut-state ready">'+
+          '<span>Parcial</span>'+
+          '<strong>Sin corte configurado</strong>'+
+          '<small>Habilitado desde Alistamiento</small>'+
+        '</div>';
+    }else{
+      cutState=
+        '<div class="v241-cut-state '+(cutDecision.ready?"ready":"pending")+'">'+
+          '<span>Corte</span>'+
+          '<strong>'+(cutDecision.ready?"Registrado":"Pendiente")+'</strong>'+
+          (cut
+            ?'<small>'+esc(cut.code||cut.id||"")+'</small>'
+            :"")+
+        '</div>';
+    }
+  }
 
   return '<article class="v241-mobile-line'+cardClass+'">'+
     '<div class="v241-mobile-line-head">'+
@@ -16064,13 +16188,10 @@ function v241MobileLineCard(c,it,index,canMark){
       '<div><span>Pendiente</span><b>'+esc(partialQtyFormat(pendingQty))+' '+esc(it.unidad||"")+'</b></div>'+
       '<div><span>Ubicación</span><b>'+esc(it.ubicacion||"Sin definir")+'</b></div>'+
     '</div>'+
-    (it.requiereCorte
-      ? '<div class="v241-cut-state '+(cutReady?'ready':'pending')+'">'+
-          '<span>Corte</span><strong>'+(cutReady?'Registrado':'Pendiente')+'</strong>'+
-          (cut?'<small>'+esc(cut.code||cut.id||"")+'</small>':'')+
-        '</div>'
-      : '')+
-    (note?'<div class="v241-mobile-note"><strong>Observación</strong><span>'+esc(note)+'</span></div>':'')+
+    cutState+
+    (note
+      ?'<div class="v241-mobile-note"><strong>Observación</strong><span>'+esc(note)+'</span></div>'
+      :"")+
     actions+
   '</article>';
 }
@@ -16228,12 +16349,53 @@ function v241BuildPartialRows(c,info){
 }
 function v241DefaultPartialReason(c,info){
   var missingRefs=info.missing.map(function(x){
-    return x.item.referencia||x.item.descripcion||"Línea sin referencia";
+    return (
+      x.item.referencia||
+      x.item.descripcion||
+      "Línea sin referencia"
+    );
   });
-  if(missingRefs.length){
-    return "Se envían las referencias encontradas y disponibles. Permanecen pendientes por no encontradas: "+missingRefs.join(", ")+".";
+
+  var withoutCut=info.ready.filter(function(x){
+    return v253PartialWithoutConfiguredCut(
+      c,
+      x.item
+    );
+  }).map(function(x){
+    return (
+      x.item.referencia||
+      x.item.descripcion||
+      "Línea sin referencia"
+    );
+  });
+
+  var parts=[];
+
+  parts.push(
+    "Se envían las referencias encontradas y disponibles desde Alistamiento."
+  );
+
+  if(withoutCut.length){
+    parts.push(
+      "Se incluyen sin solicitud de corte configurada: "+
+      withoutCut.join(", ")+
+      "."
+    );
   }
-  return "Se envía parcialmente la mercancía encontrada y disponible; el saldo permanece abierto en el pedido original.";
+
+  if(missingRefs.length){
+    parts.push(
+      "Permanecen pendientes por no encontradas: "+
+      missingRefs.join(", ")+
+      "."
+    );
+  }else{
+    parts.push(
+      "El saldo permanece abierto en el pedido original."
+    );
+  }
+
+  return parts.join(" ");
 }
 
 /* Permite parcial desde Alistamiento o Corte, incluso en espera,
@@ -16267,7 +16429,7 @@ openPartialShipment=function(id){
     var reason=v241DefaultPartialReason(c,info);
 
     var html='<form class="form v241-partial-form" id="partialShipmentForm">'+
-      '<div class="notice success"><strong>Envío parcial a Facturación.</strong><br>Las líneas encontradas y listas se enviarán en un caso parcial. Las líneas marcadas como No encontrado permanecerán abiertas en el pedido original para retomarlas posteriormente.</div>'+
+      '<div class="notice success"><strong>Envío parcial a Facturación.</strong><br>Las líneas encontradas y listas se enviarán en un caso parcial. Desde Alistamiento también se permiten líneas sin solicitud de corte configurada; esta decisión quedará registrada. Las líneas marcadas como No encontrado permanecerán abiertas en el pedido original.</div>'+
       '<div class="v241-partial-summary">'+
         '<article><span>Listas para enviar</span><strong>'+info.ready.length+'</strong></article>'+
         '<article><span>No encontradas</span><strong>'+info.missing.length+'</strong></article>'+
@@ -16414,7 +16576,7 @@ function v242ScheduleFirestoreRecovery(error){
     return;
   }
 
-  console.error("[V252] Firestore no logró estabilizarse después de dos reinicios.",error);
+  console.error("[V253] Firestore no logró estabilizarse después de dos reinicios.",error);
   try{
     state.loadWarnings=state.loadWarnings||[];
     state.loadWarnings.push(
@@ -16481,7 +16643,7 @@ function v242SequentialLoad(){
 
     return Promise.resolve(normalizePromise).then(function(moved){
       if(moved>0){
-        console.info("[V252] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
+        console.info("[V253] PVC/PVE movidos automáticamente de Caja a Cartera:",moved);
       }
       v242LastSuccessfulLoadAt=Date.now();
       v242ClearRecoveryHistory();
@@ -16536,7 +16698,7 @@ function v242RequestStableRefresh(reason){
       cleanupProtectedToast();
     }).catch(function(error){
       if(!v242IsFirestoreInternalError(error)){
-        console.warn("[V252] Actualización periódica no disponible:",reason,error);
+        console.warn("[V253] Actualización periódica no disponible:",reason,error);
       }
     });
   },reason==="online"?1800:700);
@@ -16949,7 +17111,7 @@ function v246RefreshBanner(){
     return 0;
   });
 }
-function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V252] Respaldo local no disponible",e);});},300);}
+function v246CacheSoon(){if(state.v246.cacheTimer)clearTimeout(state.v246.cacheTimer);state.v246.cacheTimer=setTimeout(function(){state.v246.cacheTimer=null;if(!state.user)return;v246Put(V246_SNAPSHOTS,{id:"state:"+(state.user.uid||state.user.email||"default"),savedAt:Date.now(),cases:v246Plain(state.cases||[]),events:v246Plain((state.events||[]).slice(0,800)),users:v246Plain(state.users||[]),receptions:v246Plain(state.receptions||[]),receptionStickers:v246Plain(state.receptionStickers||[]),projectOrders:v246Plain(state.projectOrders||[]),reports:v246Plain(state.reports||[]),inventoryChips:v246Plain(state.inventoryChips||[])}).catch(function(e){console.warn("[V253] Respaldo local no disponible",e);});},300);}
 function v246Restore(){
   if(!state.user)return Promise.resolve(false);
 
@@ -17003,7 +17165,7 @@ function v246Restore(){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V252] Respaldo local omitido sin bloquear la aplicación.",
+      "[V253] Respaldo local omitido sin bloquear la aplicación.",
       error
     );
     return false;
@@ -17154,11 +17316,11 @@ function v246ProcessEvidence(job){
     return v246Put(V246_OUTBOX,job).then(function(){
       if(driveAuthIsRequired(error)){
         console.info(
-          "[V252] Evidencia protegida; Drive espera conexión del usuario."
+          "[V253] Evidencia protegida; Drive espera conexión del usuario."
         );
       }else{
         console.warn(
-          "[V252] Evidencia pendiente de sincronización.",
+          "[V253] Evidencia pendiente de sincronización.",
           error
         );
       }
@@ -17168,7 +17330,7 @@ function v246ProcessEvidence(job){
     v246RefreshBanner();
   });
 }
-function v246Flush(){if(state.v250&&state.v250.criticalLoading)return Promise.resolve(false);if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V252] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
+function v246Flush(){if(state.v250&&state.v250.criticalLoading)return Promise.resolve(false);if(state.v246.syncing||navigator.onLine===false||!db)return Promise.resolve(false);state.v246.syncing=true;v246RefreshBanner();return v246GetAll(V246_OUTBOX).then(v246FlushDocs).then(function(){return v246GetAll(V246_OUTBOX);}).then(function(rows){var jobs=rows.filter(function(x){return x.kind==="evidence";}),chain=Promise.resolve();jobs.forEach(function(job){chain=chain.then(function(){return v246ProcessEvidence(job);});});return chain;}).catch(function(error){console.warn("[V253] Cola local pendiente",error);}).finally(function(){state.v246.syncing=false;v246RefreshBanner();});}
 function v246LoadBlock(
   label,
   loader,
@@ -17187,7 +17349,7 @@ function v246LoadBlock(
         lateHandler(data||[]);
       }catch(error){
         console.warn(
-          "[V252] Resultado tardío no pudo aplicarse:",
+          "[V253] Resultado tardío no pudo aplicarse:",
           label,
           error
         );
@@ -17342,7 +17504,7 @@ function v250LoadSecondaryModules(generation){
     state.v250.secondaryLoading=false;
 
     console.warn(
-      "[V252] Módulos secundarios incompletos.",
+      "[V253] Módulos secundarios incompletos.",
       error
     );
   });
@@ -17449,7 +17611,7 @@ function v246StableLoad(){
             {silent:true}
           ).then(function(report){
             console.info(
-              "[V252] Diagnóstico PVE 550:",
+              "[V253] Diagnóstico PVE 550:",
               report
             );
           });
@@ -17561,7 +17723,7 @@ loadFreshCaseForUpdate=function(id,fallback){
     return fallback;
   });
 };
-v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V252] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
+v242ScheduleFirestoreRecovery=function(error){state.v246.degraded=true;try{stopRealtimeSync();}catch(e){}console.error("[V253] Interrupción Firestore; operación local preservada",error);v246Banner("Conexión inestable · los cambios se conservarán y se reintentará sin cerrar la pantalla.","offline");if(state.v246.refreshTimer)clearTimeout(state.v246.refreshTimer);state.v246.refreshTimer=setTimeout(function(){state.v246.refreshTimer=null;if(navigator.onLine!==false&&!v246Locked())loadData().then(function(){startRealtimeSync();v246Flush();}).catch(function(){});},15000);};
 v242RequestStableRefresh=function(reason){
   if(state.v246.refreshTimer){
     clearTimeout(state.v246.refreshTimer);
@@ -17587,7 +17749,7 @@ v242RequestStableRefresh=function(reason){
     );
 
     v246Flush().catch(function(error){
-      console.warn("[V252] Sincronización pendiente.",error);
+      console.warn("[V253] Sincronización pendiente.",error);
     });
   },reason==="online"?4000:1800);
 };
@@ -17738,7 +17900,12 @@ createPartialShipment=function(id,fd){
         cantidadSolicitada:partialQtyFormat(candidate.requested),
         cantidadPendienteAntes:partialQtyFormat(candidate.pending),
         observacion:String(fd.get("note_"+candidate.index)||""),
-        requiereCorte:!!line.requiereCorte
+        requiereCorte:!!line.requiereCorte,
+        sinCorteConfigurado:!!candidate.withoutConfiguredCut,
+        decisionCorteParcial:candidate.cutDecisionReason||"",
+        notaCorteParcial:candidate.withoutConfiguredCut
+          ?"Línea habilitada desde Alistamiento sin solicitud de corte configurada."
+          :""
       });
     });
     if(!selected.length)throw new Error("Seleccione al menos una línea disponible.");
@@ -17816,9 +17983,16 @@ createPartialShipment=function(id,fd){
         line.alistamientoStatus=line.alistamientoStatus||"PENDIENTE";
         line.alistamientoNote="Entrega parcial creada. Saldo pendiente: "+line.partialPendingQty+" "+(line.unidad||"");
       }else{
-        line.estado=line.requiereCorte?"CORTE_ALISTADO_PARCIAL":"ALISTADO_PARCIAL";
+        line.estado=selectedLine.sinCorteConfigurado
+          ?"ALISTADO_PARCIAL_SIN_CORTE"
+          :(line.requiereCorte
+            ?"CORTE_ALISTADO_PARCIAL"
+            :"ALISTADO_PARCIAL");
+
         line.alistamientoStatus="ENCONTRADO";
-        line.alistamientoNote="Cantidad enviada en parcial "+sequence+".";
+        line.alistamientoNote=selectedLine.sinCorteConfigurado
+          ?"Cantidad enviada en parcial "+sequence+" desde Alistamiento sin corte configurado."
+          :"Cantidad enviada en parcial "+sequence+".";
       }
       return line;
     });
@@ -17831,7 +18005,29 @@ createPartialShipment=function(id,fd){
     child.assignedTo="";child.assignedUid="";child.assignedUsers=[];child.assignedUserIds=[];
     child.createdAt=stamp;child.createdBy=state.user.uid;child.createdByName=state.user.name;child.updatedAt=stamp;child.closedAt=null;child.openRequirement=null;
     child.checklist={};processes.facturacion.checklist.forEach(function(item){child.checklist[item]="pending";});
-    child.orderItems=selected.map(function(item){return{id:item.lineId,referencia:item.referencia,descripcion:item.descripcion,cantidad:item.cantidad,unidad:item.unidad,sourceRequestedQty:item.cantidadSolicitada,sourcePendingBefore:item.cantidadPendienteAntes,observacion:item.observacion,requiereCorte:item.requiereCorte,alistamientoStatus:"ENCONTRADO",estado:"PARCIAL_A_FACTURAR"};});
+    child.orderItems=selected.map(function(item){
+      return {
+        id:item.lineId,
+        referencia:item.referencia,
+        descripcion:item.descripcion,
+        cantidad:item.cantidad,
+        unidad:item.unidad,
+        sourceRequestedQty:item.cantidadSolicitada,
+        sourcePendingBefore:item.cantidadPendienteAntes,
+        observacion:item.observacion,
+        sourceRequiereCorte:item.requiereCorte,
+        requiereCorte:item.sinCorteConfigurado
+          ?false
+          :item.requiereCorte,
+        partialWithoutConfiguredCut:!!item.sinCorteConfigurado,
+        partialCutDecision:item.decisionCorteParcial||"",
+        partialCutNote:item.notaCorteParcial||"",
+        alistamientoStatus:"ENCONTRADO",
+        estado:item.sinCorteConfigurado
+          ?"PARCIAL_A_FACTURAR_SIN_CORTE"
+          :"PARCIAL_A_FACTURAR"
+      };
+    });
     child.cutRequests=[];child.hasCuts=false;child.processStats={};procStats(child,"facturacion").startedAt=stamp;
     child.partialSource={
       caseId:c.id,
@@ -17840,7 +18036,11 @@ createPartialShipment=function(id,fd){
       sequence:sequence,
       reason:reason,
       createdAt:stamp,
-      createdByName:state.user.name
+      createdByName:state.user.name,
+      generatedFrom:"ALISTAMIENTO",
+      includesLinesWithoutConfiguredCut:selected.some(function(item){
+        return item.sinCorteConfigurado===true;
+      })
     };
     replaceCaseInState(child);replaceCaseInState(c);v246CacheSoon();
     return v246Write("cases",child.id,child,false).then(function(){
@@ -18107,7 +18307,7 @@ function v247RecoverOrder(reference,options){
       });
     });
   }).catch(function(error){
-    console.warn("[V252] Recuperación de pedido no disponible.",error);
+    console.warn("[V253] Recuperación de pedido no disponible.",error);
     return finalize([],"error");
   });
 }
@@ -18160,7 +18360,7 @@ v242ScheduleFirestoreRecovery=function(error){
   try{stopRealtimeSync();}catch(e){}
 
   console.error(
-    "[V252] Interrupción Firestore; operación local preservada",
+    "[V253] Interrupción Firestore; operación local preservada",
     error
   );
 
@@ -18306,7 +18506,7 @@ function v250ReleaseLoading(reason){
   }
 
   console.info(
-    "[V252] Interfaz liberada:",
+    "[V253] Interfaz liberada:",
     reason||"carga finalizada"
   );
 
@@ -18349,7 +18549,7 @@ function v250ApplyCases(rows,outboxRows,source){
   v246CacheSoon();
 
   console.info(
-    "[V252] Casos aplicados:",
+    "[V253] Casos aplicados:",
     state.cases.length,
     "fuente:",
     source||"remota"
@@ -18393,7 +18593,7 @@ function v250GetQueryList(query,label,timeoutMs){
   ).then(function(result){
     if(!result.ok){
       console.warn(
-        "[V252] Consulta no disponible:",
+        "[V253] Consulta no disponible:",
         label,
         result.error||"tiempo agotado"
       );
@@ -18633,7 +18833,7 @@ function v251BackgroundRefreshCases(reason){
     return true;
   }).catch(function(error){
     console.warn(
-      "[V252] Actualización de datos aplazada.",
+      "[V253] Actualización de datos aplazada.",
       reason,
       error
     );
@@ -19172,7 +19372,7 @@ v246Flush=function(options){
     })
     .catch(function(error){
       console.warn(
-        "[V252] Cola local pendiente.",
+        "[V253] Cola local pendiente.",
         error
       );
 
@@ -19240,7 +19440,7 @@ v242ScheduleFirestoreRecovery=function(error){
   try{stopRealtimeSync();}catch(e){}
 
   console.error(
-    "[V252] Firestore inestable; el trabajo activo permanece intacto.",
+    "[V253] Firestore inestable; el trabajo activo permanece intacto.",
     error
   );
 
@@ -19414,7 +19614,7 @@ function v252RecoverCutOrder(reference,options){
           true
         ).catch(function(error){
           console.warn(
-            "[V252] La recuperación quedó local y pendiente de sincronización.",
+            "[V253] La recuperación quedó local y pendiente de sincronización.",
             error
           );
 
@@ -19522,7 +19722,7 @@ v250ApplyCases=function(rows,outboxRows,source){
         {silent:true}
       ).then(function(report){
         console.info(
-          "[V252] Recuperación Corte 4582:",
+          "[V253] Recuperación Corte 4582:",
           report
         );
       });
