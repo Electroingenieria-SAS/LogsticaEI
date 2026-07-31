@@ -1,0 +1,37 @@
+{
+  "version": "v254-4582-a-facturacion-idempotente",
+  "pedido_objetivo": "4582",
+  "comportamiento": {
+    "traslado_completo_si_todo_esta_listo": true,
+    "parcial_si_hay_lineas_encontradas_y_saldo": true,
+    "ignora_ausencia_corte_para_reparacion": true,
+    "transaccion_firestore": true,
+    "idempotente": true,
+    "saldo_original_preservado": true,
+    "ejecucion_automatica_perfil_autorizado": true,
+    "boton_manual": true
+  },
+  "qa": {
+    "version_app": true,
+    "version_index": true,
+    "version_404": true,
+    "version_reset": true,
+    "version_sw": true,
+    "button_updated": true,
+    "exact_search": true,
+    "transactional_write": true,
+    "full_billing_mode": true,
+    "partial_billing_mode": true,
+    "cut_bypass_targeted": true,
+    "duplicate_protection": true,
+    "original_balance_preserved": true,
+    "automatic_authorized_run": true,
+    "manual_console_action": true,
+    "v253_partial_rule_preserved": true,
+    "v252_stability_preserved": true,
+    "reports_preserved": true,
+    "inline_scripts_valid": true,
+    "unit_test": true
+  },
+  "limitacion": "La modificación real del documento se ejecutará al abrir la V254 con un perfil autorizado y conexión a Firebase. Este entorno no posee una sesión autenticada del proyecto trazabilidadlog."
+}
