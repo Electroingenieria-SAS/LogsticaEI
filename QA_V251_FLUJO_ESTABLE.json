@@ -1,0 +1,42 @@
+{
+  "version": "v251-flujo-estable-sin-reinicios",
+  "causas_corregidas": [
+    "El polling periódico ejecutaba loadData completo.",
+    "v250SafeRender forzaba render y omitía los bloqueos de detalle.",
+    "Los módulos secundarios generaban múltiples repintados.",
+    "Una segunda pulsación podía repetir una transición.",
+    "Un parcial repetido recibía un ID aleatorio diferente."
+  ],
+  "correcciones": {
+    "sin_repintado_automatico": true,
+    "detalle_formulario_camara_protegidos": true,
+    "refresco_datos_silencioso": true,
+    "actualizacion_visual_explicita": true,
+    "transiciones_idempotentes": true,
+    "parciales_idempotentes": true,
+    "estado_alistamiento_no_repetido": true
+  },
+  "qa": {
+    "version_app": true,
+    "version_index": true,
+    "version_404": true,
+    "version_reset": true,
+    "version_sw": true,
+    "background_no_loadData": true,
+    "poll_interval_reduced": true,
+    "render_not_forced_background": true,
+    "detail_protected": true,
+    "operation_lock": true,
+    "stale_transition_block": true,
+    "partial_idempotency": true,
+    "deterministic_partial_id": true,
+    "same_line_no_duplicate": true,
+    "manual_refresh_preserves_detail": true,
+    "online_no_loadData": true,
+    "recovery_no_loadData": true,
+    "critical_features_preserved": true,
+    "inline_scripts_valid": true,
+    "unit_flow": true
+  },
+  "limitacion": "No se ejecutó contra la sesión Firebase real ni simultáneamente en varios celulares de la bodega."
+}
